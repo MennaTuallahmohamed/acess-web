@@ -249,7 +249,7 @@ const styles = `
   }
 `;
 
-export function AuthPanel({ onLogin, loading }) {
+export function AuthPage({ onLogin, loading }) {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
 
@@ -349,3 +349,7 @@ export function AuthPanel({ onLogin, loading }) {
     </>
   );
 }
+
+export { AuthPage as AuthPanel };
+
+export default AuthPage;

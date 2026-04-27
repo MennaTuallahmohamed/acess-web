@@ -16,28 +16,55 @@ export const setApiConfig = ({ baseUrl, token }) => {
   localStorage.setItem("dashboard_api_token", API_TOKEN);
 };
 
-const ROLE_ALIASES = {
-  admin: ["ADMIN", "Admin", "admin"],
-  viewer: ["VIEWER", "Viewer", "viewer"],
+const ROLE_KEYWORDS = {
+  admin: ["admin", "administrator", "superadmin", "super admin"],
+  viewer: ["viewer", "monitor", "monitoring", "observer", "readonly", "read only"],
 };
 
+const normalizeText = (value) => String(value || "").trim().toLowerCase();
+
 const normalizeRoleKey = (value) => {
-  const role = String(value || "").trim().toLowerCase();
-  if (role === "admin") return "admin";
-  if (role === "viewer") return "viewer";
+  const role = normalizeText(value);
+
+  if (!role) return "";
+
+  if (ROLE_KEYWORDS.admin.some((keyword) => role === keyword || role.includes(keyword))) {
+    return "admin";
+  }
+
+  if (ROLE_KEYWORDS.viewer.some((keyword) => role === keyword || role.includes(keyword))) {
+    return "viewer";
+  }
+
   return "";
 };
 
 const getRoleDisplayName = (roleKey) => (roleKey === "admin" ? "ADMIN" : "VIEWER");
 
 const matchesRoleName = (roleName, roleKey) =>
-  ROLE_ALIASES[roleKey]?.includes(roleName) || false;
+  normalizeRoleKey(roleName) === roleKey;
 
 const getUserRoleKey = (user) => {
-  const roleName = user?.role?.name || user?.jobTitle || "";
-  if (matchesRoleName(roleName, "admin")) return "admin";
-  if (matchesRoleName(roleName, "viewer")) return "viewer";
+  const roleSignals = [
+    user?.accessRole,
+    user?.role?.name,
+    user?.userRole,
+    user?.jobTitle,
+    user?.type,
+    user?.email,
+  ];
+
+  for (const signal of roleSignals) {
+    const roleKey = normalizeRoleKey(signal);
+    if (roleKey) return roleKey;
+  }
+
   return "";
+};
+
+export const resolveUserAccessRole = (user) => {
+  if (!user) return "";
+  return getUserRoleKey(user) || "viewer";
 };
 
 const normalizeList = (value) => {
@@ -288,7 +315,7 @@ export const authenticateUser = async ({ email }) => {
 
   return {
     ...matchedUser,
-    accessRole: getUserRoleKey(matchedUser) || "viewer",
+    accessRole: resolveUserAccessRole(matchedUser),
   };
 };
 

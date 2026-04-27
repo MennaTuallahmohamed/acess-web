@@ -58,9 +58,11 @@ function arStatus(status) {
 
 function statusClass(status) {
   if (["OK", "DONE", "RESOLVED", "COMPLETED"].includes(status)) return "good";
+
   if (["NOT_OK", "FAILED", "OUT_OF_SERVICE", "UNRESOLVED"].includes(status)) {
     return "bad";
   }
+
   if (
     [
       "PARTIAL",
@@ -72,6 +74,7 @@ function statusClass(status) {
   ) {
     return "warn";
   }
+
   return "muted";
 }
 
@@ -156,6 +159,42 @@ function getIssueList(obj) {
   if (Array.isArray(obj.inspectionIssues)) return obj.inspectionIssues;
   if (Array.isArray(obj.issues)) return obj.issues;
   return [];
+}
+
+function getScanInfo(obj) {
+  return obj?.scanInfo || {};
+}
+
+function getScanLabel(obj) {
+  const scan = getScanInfo(obj);
+
+  if (scan.scanned === true) return "تم عمل Scan";
+  if (scan.scanned === false) return "لم يتم Scan";
+
+  return "—";
+}
+
+function getStatusBefore(obj) {
+  return (
+    obj?.statusBeforeInspection ||
+    obj?.beforeDeviceStatus ||
+    obj?.beforeStatus ||
+    obj?.deviceStatusBefore ||
+    obj?.oldStatus ||
+    null
+  );
+}
+
+function getStatusAfter(obj) {
+  return (
+    obj?.statusAfterInspection ||
+    obj?.afterDeviceStatus ||
+    obj?.afterStatus ||
+    obj?.currentDeviceStatus ||
+    obj?.deviceStatusAfter ||
+    obj?.device?.currentStatus ||
+    null
+  );
 }
 
 const CSS = `
@@ -320,8 +359,6 @@ const CSS = `
   border-color:#e9d5ff;
 }
 
-/* ── Location column badges ── */
-
 .loc-excel {
   display:inline-block;
   font-family:monospace;
@@ -428,8 +465,6 @@ const CSS = `
   border:1px solid #fde68a;
   white-space:nowrap;
 }
-
-/* ── end location badges ── */
 
 .row-clickable {
   cursor:pointer;
@@ -942,7 +977,6 @@ function SummaryCard({ label, value }) {
   );
 }
 
-// ── Direction badge helper ──────────────────────────────────────────────────
 function DirectionBadge({ direction }) {
   if (!direction || direction === "—") {
     return <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>;
@@ -961,11 +995,11 @@ function DirectionBadge({ direction }) {
   );
 }
 
-// ── Lane badge helper ───────────────────────────────────────────────────────
 function LaneBadge({ lane }) {
   if (!lane) {
     return <span className="loc-lane empty">—</span>;
   }
+
   return <span className="loc-lane">{lane}</span>;
 }
 
@@ -1039,6 +1073,8 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
   const technician = d.technician || {};
   const task = d.task || {};
 
+  const scan = getScanInfo(d);
+
   const directImages = getInspectionImages(d);
   const imagesMap = new Map();
 
@@ -1049,20 +1085,8 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
 
   const images = [...imagesMap.values()];
 
-  const statusBefore =
-    d.statusBeforeInspection ||
-    d.beforeStatus ||
-    d.deviceStatusBefore ||
-    d.oldStatus ||
-    "—";
-
-  const statusAfter =
-    d.statusAfterInspection ||
-    d.afterStatus ||
-    d.currentDeviceStatus ||
-    d.deviceStatusAfter ||
-    device.currentStatus ||
-    "—";
+  const statusBefore = getStatusBefore(d) || "—";
+  const statusAfter = getStatusAfter(d) || "—";
 
   const history = Array.isArray(device.statusHistory) ? device.statusHistory : [];
   const issues = getIssueList(d);
@@ -1088,6 +1112,16 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
       status: d.inspectionStatus,
       title: `Inspection result: ${arStatus(d.inspectionStatus)}`,
       note: d.notes || d.issueReason || "—",
+    },
+    scan && {
+      time: d.inspectedAt || d.createdAt,
+      status: scan.scanned ? "DONE" : "SKIPPED",
+      title: scan.scanned ? "Scan verification completed" : "No scan verification",
+      note: `Method: ${safeValue(scan.scanMethodLabel || scan.scanMethod)} · Type: ${safeValue(
+        scan.scanCodeTypeLabel || scan.scanCodeType
+      )} · QR attempts: ${safeValue(scan.qrAttempts)} · Manual fallback: ${
+        scan.manualFallbackUsed ? "Yes" : "No"
+      }`,
     },
     ...history.map((h) => ({
       time: h.changedAt,
@@ -1155,13 +1189,24 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
               <span className={`tag ${statusClass(d.inspectionStatus)}`}>
                 {arStatus(d.inspectionStatus)}
               </span>
+
               <span className={images.length > 0 ? "tag good" : "tag info"}>
                 {images.length} image
               </span>
+
               <span className="tag good">
                 Done {doneSummary.done}/{doneSummary.total}
               </span>
+
               <span className="tag purple">Issues {issues.length}</span>
+
+              <span className={scan.scanned ? "tag good" : "tag warn"}>
+                {scan.scanned ? "Scan Done" : "No Scan"}
+              </span>
+
+              {scan.manualFallbackUsed && (
+                <span className="tag warn">Manual after QR attempts</span>
+              )}
             </div>
           </div>
 
@@ -1187,8 +1232,11 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                     label="Done steps"
                     value={`${doneSummary.done}/${doneSummary.total}`}
                   />
-                  <SummaryCard label="Failed" value={doneSummary.failed} />
-                  <SummaryCard label="Pending" value={doneSummary.pending} />
+                  <SummaryCard label="QR Attempts" value={scan.qrAttempts ?? 0} />
+                  <SummaryCard
+                    label="Scan"
+                    value={scan.scanned ? "Yes" : "No"}
+                  />
                 </div>
               </div>
 
@@ -1198,7 +1246,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                 <div className="status-flow">
                   <div className={`status-card ${statusClass(statusBefore)}`}>
                     <span className="status-card__label">
-                      حالة الجهاز قبل ظهور المشكلة
+                      حالة الجهاز قبل الفحص
                     </span>
                     <div className="status-card__value">
                       {arStatus(statusBefore)}
@@ -1209,12 +1257,57 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
 
                   <div className={`status-card ${statusClass(statusAfter)}`}>
                     <span className="status-card__label">
-                      حالة الجهاز بعد محاولة حل المشكلة
+                      حالة الجهاز بعد الفحص
                     </span>
                     <div className="status-card__value">
                       {arStatus(statusAfter)}
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="section">
+                <div className="section-title">Scan / Security information</div>
+
+                <div className="info-grid">
+                  <InfoBox
+                    label="Scan Status"
+                    value={scan.scannedLabel || getScanLabel(d)}
+                  />
+                  <InfoBox
+                    label="Scan Method"
+                    value={scan.scanMethodLabel || scan.scanMethod}
+                  />
+                  <InfoBox
+                    label="Scan Code Type"
+                    value={scan.scanCodeTypeLabel || scan.scanCodeType}
+                  />
+                  <InfoBox
+                    label="Masked Code"
+                    value={scan.scanCodeValueMasked}
+                  />
+                  <InfoBox label="QR Attempts" value={scan.qrAttempts ?? 0} />
+                  <InfoBox
+                    label="Manual Fallback"
+                    value={
+                      scan.manualFallbackUsedLabel ||
+                      (scan.manualFallbackUsed ? "تم فتح البحث اليدوي" : "لم يتم فتح البحث اليدوي")
+                    }
+                  />
+                  <InfoBox
+                    label="Security Note"
+                    value={
+                      scan.scanCodeType === "SECRET_QR"
+                        ? "تم التحقق من الجهاز باستخدام QR السري"
+                        : scan.manualFallbackUsed
+                          ? "تم استخدام البحث اليدوي بعد محاولات QR"
+                          : "لا توجد بيانات Scan مسجلة"
+                    }
+                  />
+                  <InfoBox
+                    label="Scan Verified"
+                    value={scan.scanned ? "Verified" : "Not Verified"}
+                  />
                 </div>
               </div>
 
@@ -1760,6 +1853,8 @@ export function InspectionsPage({
   const [cluster, setCluster] = useState("");
   const [building, setBuilding] = useState("");
   const [monthlyOnly, setMonthlyOnly] = useState(false);
+  const [scanOnly, setScanOnly] = useState(false);
+  const [manualFallbackOnly, setManualFallbackOnly] = useState(false);
 
   const clusters = useMemo(
     () =>
@@ -1786,9 +1881,7 @@ export function InspectionsPage({
     const total = inspections.length;
     const ok = inspections.filter((i) => i.inspectionStatus === "OK").length;
     const notOk = inspections.filter((i) => i.inspectionStatus === "NOT_OK").length;
-    const partial = inspections.filter(
-      (i) => i.inspectionStatus === "PARTIAL"
-    ).length;
+    const partial = inspections.filter((i) => i.inspectionStatus === "PARTIAL").length;
     const notReachable = inspections.filter(
       (i) => i.inspectionStatus === "NOT_REACHABLE"
     ).length;
@@ -1810,6 +1903,11 @@ export function InspectionsPage({
       0
     );
 
+    const scannedCount = inspections.filter((i) => getScanInfo(i).scanned).length;
+    const manualFallbackCount = inspections.filter(
+      (i) => getScanInfo(i).manualFallbackUsed
+    ).length;
+
     return {
       total,
       ok,
@@ -1820,6 +1918,8 @@ export function InspectionsPage({
       doneActions,
       totalActions,
       issuesCount,
+      scannedCount,
+      manualFallbackCount,
     };
   }, [inspections]);
 
@@ -1832,6 +1932,7 @@ export function InspectionsPage({
       const loc = device.location || {};
       const tech = ins.technician || {};
       const task = ins.task || {};
+      const scan = getScanInfo(ins);
 
       if (status && ins.inspectionStatus !== status) return false;
 
@@ -1842,6 +1943,9 @@ export function InspectionsPage({
 
       if (cluster && loc.cluster !== cluster) return false;
       if (building && loc.building !== building) return false;
+
+      if (scanOnly && !scan.scanned) return false;
+      if (manualFallbackOnly && !scan.manualFallbackUsed) return false;
 
       if (monthlyOnly) {
         const date = new Date(ins.inspectedAt || ins.createdAt);
@@ -1860,6 +1964,15 @@ export function InspectionsPage({
           ins.inspectionStatus,
           ins.issueReason,
           ins.notes,
+          getStatusBefore(ins),
+          getStatusAfter(ins),
+          scan.scannedLabel,
+          scan.scanMethod,
+          scan.scanMethodLabel,
+          scan.scanCodeType,
+          scan.scanCodeTypeLabel,
+          scan.scanCodeValueMasked,
+          scan.manualFallbackUsedLabel,
           device.id,
           device.deviceCode,
           device.deviceName,
@@ -1888,18 +2001,25 @@ export function InspectionsPage({
 
       return true;
     });
-  }, [inspections, search, status, techId, cluster, building, monthlyOnly]);
+  }, [
+    inspections,
+    search,
+    status,
+    techId,
+    cluster,
+    building,
+    monthlyOnly,
+    scanOnly,
+    manualFallbackOnly,
+  ]);
 
   const columns = useMemo(
     () => [
-      // ── 1. Inspection ID ───────────────────────────────────────────────
       {
         key: "id",
         label: "ID",
         width: 70,
       },
-
-      // ── 2. Status ──────────────────────────────────────────────────────
       {
         key: "inspectionStatus",
         label: "Status",
@@ -1907,13 +2027,68 @@ export function InspectionsPage({
           <span className={`tag ${statusClass(val)}`}>{arStatus(val)}</span>
         ),
       },
+      {
+        key: "beforeDeviceStatus",
+        label: "Before",
+        render: (_, row) => {
+          const before = getStatusBefore(row);
+          return (
+            <span className={`tag ${statusClass(before)}`}>
+              {arStatus(before)}
+            </span>
+          );
+        },
+      },
+      {
+        key: "afterDeviceStatus",
+        label: "After",
+        render: (_, row) => {
+          const after = getStatusAfter(row);
+          return (
+            <span className={`tag ${statusClass(after)}`}>
+              {arStatus(after)}
+            </span>
+          );
+        },
+      },
+      {
+        key: "scanInfo",
+        label: "Scan",
+        render: (_, row) => {
+          const scan = getScanInfo(row);
 
-      // ── 3. Device ──────────────────────────────────────────────────────
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className={`tag ${scan.scanned ? "good" : "warn"}`}>
+                {scan.scanned ? "تم Scan" : "لم يتم"}
+              </span>
+              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 800 }}>
+                {scan.scanMethodLabel || scan.scanMethod || "—"} · QR:{" "}
+                {scan.qrAttempts ?? 0}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "manualFallback",
+        label: "Manual",
+        render: (_, row) => {
+          const scan = getScanInfo(row);
+
+          return (
+            <span className={`tag ${scan.manualFallbackUsed ? "warn" : "muted"}`}>
+              {scan.manualFallbackUsed ? "بعد 3 محاولات" : "لا"}
+            </span>
+          );
+        },
+      },
       {
         key: "device",
         label: "Device",
         render: (_, row) => {
           const d = row.device || {};
+
           return (
             <div>
               <div style={{ fontWeight: 900, color: "#0f172a" }}>
@@ -1926,8 +2101,6 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 4. Technician ──────────────────────────────────────────────────
       {
         key: "technician",
         label: "Technician",
@@ -1937,13 +2110,12 @@ export function InspectionsPage({
           row.technician?.email ||
           `#${row.technicianId || "—"}`,
       },
-
-      // ── 5. Excel ID / Code ─────────────────────────────────────────────
       {
         key: "loc_excelId",
         label: "Excel ID",
         render: (_, row) => {
           const l = row.device?.location || {};
+
           return l.excelId ? (
             <span className="loc-excel">{l.excelId}</span>
           ) : (
@@ -1951,13 +2123,12 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 6. Cluster ─────────────────────────────────────────────────────
       {
         key: "loc_cluster",
         label: "Cluster",
         render: (_, row) => {
           const l = row.device?.location || {};
+
           return l.cluster ? (
             <span className="loc-cluster">{l.cluster}</span>
           ) : (
@@ -1965,13 +2136,12 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 7. Building / Facility ─────────────────────────────────────────
       {
         key: "loc_building",
         label: "Building",
         render: (_, row) => {
           const l = row.device?.location || {};
+
           return l.building ? (
             <span className="loc-building">{l.building}</span>
           ) : (
@@ -1979,13 +2149,12 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 8. Zone ────────────────────────────────────────────────────────
       {
         key: "loc_zone",
         label: "Zone",
         render: (_, row) => {
           const l = row.device?.location || {};
+
           return l.zone ? (
             <span className="loc-zone">{l.zone}</span>
           ) : (
@@ -1993,8 +2162,6 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 9. Lane ────────────────────────────────────────────────────────
       {
         key: "loc_lane",
         label: "Lane",
@@ -2003,8 +2170,6 @@ export function InspectionsPage({
           return <LaneBadge lane={l.lane} />;
         },
       },
-
-      // ── 10. Direction ──────────────────────────────────────────────────
       {
         key: "loc_direction",
         label: "Direction",
@@ -2013,13 +2178,12 @@ export function InspectionsPage({
           return <DirectionBadge direction={l.direction} />;
         },
       },
-
-      // ── 11. Location Type ──────────────────────────────────────────────
       {
         key: "loc_type",
         label: "Loc. Type",
         render: (_, row) => {
           const l = row.device?.location || {};
+
           return l.type ? (
             <span className="loc-type">{l.type}</span>
           ) : (
@@ -2027,13 +2191,12 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 12. Images ────────────────────────────────────────────────────
       {
         key: "images",
         label: "Images",
         render: (_, row) => {
           const count = getImagesCount(row);
+
           return (
             <span className={`tag ${count > 0 ? "good" : "info"}`}>
               {count} image
@@ -2041,13 +2204,12 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 13. Done steps ────────────────────────────────────────────────
       {
         key: "solutionActions",
         label: "Done steps",
         render: (_, row) => {
           const s = getDoneSummary(row);
+
           return (
             <span className={`tag ${s.done > 0 ? "good" : "muted"}`}>
               {s.done}/{s.total}
@@ -2055,13 +2217,12 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 14. Issues ────────────────────────────────────────────────────
       {
         key: "inspectionIssues",
         label: "Issues",
         render: (_, row) => {
           const count = getIssueList(row).length;
+
           return (
             <span className={`tag ${count > 0 ? "warn" : "muted"}`}>
               {count} issue
@@ -2069,15 +2230,11 @@ export function InspectionsPage({
           );
         },
       },
-
-      // ── 15. Issue Reason ──────────────────────────────────────────────
       {
         key: "issueReason",
         label: "Issue Reason",
         render: (val) => val || "—",
       },
-
-      // ── 16. Inspected At ──────────────────────────────────────────────
       {
         key: "inspectedAt",
         label: "Inspected At",
@@ -2110,6 +2267,12 @@ export function InspectionsPage({
           sub="solution actions"
         />
         <StatCard label="Issues" value={stats.issuesCount} sub="reported issues" />
+        <StatCard label="Scanned" value={stats.scannedCount} sub="QR / Manual" />
+        <StatCard
+          label="Manual fallback"
+          value={stats.manualFallbackCount}
+          sub="after QR attempts"
+        />
       </div>
 
       <div className="insp-config">
@@ -2121,7 +2284,7 @@ export function InspectionsPage({
             <input
               type="text"
               value={search}
-              placeholder="device / serial / technician / issue..."
+              placeholder="device / serial / technician / scan / issue..."
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
@@ -2164,10 +2327,7 @@ export function InspectionsPage({
 
           <div className="insp-filter">
             <span className="insp-filter__label">Building</span>
-            <select
-              value={building}
-              onChange={(e) => setBuilding(e.target.value)}
-            >
+            <select value={building} onChange={(e) => setBuilding(e.target.value)}>
               <option value="">All buildings</option>
               {buildings.map((b) => (
                 <option key={b} value={b}>
@@ -2184,6 +2344,24 @@ export function InspectionsPage({
               onChange={(e) => setMonthlyOnly(e.target.checked)}
             />
             Current month only
+          </label>
+
+          <label className="insp-check">
+            <input
+              type="checkbox"
+              checked={scanOnly}
+              onChange={(e) => setScanOnly(e.target.checked)}
+            />
+            Scanned only
+          </label>
+
+          <label className="insp-check">
+            <input
+              type="checkbox"
+              checked={manualFallbackOnly}
+              onChange={(e) => setManualFallbackOnly(e.target.checked)}
+            />
+            Manual fallback only
           </label>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AuthPage } from "./components/AuthPage";
 import { AuthPanel } from "./components/AuthPanel";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
@@ -26,6 +27,7 @@ import {
   getTasks,
   getTechnicianPerformance,
   getUsers,
+  resolveUserAccessRole,
   setApiConfig,
   updateTaskStatus,
 } from "./services/api";
@@ -81,12 +83,19 @@ function App() {
 
   const technicians = useMemo(() => users.filter(isTechnician), [users]);
 
-  const accessRole = String(authUser?.accessRole || authUser?.role || "").toLowerCase();
+  const accessRole = resolveUserAccessRole(authUser);
   const canManage = accessRole === "admin";
 
   const persistAuthUser = (user) => {
-    setAuthUser(user);
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    const normalizedUser = user
+      ? {
+          ...user,
+          accessRole: resolveUserAccessRole(user),
+        }
+      : null;
+
+    setAuthUser(normalizedUser);
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(normalizedUser));
   };
 
   const clearAuthUser = () => {
@@ -283,15 +292,7 @@ function App() {
   };
 
   if (!authUser) {
-    return (
-      <AuthPanel
-        config={config}
-        onSaveConfig={handleSaveConfig}
-        onLogin={handleLogin}
-        onRegister={handleRegister}
-        loading={loading}
-      />
-    );
+    return <AuthPage onLogin={handleLogin} loading={loading} />;
   }
 
   if (accessRole === "viewer") {

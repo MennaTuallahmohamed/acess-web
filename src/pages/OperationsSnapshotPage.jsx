@@ -482,14 +482,16 @@ export function OperationsSnapshotPage({
         />
       ) : null}
 
-      <ViewerSharedFilters
-        lang={lang}
-        copy={copy}
-        filters={filters}
-        options={filterOptions}
-        onChange={handleFilterChange}
-        onReset={handleResetFilters}
-      />
+      {tab !== "home" ? (
+        <ViewerSharedFilters
+          lang={lang}
+          copy={copy}
+          filters={filters}
+          options={filterOptions}
+          onChange={handleFilterChange}
+          onReset={handleResetFilters}
+        />
+      ) : null}
 
       {tab === "devices" ? (
         <ViewerDevicesPage
