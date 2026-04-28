@@ -1,7 +1,13 @@
+const DEFAULT_API_BASE_URL = "https://acess-backend-production.up.railway.app";
+
 const ENV_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const ENV_TOKEN = (import.meta.env.VITE_API_TOKEN || "").trim();
 
-let API_BASE_URL = ENV_BASE || localStorage.getItem("dashboard_api_base_url") || "";
+let API_BASE_URL =
+  (ENV_BASE || localStorage.getItem("dashboard_api_base_url") || DEFAULT_API_BASE_URL)
+    .trim()
+    .replace(/\/+$/, "");
+
 let API_TOKEN = ENV_TOKEN || localStorage.getItem("dashboard_api_token") || "";
 
 export const getApiConfig = () => ({
@@ -10,10 +16,19 @@ export const getApiConfig = () => ({
 });
 
 export const setApiConfig = ({ baseUrl, token }) => {
-  API_BASE_URL = (baseUrl || "").trim().replace(/\/+$/, "");
+  API_BASE_URL = (baseUrl || DEFAULT_API_BASE_URL).trim().replace(/\/+$/, "");
   API_TOKEN = (token || "").trim();
+
   localStorage.setItem("dashboard_api_base_url", API_BASE_URL);
   localStorage.setItem("dashboard_api_token", API_TOKEN);
+};
+
+export const resetApiConfig = () => {
+  API_BASE_URL = DEFAULT_API_BASE_URL;
+  API_TOKEN = "";
+
+  localStorage.setItem("dashboard_api_base_url", DEFAULT_API_BASE_URL);
+  localStorage.removeItem("dashboard_api_token");
 };
 
 const ROLE_KEYWORDS = {
@@ -87,12 +102,13 @@ const formatNetworkError = (baseUrl, original) => {
   return `Cannot connect to backend (${host}). Check backend is running and CORS is enabled. (${original})`;
 };
 
-const request = async (path, { method = "GET", body, query, timeoutMs = 12000 } = {}) => {
+const request = async (path, { method = "GET", body, query, timeoutMs = 20000 } = {}) => {
   if (!API_BASE_URL) {
-    throw new Error("Missing backend URL. Set it from the connection form.");
+    API_BASE_URL = DEFAULT_API_BASE_URL;
   }
 
-  const url = new URL(`${API_BASE_URL}${path}`);
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(`${API_BASE_URL}${cleanPath}`);
 
   if (query) {
     Object.entries(query).forEach(([key, value]) => {
@@ -118,6 +134,7 @@ const request = async (path, { method = "GET", body, query, timeoutMs = 12000 } 
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   let res;
+
   try {
     res = await fetch(url.toString(), {
       method,
@@ -237,8 +254,10 @@ export const deleteUser = (id) =>
 // ==================== ROLES ====================
 export const getRoles = async () => normalizeList(await request("/roles"));
 export const getRoleById = (id) => request(`/roles/${id}`);
+
 export const createRole = (payload) =>
   request("/roles", { method: "POST", body: payload });
+
 export const updateRole = (id, payload) =>
   request(`/roles/${id}`, { method: "PATCH", body: payload });
 
@@ -330,10 +349,13 @@ export const getDevices = async () => {
 };
 
 export const getDeviceById = (id) => request(`/devices/${id}`);
+
 export const createDevice = (payload) =>
   request("/devices", { method: "POST", body: payload });
+
 export const updateDevice = (id, payload) =>
   request(`/devices/${id}`, { method: "PATCH", body: payload });
+
 export const deleteDevice = (id) =>
   request(`/devices/${id}`, { method: "DELETE" });
 
@@ -366,30 +388,41 @@ export const getDeviceTypes = async () => {
 };
 
 export const getDeviceTypeById = (id) => request(`/device-types/${id}`);
+
 export const createDeviceType = (payload) =>
   request("/device-types", { method: "POST", body: payload });
+
 export const updateDeviceType = (id, payload) =>
   request(`/device-types/${id}`, { method: "PATCH", body: payload });
 
 // ==================== LOCATIONS ====================
 export const getLocations = async () => normalizeList(await request("/locations"));
+
 export const getLocationById = (id) => request(`/locations/${id}`);
+
 export const createLocation = (payload) =>
   request("/locations", { method: "POST", body: payload });
+
 export const updateLocation = (id, payload) =>
   request(`/locations/${id}`, { method: "PATCH", body: payload });
+
 export const deleteLocation = (id) =>
   request(`/locations/${id}`, { method: "DELETE" });
 
 // ==================== INSPECTION TASKS ====================
 export const getTasks = async () => normalizeList(await request("/inspection-tasks"));
+
 export const getTaskById = (id) => request(`/inspection-tasks/${id}`);
+
 export const createTask = (payload) =>
   request("/inspection-tasks", { method: "POST", body: payload });
+
 export const updateTask = (id, payload) =>
   request(`/inspection-tasks/${id}`, { method: "PATCH", body: payload });
+
 export const updateTaskStatus = (id, status) =>
   request(`/inspection-tasks/${id}`, { method: "PATCH", body: { status } });
+
 export const deleteTask = (id) =>
   request(`/inspection-tasks/${id}`, { method: "DELETE" });
 
@@ -416,10 +449,13 @@ export const getInspections = async (query = {}) =>
   normalizeList(await request("/inspections", { query }));
 
 export const getInspectionById = (id) => request(`/inspections/${id}`);
+
 export const createInspection = (payload) =>
   request("/inspections", { method: "POST", body: payload });
+
 export const updateInspection = (id, payload) =>
   request(`/inspections/${id}`, { method: "PATCH", body: payload });
+
 export const deleteInspection = (id) =>
   request(`/inspections/${id}`, { method: "DELETE" });
 
@@ -471,10 +507,13 @@ export const getMaintenanceLogs = async (query = {}) =>
   normalizeList(await request("/maintenance-logs", { query }));
 
 export const getMaintenanceLogById = (id) => request(`/maintenance-logs/${id}`);
+
 export const createMaintenanceLog = (payload) =>
   request("/maintenance-logs", { method: "POST", body: payload });
+
 export const updateMaintenanceLog = (id, payload) =>
   request(`/maintenance-logs/${id}`, { method: "PATCH", body: payload });
+
 export const deleteMaintenanceLog = (id) =>
   request(`/maintenance-logs/${id}`, { method: "DELETE" });
 
@@ -492,6 +531,7 @@ export const getDeviceMovements = async (query = {}) =>
   normalizeList(await request("/device-movements", { query }));
 
 export const getMovementById = (id) => request(`/device-movements/${id}`);
+
 export const createMovement = (payload) =>
   request("/device-movements", { method: "POST", body: payload });
 
@@ -525,6 +565,7 @@ export const getAuditLogs = async (query = {}) =>
   normalizeList(await request("/audit-logs", { query }));
 
 export const getAuditLogById = (id) => request(`/audit-logs/${id}`);
+
 export const getAuditLogsByUser = async (userId) => {
   try {
     return normalizeList(await request(`/audit-logs/user/${userId}`));
