@@ -3,12 +3,26 @@ const DEFAULT_API_BASE_URL = "https://acess-backend-production.up.railway.app";
 const ENV_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const ENV_TOKEN = (import.meta.env.VITE_API_TOKEN || "").trim();
 
-let API_BASE_URL =
-  (ENV_BASE || localStorage.getItem("dashboard_api_base_url") || DEFAULT_API_BASE_URL)
+const normalizeBaseUrl = (value) =>
+  String(value || DEFAULT_API_BASE_URL)
     .trim()
     .replace(/\/+$/, "");
 
+let API_BASE_URL = normalizeBaseUrl(ENV_BASE || DEFAULT_API_BASE_URL);
 let API_TOKEN = ENV_TOKEN || localStorage.getItem("dashboard_api_token") || "";
+
+// مهم جدًا: امنعي أي localhost قديم محفوظ في localStorage
+const savedBaseUrl = localStorage.getItem("dashboard_api_base_url");
+if (
+  savedBaseUrl &&
+  !savedBaseUrl.includes("localhost") &&
+  !savedBaseUrl.includes("127.0.0.1")
+) {
+  API_BASE_URL = normalizeBaseUrl(savedBaseUrl);
+} else {
+  localStorage.setItem("dashboard_api_base_url", DEFAULT_API_BASE_URL);
+  API_BASE_URL = DEFAULT_API_BASE_URL;
+}
 
 export const getApiConfig = () => ({
   baseUrl: API_BASE_URL,
@@ -16,7 +30,9 @@ export const getApiConfig = () => ({
 });
 
 export const setApiConfig = ({ baseUrl, token }) => {
-  API_BASE_URL = (baseUrl || DEFAULT_API_BASE_URL).trim().replace(/\/+$/, "");
+  const cleanBaseUrl = normalizeBaseUrl(baseUrl || DEFAULT_API_BASE_URL);
+
+  API_BASE_URL = cleanBaseUrl;
   API_TOKEN = (token || "").trim();
 
   localStorage.setItem("dashboard_api_base_url", API_BASE_URL);
@@ -31,9 +47,26 @@ export const resetApiConfig = () => {
   localStorage.removeItem("dashboard_api_token");
 };
 
+export const buildFileUrl = (path) => {
+  if (!path) return "";
+
+  const clean = String(path).trim();
+
+  if (!clean) return "";
+
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    return clean;
+  }
+
+  const normalizedPath = clean.startsWith("/") ? clean.slice(1) : clean;
+
+  return `${API_BASE_URL}/${normalizedPath}`;
+};
+
 const ROLE_KEYWORDS = {
   admin: ["admin", "administrator", "superadmin", "super admin"],
   viewer: ["viewer", "monitor", "monitoring", "observer", "readonly", "read only"],
+  technician: ["technician", "tech", "فني"],
 };
 
 const normalizeText = (value) => String(value || "").trim().toLowerCase();
@@ -51,10 +84,18 @@ const normalizeRoleKey = (value) => {
     return "viewer";
   }
 
+  if (ROLE_KEYWORDS.technician.some((keyword) => role === keyword || role.includes(keyword))) {
+    return "technician";
+  }
+
   return "";
 };
 
-const getRoleDisplayName = (roleKey) => (roleKey === "admin" ? "ADMIN" : "VIEWER");
+const getRoleDisplayName = (roleKey) => {
+  if (roleKey === "admin") return "ADMIN";
+  if (roleKey === "technician") return "TECHNICIAN";
+  return "VIEWER";
+};
 
 const matchesRoleName = (roleName, roleKey) =>
   normalizeRoleKey(roleName) === roleKey;
@@ -63,6 +104,7 @@ const getUserRoleKey = (user) => {
   const roleSignals = [
     user?.accessRole,
     user?.role?.name,
+    user?.role,
     user?.userRole,
     user?.jobTitle,
     user?.type,
@@ -102,7 +144,10 @@ const formatNetworkError = (baseUrl, original) => {
   return `Cannot connect to backend (${host}). Check backend is running and CORS is enabled. (${original})`;
 };
 
-const request = async (path, { method = "GET", body, query, timeoutMs = 20000 } = {}) => {
+const request = async (
+  path,
+  { method = "GET", body, query, timeoutMs = 20000 } = {}
+) => {
   if (!API_BASE_URL) {
     API_BASE_URL = DEFAULT_API_BASE_URL;
   }
@@ -225,6 +270,8 @@ export const getUsers = async () => normalizeList(await request("/users"));
 export const getUserById = (id) => request(`/users/${id}`);
 
 export const createUser = async (payload) => {
+  const roleName = getRoleDisplayName(normalizeRoleKey(payload.role || payload.jobTitle));
+
   const data = {
     firstName: payload.firstName || "Unknown",
     lastName: payload.lastName || "",
@@ -236,13 +283,32 @@ export const createUser = async (payload) => {
     password: payload.password,
     phone: payload.phone || null,
     officeNumber: payload.officeNumber || null,
-    jobTitle: payload.jobTitle || "TECHNICIAN",
+    jobTitle: payload.jobTitle || roleName || "VIEWER",
     region: payload.region || null,
     notes: payload.notes || null,
-    roleId: payload.roleId || 2,
+    role: roleName,
+    roleId: payload.roleId,
+    status: payload.status || "ACTIVE",
   };
 
   return request("/users", { method: "POST", body: data });
+};
+
+export const createTechnician = async (payload) => {
+  const data = {
+    ...payload,
+    jobTitle: "TECHNICIAN",
+    role: "TECHNICIAN",
+    status: "ACTIVE",
+  };
+
+  return requestFirstAvailable(
+    ["/users/technicians", "/users"],
+    {
+      method: "POST",
+      body: data,
+    }
+  );
 };
 
 export const updateUser = (id, payload) =>
@@ -265,7 +331,7 @@ const ensureRole = async (roleKey) => {
   const normalizedRole = normalizeRoleKey(roleKey);
 
   if (!normalizedRole) {
-    throw new Error("Invalid role. Use admin or viewer.");
+    throw new Error("Invalid role. Use admin, viewer, or technician.");
   }
 
   const roles = await getRoles();
@@ -293,7 +359,13 @@ export const createAccessAccount = async ({ role, email, password }) => {
   }
 
   const roleRecord = await ensureRole(normalizedRole);
-  const namePrefix = normalizedRole === "admin" ? "Admin" : "Viewer";
+  const namePrefix =
+    normalizedRole === "admin"
+      ? "Admin"
+      : normalizedRole === "technician"
+        ? "Technician"
+        : "Viewer";
+
   const emailPrefix = normalizedEmail.split("@")[0] || normalizedRole;
 
   const createdUser = await createUser({
@@ -304,6 +376,7 @@ export const createAccessAccount = async ({ role, email, password }) => {
     username: emailPrefix,
     password,
     jobTitle: getRoleDisplayName(normalizedRole),
+    role: getRoleDisplayName(normalizedRole),
     roleId: roleRecord.id,
     notes: `Access account (${normalizedRole})`,
   });
@@ -448,7 +521,19 @@ export const getTasksByUser = async (userId) => {
 export const getInspections = async (query = {}) =>
   normalizeList(await request("/inspections", { query }));
 
-export const getInspectionById = (id) => request(`/inspections/${id}`);
+export const getInspectionById = async (id) => {
+  return requestFirstAvailable([
+    `/inspections/full/${id}`,
+    `/inspections/${id}`,
+  ]);
+};
+
+export const getInspectionFullDetails = async (id) => {
+  return requestFirstAvailable([
+    `/inspections/full/${id}`,
+    `/inspections/${id}`,
+  ]);
+};
 
 export const createInspection = (payload) =>
   request("/inspections", { method: "POST", body: payload });
@@ -461,7 +546,8 @@ export const deleteInspection = (id) =>
 
 export const getInspectionsByDevice = async (deviceId) => {
   try {
-    return normalizeList(await request(`/inspections/device/${deviceId}`));
+    const all = await getInspections();
+    return all.filter((item) => String(item.deviceId) === String(deviceId));
   } catch (err) {
     if (err?.status === 404) return [];
     throw err;
@@ -470,7 +556,11 @@ export const getInspectionsByDevice = async (deviceId) => {
 
 export const getInspectionsByTechnician = async (technicianId) => {
   try {
-    return normalizeList(await request(`/inspections/technician/${technicianId}`));
+    return normalizeList(
+      await request("/inspections/my", {
+        query: { technicianId },
+      })
+    );
   } catch (err) {
     if (err?.status === 404) return [];
     throw err;
@@ -479,7 +569,8 @@ export const getInspectionsByTechnician = async (technicianId) => {
 
 export const getInspectionsByTask = async (taskId) => {
   try {
-    return normalizeList(await request(`/inspections/task/${taskId}`));
+    const all = await getInspections();
+    return all.filter((item) => String(item.taskId) === String(taskId));
   } catch (err) {
     if (err?.status === 404) return [];
     throw err;
@@ -489,7 +580,8 @@ export const getInspectionsByTask = async (taskId) => {
 // ==================== INSPECTION IMAGES ====================
 export const getInspectionImages = async (inspectionId) => {
   try {
-    return normalizeList(await request(`/inspection-images/inspection/${inspectionId}`));
+    const inspection = await getInspectionById(inspectionId);
+    return normalizeList(inspection?.images);
   } catch (err) {
     if (err?.status === 404) return [];
     throw err;
@@ -503,8 +595,14 @@ export const deleteInspectionImage = (id) =>
   request(`/inspection-images/${id}`, { method: "DELETE" });
 
 // ==================== MAINTENANCE LOGS ====================
-export const getMaintenanceLogs = async (query = {}) =>
-  normalizeList(await request("/maintenance-logs", { query }));
+export const getMaintenanceLogs = async (query = {}) => {
+  try {
+    return normalizeList(await request("/maintenance-logs", { query }));
+  } catch (err) {
+    if (err?.status === 404) return [];
+    return [];
+  }
+};
 
 export const getMaintenanceLogById = (id) => request(`/maintenance-logs/${id}`);
 
@@ -522,13 +620,19 @@ export const getMaintenanceLogsByDevice = async (deviceId) => {
     return normalizeList(await request(`/maintenance-logs/device/${deviceId}`));
   } catch (err) {
     if (err?.status === 404) return [];
-    throw err;
+    return [];
   }
 };
 
 // ==================== DEVICE MOVEMENTS ====================
-export const getDeviceMovements = async (query = {}) =>
-  normalizeList(await request("/device-movements", { query }));
+export const getDeviceMovements = async (query = {}) => {
+  try {
+    return normalizeList(await request("/device-movements", { query }));
+  } catch (err) {
+    if (err?.status === 404) return [];
+    return [];
+  }
+};
 
 export const getMovementById = (id) => request(`/device-movements/${id}`);
 
@@ -540,13 +644,19 @@ export const getMovementsByDevice = async (deviceId) => {
     return normalizeList(await request(`/device-movements/device/${deviceId}`));
   } catch (err) {
     if (err?.status === 404) return [];
-    throw err;
+    return [];
   }
 };
 
 // ==================== DEVICE STATUS HISTORY ====================
-export const getDeviceStatusHistory = async (query = {}) =>
-  normalizeList(await request("/device-status-history", { query }));
+export const getDeviceStatusHistory = async (query = {}) => {
+  try {
+    return normalizeList(await request("/device-status-history", { query }));
+  } catch (err) {
+    if (err?.status === 404) return [];
+    return [];
+  }
+};
 
 export const getStatusHistoryById = (id) =>
   request(`/device-status-history/${id}`);
@@ -556,13 +666,19 @@ export const getDeviceStatusHistoryByDevice = async (deviceId) => {
     return normalizeList(await request(`/device-status-history/device/${deviceId}`));
   } catch (err) {
     if (err?.status === 404) return [];
-    throw err;
+    return [];
   }
 };
 
 // ==================== AUDIT LOGS ====================
-export const getAuditLogs = async (query = {}) =>
-  normalizeList(await request("/audit-logs", { query }));
+export const getAuditLogs = async (query = {}) => {
+  try {
+    return normalizeList(await request("/audit-logs", { query }));
+  } catch (err) {
+    if (err?.status === 404) return [];
+    return [];
+  }
+};
 
 export const getAuditLogById = (id) => request(`/audit-logs/${id}`);
 
@@ -571,7 +687,7 @@ export const getAuditLogsByUser = async (userId) => {
     return normalizeList(await request(`/audit-logs/user/${userId}`));
   } catch (err) {
     if (err?.status === 404) return [];
-    throw err;
+    return [];
   }
 };
 

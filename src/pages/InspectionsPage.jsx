@@ -79,22 +79,60 @@ function statusClass(status) {
 }
 
 function getApiBase(apiBase) {
-  return apiBase || "http://localhost:3000";
+  const DEFAULT_API_BASE_URL =
+    "https://acess-backend-production.up.railway.app";
+
+  const cleanApiBase = String(apiBase || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (
+    cleanApiBase &&
+    !cleanApiBase.includes("localhost") &&
+    !cleanApiBase.includes("127.0.0.1")
+  ) {
+    return cleanApiBase;
+  }
+
+  const savedBaseUrl = String(
+    localStorage.getItem("dashboard_api_base_url") || ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (
+    savedBaseUrl &&
+    !savedBaseUrl.includes("localhost") &&
+    !savedBaseUrl.includes("127.0.0.1")
+  ) {
+    return savedBaseUrl;
+  }
+
+  return DEFAULT_API_BASE_URL;
 }
 
 function fixImageUrl(url, apiBase = "") {
   if (!url) return "";
 
-  const raw = String(url).replace(/\\/g, "/");
+  const DEFAULT_API_BASE_URL =
+    "https://acess-backend-production.up.railway.app";
+
+  const raw = String(url).replace(/\\/g, "/").trim();
+
+  if (!raw) return "";
 
   if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return raw;
+    return raw
+      .replace("http://localhost:3000", DEFAULT_API_BASE_URL)
+      .replace("https://localhost:3000", DEFAULT_API_BASE_URL)
+      .replace("http://127.0.0.1:3000", DEFAULT_API_BASE_URL)
+      .replace("https://127.0.0.1:3000", DEFAULT_API_BASE_URL);
   }
 
-  const base = getApiBase(apiBase).replace(/\/$/, "");
-  const cleanUrl = raw.startsWith("/") ? raw : `/${raw}`;
+  const base = getApiBase(apiBase);
+  const cleanUrl = raw.startsWith("/") ? raw.slice(1) : raw;
 
-  return `${base}${cleanUrl}`;
+  return `${base}/${cleanUrl}`;
 }
 
 function unique(arr, getter) {
