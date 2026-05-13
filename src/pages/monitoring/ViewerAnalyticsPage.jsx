@@ -245,13 +245,21 @@ function pickToken() {
 
 function pickBaseUrl(propBaseUrl) {
   const fromProp = propBaseUrl?.trim();
+
+  const fromEnv = import.meta.env.VITE_API_BASE_URL?.trim();
+
   const fromLocal =
     localStorage.getItem("apiBaseUrl") ||
     localStorage.getItem("baseUrl") ||
     sessionStorage.getItem("apiBaseUrl") ||
     sessionStorage.getItem("baseUrl");
 
-  const raw = fromProp || fromLocal || "http://localhost:3000";
+  const raw =
+    fromProp ||
+    fromEnv ||
+    fromLocal ||
+    "https://acess-backend-production.up.railway.app";
+
   return raw.replace(/\/+$/, "");
 }
 
