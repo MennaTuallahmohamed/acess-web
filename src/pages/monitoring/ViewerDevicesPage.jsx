@@ -5,21 +5,24 @@ import React, { useEffect, useMemo, useState } from "react";
 ═══════════════════════════════════════════ */
 const DEVICES_CSS = `
 .dev-root *, .dev-root *::before, .dev-root *::after {
-  box-sizing: border-box; margin: 0; padding: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
+
 .dev-root {
-  --blue:    #378ADD;
-  --green:   #1D9E75;
-  --amber:   #BA7517;
-  --red:     #C0392B;
-  --purple:  #7F77DD;
-  --slate:   #7B8A9A;
-  --surface:  #ffffff;
+  --blue: #378ADD;
+  --green: #1D9E75;
+  --amber: #BA7517;
+  --red: #C0392B;
+  --purple: #7F77DD;
+  --slate: #7B8A9A;
+  --surface: #ffffff;
   --surface2: #f7f8fa;
-  --border:   rgba(0,0,0,0.07);
-  --text:     #16181d;
-  --muted:    #6b7585;
-  --faint:    #9aa0ad;
+  --border: rgba(0,0,0,0.07);
+  --text: #16181d;
+  --muted: #6b7585;
+  --faint: #9aa0ad;
   font-family: "Segoe UI", system-ui, sans-serif;
   background: #f4f6f9;
   color: var(--text);
@@ -36,38 +39,43 @@ const DEVICES_CSS = `
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
+
 .dev-topbar__title {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
 }
+
 .dev-topbar__sub {
   font-size: 12px;
   color: var(--faint);
   margin-top: 4px;
 }
+
 .dev-actions {
   display: flex;
   gap: 10px;
   align-items: center;
 }
+
 .dev-refresh-btn {
-  height: 38px;
-  padding: 0 16px;
+  height: 40px;
+  padding: 0 18px;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #0f172a;
   color: #fff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
 }
+
 .dev-refresh-btn:disabled {
   opacity: .65;
   cursor: not-allowed;
 }
 
-/* ── info / alerts ── */
+/* ── alerts ── */
 .dev-alert {
   margin-bottom: 14px;
   border-radius: 12px;
@@ -75,11 +83,13 @@ const DEVICES_CSS = `
   font-size: 13px;
   border: 1px solid transparent;
 }
+
 .dev-alert--error {
   background: #fff1f2;
   color: #9f1239;
   border-color: #fecdd3;
 }
+
 .dev-alert--info {
   background: #eff6ff;
   color: #1d4ed8;
@@ -93,127 +103,263 @@ const DEVICES_CSS = `
   gap: 12px;
   margin-bottom: 16px;
 }
+
 .dev-summary-card {
   background: var(--surface);
   border: 0.5px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 16px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  position: relative;
+  overflow: hidden;
 }
+
+.dev-summary-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, #378ADD, #7F77DD);
+}
+
 .dev-summary-label {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 8px;
+  font-weight: 700;
 }
+
 .dev-summary-value {
   font-size: 28px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
 }
+
 .dev-summary-note {
   margin-top: 6px;
   font-size: 11px;
   color: var(--faint);
 }
 
-/* ── Category pills ── */
-.dev-pills {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
+/* ═══════════════════════════════════════════
+   Cute Filter
+═══════════════════════════════════════════ */
+.dev-filter-card {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94)),
+    radial-gradient(circle at top left, rgba(55,138,221,0.16), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(127,119,221,0.10), transparent 32%);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 26px;
+  padding: 18px;
+  margin-bottom: 16px;
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255,255,255,0.9);
 }
-.dev-pill {
+
+.dev-filter-head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  border: 0.5px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
-  transition: all .15s;
-  white-space: nowrap;
-  user-select: none;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-}
-.dev-pill:hover { border-color: var(--blue); color: var(--text); }
-.dev-pill--active {
-  background: #EBF4FF;
-  border-color: var(--blue);
-  color: var(--blue);
-}
-.dev-pill-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.dev-pill-count {
-  font-size: 11px;
-  opacity: 0.6;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 
-/* ── Filter bar ── */
-.dev-filters {
-  background: var(--surface);
-  border: 0.5px solid var(--border);
-  border-radius: 14px;
-  padding: 16px 18px;
-  margin-bottom: 16px;
+.dev-filter-title {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: flex-end;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  align-items: center;
+  gap: 11px;
 }
-.dev-field {
+
+.dev-filter-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 15px;
+  background: #ebf4ff;
+  color: #378add;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(55,138,221,0.12);
+}
+
+.dev-filter-title-text {
+  font-size: 15px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.dev-filter-title-sub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.dev-filter-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #ebf4ff;
+  color: #1d4ed8;
+  border: 1px solid rgba(55,138,221,0.16);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.dev-filter-result-dot {
+  width: 7px;
+  height: 7px;
+  background: #378add;
+  border-radius: 50%;
+}
+
+.dev-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) repeat(6, minmax(130px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.dev-filter-field {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 7px;
+  min-width: 0;
 }
-.dev-field label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-}
-.dev-field input,
-.dev-field select {
-  height: 38px;
-  border: 0.5px solid rgba(0,0,0,0.12);
-  border-radius: 9px;
-  background: var(--surface2);
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text);
-  outline: none;
-  transition: border-color .15s;
-}
-.dev-field input:focus,
-.dev-field select:focus { border-color: var(--blue); }
-.dev-field input::placeholder { color: var(--faint); font-weight: 400; }
-.dev-field--wide input { width: 260px; }
-.dev-field select { padding-right: 28px; cursor: pointer; }
 
-.dev-reset-btn {
-  height: 38px;
-  padding: 0 16px;
-  border: 0.5px solid rgba(0,0,0,0.12);
-  border-radius: 9px;
-  background: var(--surface2);
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--muted);
-  cursor: pointer;
-  margin-top: auto;
-  transition: all .15s;
+.dev-filter-field label {
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: #475569;
+  white-space: nowrap;
 }
-.dev-reset-btn:hover { background: #FDECEA; color: #C0392B; border-color: #FBCCC8; }
+
+.dev-filter-input,
+.dev-filter-select {
+  width: 100%;
+  height: 46px;
+  border-radius: 15px;
+  border: 1px solid #dbe4ef;
+  background-color: #f8fafc;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  outline: none;
+  transition: 0.18s ease;
+}
+
+.dev-filter-input {
+  font-weight: 600;
+}
+
+.dev-filter-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.dev-filter-input:hover,
+.dev-filter-select:hover {
+  background-color: #ffffff;
+  border-color: #b7c6d8;
+}
+
+.dev-filter-input:focus,
+.dev-filter-select:focus {
+  border-color: #378add;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 4px rgba(55, 138, 221, 0.13);
+}
+
+.dev-filter-select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position:
+    calc(100% - 21px) 50%,
+    calc(100% - 14px) 50%;
+  background-size: 7px 7px, 7px 7px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-filter-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.dev-filter-hint {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.dev-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dev-filter-btn {
+  height: 44px;
+  border-radius: 14px;
+  border: 0;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: 0.18s ease;
+  white-space: nowrap;
+}
+
+.dev-filter-btn-reset {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+}
+
+.dev-filter-btn-ok {
+  background: #0f172a;
+  color: #ffffff;
+  min-width: 78px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.18);
+}
+
+.dev-filter-btn:hover {
+  transform: translateY(-1px);
+}
+
+.dev-filter-btn-reset:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.dev-filter-btn-ok:hover {
+  background: #378add;
+  box-shadow: 0 10px 20px rgba(55, 138, 221, 0.24);
+}
+
+.dev-filter-btn:active {
+  transform: translateY(0);
+}
 
 /* ── Panel ── */
 .dev-panel {
@@ -223,6 +369,7 @@ const DEVICES_CSS = `
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
+
 .dev-panel__head {
   display: flex;
   justify-content: space-between;
@@ -232,24 +379,27 @@ const DEVICES_CSS = `
   gap: 12px;
   flex-wrap: wrap;
 }
+
 .dev-panel__title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
   margin-bottom: 2px;
 }
+
 .dev-panel__sub {
   font-size: 12px;
   color: var(--faint);
 }
+
 .dev-records {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--muted);
   background: var(--surface2);
   border: 0.5px solid var(--border);
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 5px 12px;
 }
 
 /* ── Table ── */
@@ -257,68 +407,100 @@ const DEVICES_CSS = `
   width: 100%;
   overflow-x: auto;
 }
+
 .dev-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
   min-width: 1100px;
 }
+
 .dev-table th {
   padding: 11px 16px;
   text-align: left;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
   background: var(--surface2);
   border-bottom: 0.5px solid var(--border);
 }
+
 .dev-table td {
   padding: 12px 16px;
   border-bottom: 0.5px solid var(--border);
   color: var(--muted);
   vertical-align: middle;
 }
-.dev-table tr:last-child td { border-bottom: none; }
-.dev-table tr:hover td { background: #fafbfc; }
+
+.dev-table tr:last-child td {
+  border-bottom: none;
+}
+
+.dev-table tr:hover td {
+  background: #fafbfc;
+}
 
 .dev-code {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--blue);
   letter-spacing: .3px;
 }
+
 .dev-name {
   font-size: 11px;
   color: var(--faint);
   margin-top: 3px;
 }
+
 .dev-subline {
   font-size: 11px;
   color: var(--faint);
   margin-top: 2px;
 }
+
 .dev-insp-count {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
 }
 
 /* ── Badges ── */
 .badge {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 4px 10px;
   border-radius: 999px;
   white-space: nowrap;
   letter-spacing: .2px;
 }
-.badge--ok    { background: #e6f7f1; color: #0f6e56; }
-.badge--att   { background: #fff4e0; color: #854f0b; }
-.badge--maint { background: #fdecea; color: #a32d2d; }
-.badge--under { background: #EBF4FF; color: #1e5fa8; }
-.badge--oos   { background: #f1f3f5; color: #6b7585; }
+
+.badge--ok {
+  background: #e6f7f1;
+  color: #0f6e56;
+}
+
+.badge--att {
+  background: #fff4e0;
+  color: #854f0b;
+}
+
+.badge--maint {
+  background: #fdecea;
+  color: #a32d2d;
+}
+
+.badge--under {
+  background: #EBF4FF;
+  color: #1e5fa8;
+}
+
+.badge--oos {
+  background: #f1f3f5;
+  color: #6b7585;
+}
 
 /* ── Empty / loading ── */
 .dev-empty,
@@ -328,6 +510,7 @@ const DEVICES_CSS = `
   color: var(--faint);
   font-size: 13px;
 }
+
 .dev-loading-spinner {
   width: 28px;
   height: 28px;
@@ -337,24 +520,66 @@ const DEVICES_CSS = `
   margin: 0 auto 12px;
   animation: spin .8s linear infinite;
 }
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
 /* ── Responsive ── */
+@media (max-width: 1600px) {
+  .dev-filter-grid {
+    grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(150px, 1fr));
+  }
+}
+
 @media (max-width: 1100px) {
   .dev-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
 @media (max-width: 900px) {
-  .dev-root { padding: 16px 14px; }
+  .dev-root {
+    padding: 16px 14px;
+  }
+
+  .dev-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dev-filter-actions {
+    width: 100%;
+  }
+
+  .dev-filter-btn {
+    flex: 1;
+  }
 }
+
 @media (max-width: 640px) {
   .dev-summary {
     grid-template-columns: 1fr;
   }
-  .dev-field--wide input {
+
+  .dev-filter-card {
+    padding: 15px;
+    border-radius: 20px;
+  }
+
+  .dev-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dev-filter-footer {
+    align-items: stretch;
+  }
+
+  .dev-filter-actions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .dev-filter-btn {
     width: 100%;
   }
 }
@@ -364,28 +589,34 @@ const DEVICES_CSS = `
    STATUS MAPS
 ═══════════════════════════════════════════ */
 const BADGE_MAP = {
-  OK:                { label: "Operational",   cls: "badge--ok"    },
-  ATTENTION:         { label: "Attention",     cls: "badge--att"   },
-  NEEDS_MAINTENANCE: { label: "Needs Maint.",  cls: "badge--maint" },
-  UNDER_MAINTENANCE: { label: "Under Maint.",  cls: "badge--under" },
-  OUT_OF_SERVICE:    { label: "Out of Service",cls: "badge--oos"   },
+  OK: { label: "Operational", cls: "badge--ok" },
+  ATTENTION: { label: "Attention", cls: "badge--att" },
+  NEEDS_MAINTENANCE: { label: "Needs Maint.", cls: "badge--maint" },
+  UNDER_MAINTENANCE: { label: "Under Maint.", cls: "badge--under" },
+  OUT_OF_SERVICE: { label: "Out of Service", cls: "badge--oos" },
 };
 
 const BADGE_MAP_AR = {
-  OK:                { label: "تعمل",          cls: "badge--ok"    },
-  ATTENTION:         { label: "تحتاج متابعة",  cls: "badge--att"   },
-  NEEDS_MAINTENANCE: { label: "تحتاج صيانة",   cls: "badge--maint" },
-  UNDER_MAINTENANCE: { label: "تحت الصيانة",   cls: "badge--under" },
-  OUT_OF_SERVICE:    { label: "خارج الخدمة",   cls: "badge--oos"   },
+  OK: { label: "تعمل", cls: "badge--ok" },
+  ATTENTION: { label: "تحتاج متابعة", cls: "badge--att" },
+  NEEDS_MAINTENANCE: { label: "تحتاج صيانة", cls: "badge--maint" },
+  UNDER_MAINTENANCE: { label: "تحت الصيانة", cls: "badge--under" },
+  OUT_OF_SERVICE: { label: "خارج الخدمة", cls: "badge--oos" },
 };
 
-const CATEGORIES = [
-  { key: "ALL",               en: "All Devices",       ar: "كل الأجهزة",       color: "#378ADD" },
-  { key: "OK",                en: "Operational",       ar: "تعمل",             color: "#1D9E75" },
-  { key: "ATTENTION",         en: "Needs Attention",   ar: "تحتاج متابعة",    color: "#BA7517" },
-  { key: "NEEDS_MAINTENANCE", en: "Needs Maintenance", ar: "تحتاج صيانة",     color: "#C0392B" },
-  { key: "UNDER_MAINTENANCE", en: "Under Maintenance", ar: "تحت الصيانة",     color: "#378ADD" },
-  { key: "OUT_OF_SERVICE",    en: "Out of Service",    ar: "خارج الخدمة",     color: "#7B8A9A" },
+const STATUS_OPTIONS = [
+  { key: "ALL", en: "All statuses", ar: "كل الحالات" },
+  { key: "OK", en: "Operational", ar: "تعمل" },
+  { key: "ATTENTION", en: "Needs attention", ar: "تحتاج متابعة" },
+  { key: "NEEDS_MAINTENANCE", en: "Needs maintenance", ar: "تحتاج صيانة" },
+  { key: "UNDER_MAINTENANCE", en: "Under maintenance", ar: "تحت الصيانة" },
+  { key: "OUT_OF_SERVICE", en: "Out of service", ar: "خارج الخدمة" },
+];
+
+const RESULT_OPTIONS = [
+  { key: "ALL", en: "All results", ar: "كل النتائج" },
+  { key: "OK", en: "OK", ar: "سليم" },
+  { key: "NOT_OK", en: "Not OK", ar: "غير سليم" },
 ];
 
 /* ═══════════════════════════════════════════
@@ -434,6 +665,20 @@ function pickBaseUrl(propBaseUrl) {
   return raw.replace(/\/+$/, "");
 }
 
+function normalizeText(value) {
+  return String(value ?? "")
+    .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[ًٌٍَُِّْـ]/g, "")
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function mapStatus(rawStatus, inspectionsCount = 0) {
   const s = String(rawStatus || "").toUpperCase();
 
@@ -442,13 +687,26 @@ function mapStatus(rawStatus, inspectionsCount = 0) {
   if (s === "UNDER_MAINTENANCE") return "UNDER_MAINTENANCE";
   if (s === "OUT_OF_SERVICE") return "OUT_OF_SERVICE";
 
-  if (s === "NOT_OK" || s === "PARTIAL" || s === "NOT_REACHABLE") return "ATTENTION";
+  if (s === "NOT_OK" || s === "PARTIAL" || s === "NOT_REACHABLE") {
+    return "ATTENTION";
+  }
+
   if (s === "IN_PROGRESS") return "UNDER_MAINTENANCE";
   if (s === "OPEN") return "NEEDS_MAINTENANCE";
   if (s === "COMPLETED") return "OK";
 
   if (!s && inspectionsCount > 0) return "ATTENTION";
+
   return "OK";
+}
+
+function getDeviceResult(device) {
+  return device.currentStatus === "OK" ? "OK" : "NOT_OK";
+}
+
+function cleanOptions(list) {
+  return [...new Set(list.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "ar"));
 }
 
 function normalizeDevice(item) {
@@ -459,6 +717,7 @@ function normalizeDevice(item) {
     {};
 
   const inspectionsArray = Array.isArray(item.inspections) ? item.inspections : [];
+
   const inspectionsCount =
     item.inspectionsCount ??
     item._count?.inspections ??
@@ -499,6 +758,31 @@ function normalizeDevice(item) {
       type: location.type || item.type || "",
     },
   };
+}
+
+function buildDeviceSearchText(device) {
+  return normalizeText(
+    [
+      device.id,
+      device.deviceCode,
+      device.deviceName,
+      device.serialNumber,
+      device.barcode,
+      device.manufacturer,
+      device.modelNumber,
+      device.currentStatus,
+      getDeviceResult(device),
+      device.parsedLoc?.cluster,
+      device.parsedLoc?.building,
+      device.parsedLoc?.zone,
+      device.parsedLoc?.direction,
+      device.parsedLoc?.lane,
+      device.parsedLoc?.type,
+      fmt(device.lastInspectionAt),
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
 }
 
 async function fetchDevicesFromApi(baseUrl, token) {
@@ -552,6 +836,7 @@ async function fetchDevicesFromApi(baseUrl, token) {
 function StatusBadge({ value, lang }) {
   const map = lang === "ar" ? BADGE_MAP_AR : BADGE_MAP;
   const badge = map[value] || { label: value || "Unknown", cls: "badge--oos" };
+
   return <span className={`badge ${badge.cls}`}>{badge.label}</span>;
 }
 
@@ -563,22 +848,28 @@ export function ViewerDevicesPage({
   lang = "en",
   apiBaseUrl = "",
 }) {
-  const [activeCat, setActiveCat] = useState("ALL");
-  const [search, setSearch] = useState("");
-  const [cluster, setCluster] = useState("ALL");
-  const [building, setBuilding] = useState("ALL");
-  const [zone, setZone] = useState("ALL");
-  const [direction, setDirection] = useState("ALL");
+  const DEFAULT_FILTERS = {
+    search: "",
+    result: "ALL",
+    status: "ALL",
+    cluster: "ALL",
+    building: "ALL",
+    zone: "ALL",
+    direction: "ALL",
+  };
+
+  const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   const [devices, setDevices] = useState(
     Array.isArray(devicesProp) ? devicesProp.map(normalizeDevice) : []
   );
+
   const [loading, setLoading] = useState(!Array.isArray(devicesProp));
   const [error, setError] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
 
   const t = (en, ar) => (lang === "ar" ? ar : en);
-
   const baseUrl = useMemo(() => pickBaseUrl(apiBaseUrl), [apiBaseUrl]);
 
   async function loadDevices() {
@@ -600,10 +891,7 @@ export function ViewerDevicesPage({
       setSourceUrl(result.sourceUrl);
     } catch (err) {
       console.error("Failed to load devices:", err);
-      setError(
-        err?.message ||
-          "Failed to load devices from backend."
-      );
+      setError(err?.message || "Failed to load devices from backend.");
       setDevices([]);
     } finally {
       setLoading(false);
@@ -615,75 +903,93 @@ export function ViewerDevicesPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseUrl]);
 
-  const catCounts = useMemo(() => {
-    const counts = { ALL: devices.length };
+  const options = useMemo(() => {
+    const clusters = [];
+    const buildings = [];
+    const zones = [];
+    const directions = [];
+
     devices.forEach((d) => {
-      counts[d.currentStatus] = (counts[d.currentStatus] || 0) + 1;
+      clusters.push(d.parsedLoc?.cluster);
+      buildings.push(d.parsedLoc?.building);
+      zones.push(d.parsedLoc?.zone);
+      directions.push(d.parsedLoc?.direction);
     });
 
-    if (!counts.ATTENTION) {
-      counts.ATTENTION = 0;
-    }
-
-    return counts;
+    return {
+      clusters: cleanOptions(clusters),
+      buildings: cleanOptions(buildings),
+      zones: cleanOptions(zones),
+      directions: cleanOptions(directions),
+    };
   }, [devices]);
 
-  const clusters = useMemo(
-    () => [...new Set(devices.map((d) => d.parsedLoc?.cluster).filter(Boolean))],
-    [devices]
-  );
-  const buildings = useMemo(
-    () => [...new Set(devices.map((d) => d.parsedLoc?.building).filter(Boolean))],
-    [devices]
-  );
-  const zones = useMemo(
-    () => [...new Set(devices.map((d) => d.parsedLoc?.zone).filter(Boolean))],
-    [devices]
-  );
-  const directions = useMemo(
-    () => [...new Set(devices.map((d) => d.parsedLoc?.direction).filter(Boolean))],
-    [devices]
-  );
-
   const filtered = useMemo(() => {
+    const query = normalizeText(filters.search);
+    const queryWords = query.split(" ").filter(Boolean);
+
     return devices.filter((d) => {
-      if (activeCat !== "ALL" && d.currentStatus !== activeCat) return false;
+      const deviceResult = getDeviceResult(d);
 
-      const s = search.trim().toLowerCase();
-      const haystack = [
-        d.deviceCode,
-        d.deviceName,
-        d.serialNumber,
-        d.barcode,
-        d.manufacturer,
-        d.modelNumber,
-        d.parsedLoc?.cluster,
-        d.parsedLoc?.building,
-        d.parsedLoc?.zone,
-        d.parsedLoc?.direction,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+      if (filters.result !== "ALL" && deviceResult !== filters.result) {
+        return false;
+      }
 
-      if (s && !haystack.includes(s)) return false;
-      if (cluster !== "ALL" && d.parsedLoc?.cluster !== cluster) return false;
-      if (building !== "ALL" && d.parsedLoc?.building !== building) return false;
-      if (zone !== "ALL" && d.parsedLoc?.zone !== zone) return false;
-      if (direction !== "ALL" && d.parsedLoc?.direction !== direction) return false;
+      if (filters.status !== "ALL" && d.currentStatus !== filters.status) {
+        return false;
+      }
 
-      return true;
+      if (filters.cluster !== "ALL" && d.parsedLoc?.cluster !== filters.cluster) {
+        return false;
+      }
+
+      if (filters.building !== "ALL" && d.parsedLoc?.building !== filters.building) {
+        return false;
+      }
+
+      if (filters.zone !== "ALL" && d.parsedLoc?.zone !== filters.zone) {
+        return false;
+      }
+
+      if (filters.direction !== "ALL" && d.parsedLoc?.direction !== filters.direction) {
+        return false;
+      }
+
+      if (!queryWords.length) {
+        return true;
+      }
+
+      const haystack = buildDeviceSearchText(d);
+
+      return queryWords.every((word) => haystack.includes(word));
     });
-  }, [devices, activeCat, search, cluster, building, zone, direction]);
+  }, [devices, filters]);
 
-  function resetFilters() {
-    setSearch("");
-    setCluster("ALL");
-    setBuilding("ALL");
-    setZone("ALL");
-    setDirection("ALL");
-    setActiveCat("ALL");
-  }
+  const counts = useMemo(() => {
+    const all = devices.length;
+    const ok = devices.filter((d) => getDeviceResult(d) === "OK").length;
+    const notOk = devices.filter((d) => getDeviceResult(d) === "NOT_OK").length;
+
+    const filteredOk = filtered.filter((d) => getDeviceResult(d) === "OK").length;
+    const filteredNotOk = filtered.filter((d) => getDeviceResult(d) === "NOT_OK").length;
+
+    return {
+      all,
+      ok,
+      notOk,
+      filtered: filtered.length,
+      filteredOk,
+      filteredNotOk,
+    };
+  }, [devices, filtered]);
+
+  const statusCounts = useMemo(() => {
+    const c = {};
+    devices.forEach((d) => {
+      c[d.currentStatus] = (c[d.currentStatus] || 0) + 1;
+    });
+    return c;
+  }, [devices]);
 
   const totalInspections = devices.reduce(
     (sum, d) => sum + (Number(d.inspectionsCount) || 0),
@@ -695,6 +1001,22 @@ export function ViewerDevicesPage({
     .filter(Boolean)
     .sort((a, b) => new Date(b) - new Date(a))[0];
 
+  const updateDraft = (key, value) => {
+    setDraftFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  };
+
+  const applyFilters = () => {
+    setFilters({ ...draftFilters });
+  };
+
+  const resetFilters = () => {
+    setDraftFilters(DEFAULT_FILTERS);
+    setFilters(DEFAULT_FILTERS);
+  };
+
   return (
     <>
       <style>{DEVICES_CSS}</style>
@@ -702,7 +1024,10 @@ export function ViewerDevicesPage({
       <div className="dev-root" dir={lang === "ar" ? "rtl" : "ltr"}>
         <div className="dev-topbar">
           <div>
-            <div className="dev-topbar__title">{t("Viewer Devices", "أجهزة المشاهد")}</div>
+            <div className="dev-topbar__title">
+              {t("Viewer Devices", "أجهزة المشاهد")}
+            </div>
+
             <div className="dev-topbar__sub">
               {t(
                 "Read-only monitoring of all registered devices",
@@ -738,27 +1063,35 @@ export function ViewerDevicesPage({
 
         <div className="dev-summary">
           <div className="dev-summary-card">
-            <div className="dev-summary-label">{t("Total Devices", "إجمالي الأجهزة")}</div>
-            <div className="dev-summary-value">{devices.length}</div>
-            <div className="dev-summary-note">{t("All loaded records", "كل السجلات المحملة")}</div>
-          </div>
-
-          <div className="dev-summary-card">
-            <div className="dev-summary-label">{t("Operational", "تعمل")}</div>
-            <div className="dev-summary-value">{catCounts.OK || 0}</div>
-            <div className="dev-summary-note">{t("Healthy devices", "الأجهزة السليمة")}</div>
-          </div>
-
-          <div className="dev-summary-card">
-            <div className="dev-summary-label">{t("Need Maintenance", "تحتاج صيانة")}</div>
-            <div className="dev-summary-value">
-              {(catCounts.NEEDS_MAINTENANCE || 0) + (catCounts.ATTENTION || 0)}
+            <div className="dev-summary-label">
+              {t("Total Devices", "إجمالي الأجهزة")}
             </div>
-            <div className="dev-summary-note">{t("Attention / maintenance", "متابعة / صيانة")}</div>
+            <div className="dev-summary-value">{devices.length}</div>
+            <div className="dev-summary-note">
+              {t("All loaded records", "كل السجلات المحملة")}
+            </div>
           </div>
 
           <div className="dev-summary-card">
-            <div className="dev-summary-label">{t("Inspections", "الفحوصات")}</div>
+            <div className="dev-summary-label">OK</div>
+            <div className="dev-summary-value">{counts.ok}</div>
+            <div className="dev-summary-note">
+              {t("Operational devices", "الأجهزة السليمة")}
+            </div>
+          </div>
+
+          <div className="dev-summary-card">
+            <div className="dev-summary-label">Not OK</div>
+            <div className="dev-summary-value">{counts.notOk}</div>
+            <div className="dev-summary-note">
+              {t("Needs attention or maintenance", "تحتاج متابعة أو صيانة")}
+            </div>
+          </div>
+
+          <div className="dev-summary-card">
+            <div className="dev-summary-label">
+              {t("Inspections", "الفحوصات")}
+            </div>
             <div className="dev-summary-value">{totalInspections}</div>
             <div className="dev-summary-note">
               {latestInspection
@@ -768,90 +1101,177 @@ export function ViewerDevicesPage({
           </div>
         </div>
 
-        <div className="dev-pills">
-          {CATEGORIES.map((cat) => (
-            <div
-              key={cat.key}
-              className={`dev-pill${activeCat === cat.key ? " dev-pill--active" : ""}`}
-              onClick={() => setActiveCat(cat.key)}
-            >
-              <div className="dev-pill-dot" style={{ background: cat.color }} />
-              {lang === "ar" ? cat.ar : cat.en}
-              <span className="dev-pill-count">({catCounts[cat.key] || 0})</span>
-            </div>
-          ))}
-        </div>
+        <div className="dev-filter-card">
+          <div className="dev-filter-head">
+            <div className="dev-filter-title">
+              <div className="dev-filter-icon">⌕</div>
 
-        <div className="dev-filters">
-          <div className="dev-field dev-field--wide">
-            <label>{t("Search", "بحث")}</label>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t(
-                "Code, name, serial, barcode, building or zone…",
-                "كود، اسم، سيريال، باركود، مبنى أو منطقة…"
-              )}
-            />
+              <div>
+                <div className="dev-filter-title-text">
+                  {t("Cute Smart Filter", "فلتر ذكي لطيف")}
+                </div>
+                <div className="dev-filter-title-sub">
+                  {t(
+                    "Search devices by result, status, location, or text",
+                    "فلتر الأجهزة حسب OK / Not OK أو الحالة أو الموقع أو البحث"
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="dev-filter-result">
+              <span className="dev-filter-result-dot" />
+              {filtered.length} / {devices.length} {t("records", "سجل")}
+            </div>
           </div>
 
-          {clusters.length > 0 && (
-            <div className="dev-field">
+          <div className="dev-filter-grid">
+            <div className="dev-filter-field">
+              <label>{t("Search", "بحث")}</label>
+              <input
+                className="dev-filter-input"
+                value={draftFilters.search}
+                onChange={(e) => updateDraft("search", e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applyFilters();
+                }}
+                placeholder={t(
+                  "Code, name, serial, barcode, building...",
+                  "كود، اسم، سيريال، باركود، مبنى..."
+                )}
+              />
+            </div>
+
+            <div className="dev-filter-field">
+              <label>{t("Result", "النتيجة")}</label>
+              <select
+                className="dev-filter-select"
+                value={draftFilters.result}
+                onChange={(e) => updateDraft("result", e.target.value)}
+              >
+                {RESULT_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option[lang] || option.en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="dev-filter-field">
+              <label>{t("Status", "الحالة")}</label>
+              <select
+                className="dev-filter-select"
+                value={draftFilters.status}
+                onChange={(e) => updateDraft("status", e.target.value)}
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option[lang] || option.en}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="dev-filter-field">
               <label>{t("Cluster", "المجموعة")}</label>
-              <select value={cluster} onChange={(e) => setCluster(e.target.value)}>
-                <option value="ALL">{t("All Clusters", "كل المجموعات")}</option>
-                {clusters.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+              <select
+                className="dev-filter-select"
+                value={draftFilters.cluster}
+                onChange={(e) => updateDraft("cluster", e.target.value)}
+              >
+                <option value="ALL">{t("All clusters", "كل المجموعات")}</option>
+                {options.clusters.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </div>
-          )}
 
-          {buildings.length > 0 && (
-            <div className="dev-field">
+            <div className="dev-filter-field">
               <label>{t("Building", "المبنى")}</label>
-              <select value={building} onChange={(e) => setBuilding(e.target.value)}>
-                <option value="ALL">{t("All Buildings", "كل المباني")}</option>
-                {buildings.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+              <select
+                className="dev-filter-select"
+                value={draftFilters.building}
+                onChange={(e) => updateDraft("building", e.target.value)}
+              >
+                <option value="ALL">{t("All buildings", "كل المباني")}</option>
+                {options.buildings.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </div>
-          )}
 
-          {zones.length > 0 && (
-            <div className="dev-field">
+            <div className="dev-filter-field">
               <label>{t("Zone", "المنطقة")}</label>
-              <select value={zone} onChange={(e) => setZone(e.target.value)}>
-                <option value="ALL">{t("All Zones", "كل المناطق")}</option>
-                {zones.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+              <select
+                className="dev-filter-select"
+                value={draftFilters.zone}
+                onChange={(e) => updateDraft("zone", e.target.value)}
+              >
+                <option value="ALL">{t("All zones", "كل المناطق")}</option>
+                {options.zones.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </div>
-          )}
 
-          {directions.length > 0 && (
-            <div className="dev-field">
+            <div className="dev-filter-field">
               <label>{t("Direction", "الاتجاه")}</label>
-              <select value={direction} onChange={(e) => setDirection(e.target.value)}>
-                <option value="ALL">{t("All Directions", "كل الاتجاهات")}</option>
-                {directions.map((v) => (
-                  <option key={v} value={v}>{v}</option>
+              <select
+                className="dev-filter-select"
+                value={draftFilters.direction}
+                onChange={(e) => updateDraft("direction", e.target.value)}
+              >
+                <option value="ALL">{t("All directions", "كل الاتجاهات")}</option>
+                {options.directions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
-          <button className="dev-reset-btn" onClick={resetFilters}>
-            {t("Reset filters", "مسح الفلاتر")}
-          </button>
+          <div className="dev-filter-footer">
+            <div className="dev-filter-hint">
+              {t(
+                `Filtered OK: ${counts.filteredOk} · Not OK: ${counts.filteredNotOk}`,
+                `المفلتر سليم: ${counts.filteredOk} · غير سليم: ${counts.filteredNotOk}`
+              )}
+            </div>
+
+            <div className="dev-filter-actions">
+              <button
+                type="button"
+                className="dev-filter-btn dev-filter-btn-reset"
+                onClick={resetFilters}
+              >
+                Reset
+              </button>
+
+              <button
+                type="button"
+                className="dev-filter-btn dev-filter-btn-ok"
+                onClick={applyFilters}
+              >
+                OK
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="dev-panel">
           <div className="dev-panel__head">
             <div>
-              <div className="dev-panel__title">{t("Devices", "الأجهزة")}</div>
+              <div className="dev-panel__title">
+                {t("Devices", "الأجهزة")}
+              </div>
+
               <div className="dev-panel__sub">
                 {t(
                   "All registered devices in current scope",
@@ -876,6 +1296,7 @@ export function ViewerDevicesPage({
                 <thead>
                   <tr>
                     <th>{t("Device", "الجهاز")}</th>
+                    <th>{t("Result", "النتيجة")}</th>
                     <th>{t("Status", "الحالة")}</th>
                     <th>{t("Cluster", "المجموعة")}</th>
                     <th>{t("Building", "المبنى")}</th>
@@ -883,44 +1304,78 @@ export function ViewerDevicesPage({
                     <th>{t("Direction", "الاتجاه")}</th>
                     <th>{t("Last Inspection", "آخر فحص")}</th>
                     <th>{t("Serial", "السيريال")}</th>
-                    <th style={{ textAlign: "center" }}>{t("Inspections", "الفحوصات")}</th>
+                    <th style={{ textAlign: "center" }}>
+                      {t("Inspections", "الفحوصات")}
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody>
-                  {filtered.map((d) => (
-                    <tr key={d.id}>
-                      <td>
-                        <div className="dev-code">{d.deviceCode || `DEV-${d.id}`}</div>
-                        <div className="dev-name">{d.deviceName || t("Unknown", "غير معروف")}</div>
-                        {(d.manufacturer || d.modelNumber) && (
-                          <div className="dev-subline">
-                            {[d.manufacturer, d.modelNumber].filter(Boolean).join(" · ")}
+                  {filtered.map((d) => {
+                    const result = getDeviceResult(d);
+
+                    return (
+                      <tr key={d.id}>
+                        <td>
+                          <div className="dev-code">
+                            {d.deviceCode || `DEV-${d.id}`}
                           </div>
-                        )}
-                      </td>
 
-                      <td>
-                        <StatusBadge value={d.currentStatus} lang={lang} />
-                      </td>
+                          <div className="dev-name">
+                            {d.deviceName || t("Unknown", "غير معروف")}
+                          </div>
 
-                      <td style={{ fontSize: 12 }}>{d.parsedLoc?.cluster || "—"}</td>
-                      <td style={{ fontSize: 12 }}>{d.parsedLoc?.building || "—"}</td>
-                      <td style={{ fontSize: 12 }}>{d.parsedLoc?.zone || "—"}</td>
-                      <td style={{ fontSize: 12 }}>{d.parsedLoc?.direction || "—"}</td>
+                          {(d.manufacturer || d.modelNumber) && (
+                            <div className="dev-subline">
+                              {[d.manufacturer, d.modelNumber].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+                        </td>
 
-                      <td style={{ fontSize: 12, color: "var(--faint)" }}>
-                        {fmt(d.lastInspectionAt)}
-                      </td>
+                        <td>
+                          {result === "OK" ? (
+                            <span className="badge badge--ok">OK</span>
+                          ) : (
+                            <span className="badge badge--maint">Not OK</span>
+                          )}
+                        </td>
 
-                      <td style={{ fontSize: 12 }}>
-                        {d.serialNumber || "—"}
-                      </td>
+                        <td>
+                          <StatusBadge value={d.currentStatus} lang={lang} />
+                        </td>
 
-                      <td style={{ textAlign: "center" }}>
-                        <span className="dev-insp-count">{d.inspectionsCount ?? 0}</span>
-                      </td>
-                    </tr>
-                  ))}
+                        <td style={{ fontSize: 12 }}>
+                          {d.parsedLoc?.cluster || "—"}
+                        </td>
+
+                        <td style={{ fontSize: 12 }}>
+                          {d.parsedLoc?.building || "—"}
+                        </td>
+
+                        <td style={{ fontSize: 12 }}>
+                          {d.parsedLoc?.zone || "—"}
+                        </td>
+
+                        <td style={{ fontSize: 12 }}>
+                          {d.parsedLoc?.direction || "—"}
+                        </td>
+
+                        <td style={{ fontSize: 12, color: "var(--faint)" }}>
+                          {fmt(d.lastInspectionAt)}
+                        </td>
+
+                        <td style={{ fontSize: 12 }}>
+                          {d.serialNumber || "—"}
+                        </td>
+
+                        <td style={{ textAlign: "center" }}>
+                          <span className="dev-insp-count">
+                            {d.inspectionsCount ?? 0}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

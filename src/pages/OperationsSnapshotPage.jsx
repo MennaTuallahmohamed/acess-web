@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { DashboardLayout } from "../components/DashboardLayout";
 import { useLang } from "../context/LanguageContext";
-import { ViewerSharedFilters } from "./monitoring/ViewerSharedFilters";
 import { ViewerHomePage } from "./monitoring/ViewerHomePage";
 import { ViewerDevicesPage } from "./monitoring/ViewerDevicesPage";
 import { ViewerInspectionsPage } from "./monitoring/ViewerInspectionsPage";
@@ -479,17 +478,6 @@ export function OperationsSnapshotPage({
           locationRows={filteredLocations}
           onKpiFilter={handleKpiFilter}
           activeDeviceStatus={filters.status}
-        />
-      ) : null}
-
-      {tab !== "home" ? (
-        <ViewerSharedFilters
-          lang={lang}
-          copy={copy}
-          filters={filters}
-          options={filterOptions}
-          onChange={handleFilterChange}
-          onReset={handleResetFilters}
         />
       ) : null}
 
