@@ -1,24 +1,85 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { DataGrid } from "../components/DataGrid";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-function fmtDate(iso) {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+const DEFAULT_API_BASE_URL = "https://acess-backend-production.up.railway.app";
 
-  return date.toLocaleDateString("en-GB", {
+/* =========================
+   API / IMAGE HELPERS
+========================= */
+
+function getApiBase(apiBase = "") {
+  const cleanProp = String(apiBase || "").trim().replace(/\/+$/, "");
+
+  if (
+    cleanProp &&
+    !cleanProp.includes("localhost") &&
+    !cleanProp.includes("127.0.0.1")
+  ) {
+    return cleanProp;
+  }
+
+  const saved = String(localStorage.getItem("dashboard_api_base_url") || "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (
+    saved &&
+    !saved.includes("localhost") &&
+    !saved.includes("127.0.0.1")
+  ) {
+    return saved;
+  }
+
+  return DEFAULT_API_BASE_URL;
+}
+
+function fixImageUrl(value, apiBase = "") {
+  if (!value) return "";
+
+  let raw = String(value).trim().replace(/\\/g, "/");
+  if (!raw) return "";
+
+  const base = getApiBase(apiBase);
+
+  raw = raw
+    .replace("http://localhost:3000", base)
+    .replace("https://localhost:3000", base)
+    .replace("http://127.0.0.1:3000", base)
+    .replace("https://127.0.0.1:3000", base)
+    .replace("http://localhost:5173", base)
+    .replace("https://localhost:5173", base)
+    .replace("http://127.0.0.1:5173", base)
+    .replace("https://127.0.0.1:5173", base);
+
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+
+  if (raw.startsWith("/")) return `${base}${raw}`;
+
+  return `${base}/${raw}`;
+}
+
+function safe(value) {
+  if (value === undefined || value === null || value === "") return "—";
+  return value;
+}
+
+function fmtDate(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  return d.toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
 }
 
-function fmtFull(iso) {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
+function fmtFull(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
 
-  return date.toLocaleString("en-GB", {
+  return d.toLocaleString("en-GB", {
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -28,27 +89,43 @@ function fmtFull(iso) {
   });
 }
 
+function boolFromAny(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+
+  const text = String(value || "").trim().toLowerCase();
+
+  return [
+    "true",
+    "yes",
+    "1",
+    "done",
+    "scanned",
+    "verified",
+    "scan_done",
+    "scan done",
+    "تم",
+    "تم scan",
+  ].includes(text);
+}
+
 function arStatus(status) {
   const map = {
     OK: "سليم",
     NOT_OK: "عطل كامل",
     PARTIAL: "عطل جزئي",
     NOT_REACHABLE: "غير متاح",
-
     NEEDS_MAINTENANCE: "يحتاج صيانة",
     UNDER_MAINTENANCE: "تحت الصيانة",
     OUT_OF_SERVICE: "خارج الخدمة",
-
     PENDING: "معلق",
     DONE: "تم",
     FAILED: "فشل",
     SKIPPED: "تم تخطيه",
-
     OPEN: "مفتوح",
     IN_PROGRESS: "قيد التنفيذ",
     RESOLVED: "تم الحل",
     UNRESOLVED: "لم يتم الحل",
-
     COMPLETED: "مكتمل",
     CANCELLED: "ملغي",
   };
@@ -78,97 +155,51 @@ function statusClass(status) {
   return "muted";
 }
 
-function getApiBase(apiBase) {
-  const DEFAULT_API_BASE_URL =
-    "https://acess-backend-production.up.railway.app";
-
-  const cleanApiBase = String(apiBase || "")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (
-    cleanApiBase &&
-    !cleanApiBase.includes("localhost") &&
-    !cleanApiBase.includes("127.0.0.1")
-  ) {
-    return cleanApiBase;
-  }
-
-  const savedBaseUrl = String(
-    localStorage.getItem("dashboard_api_base_url") || ""
-  )
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (
-    savedBaseUrl &&
-    !savedBaseUrl.includes("localhost") &&
-    !savedBaseUrl.includes("127.0.0.1")
-  ) {
-    return savedBaseUrl;
-  }
-
-  return DEFAULT_API_BASE_URL;
-}
-
-function fixImageUrl(url, apiBase = "") {
-  if (!url) return "";
-
-  const DEFAULT_API_BASE_URL =
-    "https://acess-backend-production.up.railway.app";
-
-  const raw = String(url).replace(/\\/g, "/").trim();
-
-  if (!raw) return "";
-
-  if (raw.startsWith("http://") || raw.startsWith("https://")) {
-    return raw
-      .replace("http://localhost:3000", DEFAULT_API_BASE_URL)
-      .replace("https://localhost:3000", DEFAULT_API_BASE_URL)
-      .replace("http://127.0.0.1:3000", DEFAULT_API_BASE_URL)
-      .replace("https://127.0.0.1:3000", DEFAULT_API_BASE_URL);
-  }
-
-  const base = getApiBase(apiBase);
-  const cleanUrl = raw.startsWith("/") ? raw.slice(1) : raw;
-
-  return `${base}/${cleanUrl}`;
-}
-
-function unique(arr, getter) {
-  return [...new Set(arr.map(getter).filter(Boolean))].sort();
-}
-
-function safeValue(value) {
-  if (value === undefined || value === null || value === "") return "—";
-  return value;
-}
-
-function getInspectionImages(obj) {
+function getImages(obj) {
   if (!obj) return [];
 
-  if (Array.isArray(obj.images)) return obj.images;
-  if (Array.isArray(obj.inspectionImages)) return obj.inspectionImages;
-  if (Array.isArray(obj.InspectionImage)) return obj.InspectionImage;
-  if (Array.isArray(obj.inspectionImage)) return obj.inspectionImage;
+  const possible =
+    obj.images ||
+    obj.inspectionImages ||
+    obj.InspectionImage ||
+    obj.inspectionImage ||
+    obj.photos ||
+    obj.attachments ||
+    obj.files ||
+    [];
 
+  if (!Array.isArray(possible)) return [];
+
+  return possible;
+}
+
+function getImagePath(img) {
+  if (!img) return "";
+
+  if (typeof img === "string") return img;
+
+  return (
+    img.imageUrl ||
+    img.url ||
+    img.secureUrl ||
+    img.path ||
+    img.filePath ||
+    img.fullPath ||
+    img.filename ||
+    img.fileName ||
+    img.name ||
+    ""
+  );
+}
+
+function getIssues(obj) {
+  if (!obj) return [];
+  if (Array.isArray(obj.inspectionIssues)) return obj.inspectionIssues;
+  if (Array.isArray(obj.issues)) return obj.issues;
   return [];
 }
 
-function getImagesCount(obj) {
-  const images = getInspectionImages(obj);
-
-  if (images.length > 0) return images.length;
-  if (obj?.summary?.imagesCount != null) return Number(obj.summary.imagesCount) || 0;
-  if (obj?._count?.images != null) return Number(obj._count.images) || 0;
-  if (obj?._count?.inspectionImages != null) {
-    return Number(obj._count.inspectionImages) || 0;
-  }
-
-  return 0;
-}
-
-function getSolutionActions(obj) {
+function getActions(obj) {
   if (!obj) return [];
 
   if (Array.isArray(obj.solutionActions)) return obj.solutionActions;
@@ -180,36 +211,104 @@ function getSolutionActions(obj) {
   return [];
 }
 
-function getDoneSummary(obj) {
-  const actions = getSolutionActions(obj);
+function getScanInfo(obj) {
+  const scan = obj?.scanInfo || obj?.scan || obj?.security || {};
+
+  const explicit =
+    scan.scanned ??
+    scan.isScanned ??
+    scan.scanDone ??
+    scan.verified ??
+    scan.scanVerified ??
+    obj?.scanned ??
+    obj?.isScanned ??
+    obj?.scanDone ??
+    null;
+
+  const hasExplicit =
+    explicit !== null && explicit !== undefined && explicit !== "";
+
+  const inferred =
+    Boolean(obj?.id) &&
+    Boolean(
+      obj?.deviceId ||
+        obj?.device?.id ||
+        obj?.device?.deviceCode ||
+        obj?.device?.barcode ||
+        obj?.device?.secretCode
+    );
+
+  const scanned = hasExplicit ? boolFromAny(explicit) : inferred;
+
+  const manualFallbackUsed = boolFromAny(
+    scan.manualFallbackUsed ??
+      scan.manualFallback ??
+      scan.usedManualFallback ??
+      obj?.manualFallbackUsed ??
+      obj?.manualFallback
+  );
+
+  const qrAttempts =
+    Number(
+      scan.qrAttempts ??
+        scan.scanAttempts ??
+        scan.attempts ??
+        obj?.qrAttempts ??
+        obj?.scanAttempts ??
+        0
+    ) || 0;
+
+  const scanMethod =
+    scan.scanMethod ||
+    scan.method ||
+    obj?.scanMethod ||
+    (scanned ? "VERIFIED_BY_INSPECTION" : "");
+
+  const scanCodeType =
+    scan.scanCodeType || scan.codeType || obj?.scanCodeType || "";
+
+  const scanCodeValueMasked =
+    scan.scanCodeValueMasked ||
+    scan.maskedCode ||
+    scan.masked ||
+    obj?.scanCodeValueMasked ||
+    "";
 
   return {
-    total: actions.length,
-    done: actions.filter((a) => a.status === "DONE").length,
-    failed: actions.filter((a) => a.status === "FAILED").length,
-    pending: actions.filter((a) => a.status === "PENDING").length,
-    skipped: actions.filter((a) => a.status === "SKIPPED").length,
+    scanned,
+    manualFallbackUsed,
+    qrAttempts,
+    scanMethod,
+    scanCodeType,
+    scanCodeValueMasked,
+    inferred: !hasExplicit && scanned,
   };
 }
 
-function getIssueList(obj) {
-  if (!obj) return [];
-  if (Array.isArray(obj.inspectionIssues)) return obj.inspectionIssues;
-  if (Array.isArray(obj.issues)) return obj.issues;
-  return [];
-}
-
-function getScanInfo(obj) {
-  return obj?.scanInfo || {};
-}
-
-function getScanLabel(obj) {
+function getScanMethodText(obj) {
   const scan = getScanInfo(obj);
+  const method = String(scan.scanMethod || "").toUpperCase();
 
-  if (scan.scanned === true) return "تم عمل Scan";
-  if (scan.scanned === false) return "لم يتم Scan";
+  if (method === "VERIFIED_BY_INSPECTION") return "تم التحقق من الفحص";
+  if (method === "QR" || method === "SECRET_QR") return "QR Code";
+  if (method === "MANUAL" || method === "MANUAL_SEARCH") return "بحث يدوي";
+  if (method === "BARCODE") return "Barcode";
+  if (method === "SECRET_CODE") return "Secret Code";
 
-  return "—";
+  return scan.scanMethod || "—";
+}
+
+function getScanCodeTypeText(obj) {
+  const scan = getScanInfo(obj);
+  const type = String(scan.scanCodeType || "").toUpperCase();
+
+  if (type === "SECRET_QR") return "QR سري";
+  if (type === "BARCODE") return "Barcode";
+  if (type === "DEVICE_CODE") return "كود الجهاز";
+  if (type === "SERIAL_NUMBER") return "Serial Number";
+  if (type === "SECRET_CODE") return "Secret Code";
+
+  return scan.scanCodeType || "—";
 }
 
 function getStatusBefore(obj) {
@@ -235,764 +334,1044 @@ function getStatusAfter(obj) {
   );
 }
 
+/* =========================
+   CSS
+========================= */
+
 const CSS = `
-.insp-page {
-  display:flex;
-  flex-direction:column;
-  gap:20px;
-  height:100%;
+html,
+body,
+#root {
+  height: 100%;
 }
 
-.insp-stats {
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(145px,1fr));
-  gap:12px;
+body {
+  overflow: hidden;
 }
 
-.insp-stat {
-  background:#fff;
-  border:1px solid #e5e7eb;
-  border-radius:16px;
-  padding:16px 18px;
-  box-shadow:0 10px 24px rgba(15,23,42,.05);
+.inspections-page {
+  height: 100vh;
+  min-height: 100vh;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(79,70,229,.12), transparent 28%),
+    radial-gradient(circle at 90% 10%, rgba(16,185,129,.10), transparent 25%),
+    #f4f7fb;
+  padding: 18px;
+  box-sizing: border-box;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.insp-stat__label {
-  font-size:12px;
-  color:#64748b;
-  font-weight:700;
+.inspections-shell {
+  width: 100%;
+  max-width: 1700px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 50px;
 }
 
-.insp-stat__val {
-  display:block;
-  font-size:28px;
-  font-weight:900;
-  color:#0f172a;
-  margin-top:4px;
+.insp-hero {
+  background:
+    linear-gradient(135deg, rgba(15,23,42,.97), rgba(30,41,59,.94)),
+    radial-gradient(circle at top right, rgba(79,70,229,.45), transparent 45%);
+  color: white;
+  border-radius: 28px;
+  padding: 22px;
+  box-shadow: 0 22px 60px rgba(15,23,42,.18);
+  overflow: hidden;
+  position: relative;
 }
 
-.insp-stat__sub {
-  display:block;
-  font-size:11px;
-  color:#94a3b8;
-  margin-top:2px;
-  font-weight:700;
+.insp-hero::before {
+  content: "";
+  position: absolute;
+  width: 380px;
+  height: 380px;
+  right: -120px;
+  top: -160px;
+  background: radial-gradient(circle, rgba(99,102,241,.48), transparent 65%);
+  border-radius: 50%;
 }
 
-.insp-config {
-  background:#fff;
-  border:1px solid #e5e7eb;
-  border-radius:16px;
-  padding:18px 20px;
-  box-shadow:0 10px 24px rgba(15,23,42,.04);
+.insp-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
 }
 
-.insp-config__title {
-  font-size:16px;
-  font-weight:900;
-  color:#0f172a;
-  margin-bottom:14px;
+.insp-title-wrap {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
 }
 
-.insp-filters {
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  align-items:flex-end;
+.insp-logo {
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  box-shadow: 0 14px 35px rgba(79,70,229,.35);
+  font-size: 24px;
+  flex: 0 0 auto;
 }
 
-.insp-filter {
-  display:flex;
-  flex-direction:column;
-  gap:6px;
+.insp-eyebrow {
+  color: #c4b5fd;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 1.3px;
+  margin-bottom: 6px;
 }
 
-.insp-filter__label {
-  font-size:12px;
-  color:#64748b;
-  font-weight:800;
+.insp-title {
+  margin: 0;
+  color: white;
+  font-size: clamp(25px, 3vw, 38px);
+  line-height: 1.06;
+  font-weight: 950;
+  letter-spacing: -1.3px;
 }
 
-.insp-filter input,
-.insp-filter select {
-  height:38px;
-  min-width:170px;
-  border:1px solid #d1d5db;
-  border-radius:10px;
-  padding:0 11px;
-  background:#fff;
-  outline:none;
-  font-size:13px;
-  color:#111827;
+.insp-subtitle {
+  margin-top: 9px;
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.65;
+  max-width: 760px;
 }
 
-.insp-filter input:focus,
-.insp-filter select:focus {
-  border-color:#4f46e5;
-  box-shadow:0 0 0 3px rgba(79,70,229,.13);
+.insp-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.insp-check {
-  height:38px;
-  display:flex;
-  align-items:center;
-  gap:8px;
-  font-size:13px;
-  color:#334155;
-  font-weight:800;
+.insp-btn {
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 13px;
+  background: white;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+  transition: .18s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  white-space: nowrap;
 }
 
-.insp-check input {
-  width:16px;
-  height:16px;
-  accent-color:#4f46e5;
+.insp-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(15,23,42,.14);
+}
+
+.insp-btn.primary {
+  color: white;
+  border-color: transparent;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  box-shadow: 0 14px 30px rgba(79,70,229,.30);
+}
+
+.insp-btn.glass {
+  color: white;
+  background: rgba(255,255,255,.10);
+  border-color: rgba(255,255,255,.16);
+  backdrop-filter: blur(10px);
+}
+
+.view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 14px;
+}
+
+.view-toggle button {
+  height: 32px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.view-toggle button.active {
+  background: white;
+  color: #0f172a;
+}
+
+.insp-error {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+  border-radius: 16px;
+  padding: 13px 15px;
+  font-weight: 850;
+  font-size: 13px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.stat-card {
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.70);
+  border-radius: 22px;
+  padding: 16px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.07);
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4px;
+  background: var(--stat-color, #4f46e5);
+}
+
+.stat-label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .75px;
+}
+
+.stat-value {
+  display: block;
+  color: var(--stat-color, #0f172a);
+  font-size: 29px;
+  line-height: 1;
+  font-weight: 950;
+  margin-top: 10px;
+  letter-spacing: -1px;
+}
+
+.stat-sub {
+  display: block;
+  margin-top: 7px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.filter-panel {
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(255,255,255,.70);
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.06);
+  padding: 16px;
+}
+
+.filter-title {
+  font-size: 15px;
+  font-weight: 950;
+  color: #0f172a;
+  margin-bottom: 13px;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: minmax(230px, 2fr) repeat(4, minmax(130px, 1fr)) repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-field label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .75px;
+}
+
+.filter-field input,
+.filter-field select {
+  height: 40px;
+  border: 1px solid rgba(15,23,42,.10);
+  border-radius: 13px;
+  outline: 0;
+  background: #f8fafc;
+  padding: 0 12px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.filter-field input:focus,
+.filter-field select:focus {
+  background: white;
+  border-color: rgba(79,70,229,.45);
+  box-shadow: 0 0 0 4px rgba(79,70,229,.10);
+}
+
+.check-pill {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 13px;
+  background: #f8fafc;
+  border: 1px solid rgba(15,23,42,.10);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.check-pill input {
+  accent-color: #4f46e5;
+}
+
+.content-area {
+  min-height: 300px;
+}
+
+.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.inspection-card {
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(255,255,255,.76);
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.07);
+  overflow: hidden;
+  cursor: pointer;
+  transition: .18s ease;
+}
+
+.inspection-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 48px rgba(15,23,42,.11);
+}
+
+.card-cover {
+  height: 190px;
+  background: #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+	background: #e2e8f0;
+}
+
+.no-photo {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(135deg, #eef2ff, #f8fafc);
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 950;
+  text-align: center;
+  padding: 20px;
+}
+
+.photo-count {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(15,23,42,.78);
+  color: white;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 950;
+  backdrop-filter: blur(8px);
+}
+
+.card-body {
+  padding: 15px;
+}
+
+.card-topline {
+  display: flex;
+  justify-content: space-between;
+  gap: 9px;
+  align-items: flex-start;
+  margin-bottom: 11px;
+}
+
+.card-id {
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.card-title {
+  color: #0f172a;
+  font-size: 17px;
+  line-height: 1.25;
+  font-weight: 950;
+  margin-bottom: 8px;
+}
+
+.card-meta {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.65;
+  font-weight: 700;
+}
+
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.table-card {
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(255,255,255,.76);
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.07);
+  overflow: hidden;
+}
+
+.table-scroll {
+  width: 100%;
+  max-height: calc(100vh - 390px);
+  min-height: 360px;
+  overflow: auto;
+}
+
+.insp-table {
+  width: 100%;
+  min-width: 1320px;
+  border-collapse: collapse;
+}
+
+.insp-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 950;
+  padding: 13px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.insp-table td {
+  padding: 12px 13px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 720;
+  vertical-align: top;
+}
+
+.insp-table tr {
+  cursor: pointer;
+}
+
+.insp-table tbody tr:hover td {
+  background: #f8fafc;
+}
+
+.thumb-list {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.thumb {
+  width: 54px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #e2e8f0;
+  border: 1px solid #e5e7eb;
 }
 
 .tag {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:5px;
-  padding:4px 10px;
-  border-radius:999px;
-  font-size:11px;
-  font-weight:900;
-  border:1px solid transparent;
-  white-space:nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 950;
+  border: 1px solid transparent;
+  white-space: nowrap;
 }
 
 .tag.good {
-  background:#dcfce7;
-  color:#15803d;
-  border-color:#86efac;
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
 }
 
 .tag.bad {
-  background:#fee2e2;
-  color:#b91c1c;
-  border-color:#fecaca;
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fecaca;
 }
 
 .tag.warn {
-  background:#fef9c3;
-  color:#a16207;
-  border-color:#fde68a;
+  background: #fef9c3;
+  color: #a16207;
+  border-color: #fde68a;
 }
 
 .tag.muted {
-  background:#f1f5f9;
-  color:#475569;
-  border-color:#e2e8f0;
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
 }
 
 .tag.info {
-  background:#dbeafe;
-  color:#1d4ed8;
-  border-color:#bfdbfe;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
 }
 
 .tag.purple {
-  background:#f3e8ff;
-  color:#7e22ce;
-  border-color:#e9d5ff;
+  background: #f3e8ff;
+  color: #7e22ce;
+  border-color: #e9d5ff;
 }
 
-.loc-excel {
-  display:inline-block;
-  font-family:monospace;
-  font-size:12px;
-  background:#f8fafc;
-  color:#0f172a;
-  padding:2px 8px;
-  border-radius:6px;
-  border:1px solid #e2e8f0;
-  white-space:nowrap;
+.state-card {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background: rgba(255,255,255,.92);
+  border: 1px solid rgba(255,255,255,.70);
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.06);
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 850;
+  padding: 25px;
 }
 
-.loc-cluster {
-  display:inline-flex;
-  align-items:center;
-  padding:3px 10px;
-  border-radius:999px;
-  font-size:11px;
-  font-weight:800;
-  background:#dbeafe;
-  color:#1e40af;
-  border:1px solid #bfdbfe;
-  white-space:nowrap;
+.spinner {
+  width: 54px;
+  height: 54px;
+  border: 5px solid #e5e7eb;
+  border-top-color: #4f46e5;
+  border-radius: 999px;
+  margin: 0 auto 16px;
+  animation: spin 1s linear infinite;
 }
 
-.loc-building {
-  display:inline-flex;
-  align-items:center;
-  padding:3px 10px;
-  border-radius:999px;
-  font-size:11px;
-  font-weight:800;
-  background:#f3e8ff;
-  color:#6b21a8;
-  border:1px solid #e9d5ff;
-  white-space:nowrap;
-  direction:rtl;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-.loc-zone {
-  font-size:12px;
-  color:#475569;
-  font-weight:700;
-  white-space:nowrap;
-}
-
-.loc-lane {
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:28px;
-  height:28px;
-  border-radius:8px;
-  font-size:12px;
-  font-weight:900;
-  background:#f1f5f9;
-  color:#334155;
-  border:1px solid #e2e8f0;
-}
-
-.loc-lane.empty {
-  color:#cbd5e1;
-  font-size:14px;
-}
-
-.dir-badge {
-  display:inline-flex;
-  align-items:center;
-  gap:5px;
-  padding:3px 10px;
-  border-radius:7px;
-  font-size:11px;
-  font-weight:900;
-  white-space:nowrap;
-}
-
-.dir-badge.in {
-  background:#dcfce7;
-  color:#15803d;
-  border:1px solid #86efac;
-}
-
-.dir-badge.out {
-  background:#fee2e2;
-  color:#b91c1c;
-  border:1px solid #fecaca;
-}
-
-.dir-badge.neutral {
-  background:#f1f5f9;
-  color:#475569;
-  border:1px solid #e2e8f0;
-}
-
-.loc-type {
-  display:inline-flex;
-  align-items:center;
-  padding:3px 10px;
-  border-radius:999px;
-  font-size:11px;
-  font-weight:800;
-  background:#fef9c3;
-  color:#92400e;
-  border:1px solid #fde68a;
-  white-space:nowrap;
-}
-
-.row-clickable {
-  cursor:pointer;
-}
-
-.row-clickable:hover {
-  background:rgba(79,70,229,.04) !important;
-}
-
+/* MODAL */
 .modal-backdrop {
-  position:fixed;
-  inset:0;
-  background:rgba(15,23,42,.60);
-  display:flex;
-  align-items:flex-start;
-  justify-content:center;
-  padding:28px 14px;
-  z-index:9999;
-  overflow:auto;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,.62);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 28px 14px;
+  z-index: 9999;
+  overflow-y: auto;
+  overflow-x: hidden;
+  backdrop-filter: blur(8px);
 }
 
 .modal {
-  width:100%;
-  max-width:1180px;
-  background:#fff;
-  border-radius:22px;
-  box-shadow:0 25px 80px rgba(15,23,42,.30);
-  overflow:hidden;
-  margin-bottom:40px;
+  width: 100%;
+  max-width: 1180px;
+  background: #fff;
+  border-radius: 24px;
+  box-shadow: 0 25px 80px rgba(15,23,42,.34);
+  overflow: hidden;
+  margin-bottom: 50px;
 }
 
-.modal__head {
-  padding:22px 26px;
-  border-bottom:1px solid #e5e7eb;
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:16px;
-  background:linear-gradient(135deg,#f8fafc,#eef2ff);
+.modal-head {
+  padding: 22px 26px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  background: linear-gradient(135deg, #f8fafc, #eef2ff);
 }
 
-.modal__eyebrow {
-  display:block;
-  font-size:12px;
-  color:#64748b;
-  font-weight:900;
-  margin-bottom:6px;
+.modal-eyebrow {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 950;
+  margin-bottom: 6px;
 }
 
-.modal__title {
-  font-size:22px;
-  color:#0f172a;
-  font-weight:950;
+.modal-title {
+  font-size: 22px;
+  color: #0f172a;
+  font-weight: 950;
+  line-height: 1.25;
 }
 
-.modal__sub {
-  margin-top:7px;
-  color:#64748b;
-  font-size:13px;
-  font-weight:700;
+.modal-sub {
+  margin-top: 7px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
 }
 
-.modal__head-tags {
-  display:flex;
-  flex-wrap:wrap;
-  gap:7px;
-  margin-top:10px;
+.modal-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
 }
 
-.modal__close {
-  border:1px solid #cbd5e1;
-  background:#fff;
-  color:#0f172a;
-  width:36px;
-  height:36px;
-  border-radius:12px;
-  font-size:18px;
-  cursor:pointer;
-  flex-shrink:0;
+.modal-close {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  font-size: 20px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.modal__close:hover {
-  background:#f1f5f9;
-}
-
-.modal__body {
-  padding:24px 26px 30px;
-  display:flex;
-  flex-direction:column;
-  gap:22px;
-}
-
-.modal__loading,
-.modal__error {
-  padding:42px;
-  text-align:center;
-  font-size:14px;
-  font-weight:800;
-}
-
-.modal__error {
-  color:#dc2626;
+.modal-body {
+  padding: 24px 26px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
 }
 
 .section {
-  border:1px solid #e5e7eb;
-  border-radius:18px;
-  padding:18px;
-  background:#fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 19px;
+  padding: 18px;
+  background: #fff;
 }
 
 .section-title {
-  display:flex;
-  align-items:center;
-  gap:10px;
-  color:#0f172a;
-  font-size:15px;
-  font-weight:950;
-  margin-bottom:14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+  margin-bottom: 14px;
 }
 
 .section-title::after {
-  content:"";
-  height:1px;
-  background:#e5e7eb;
-  flex:1;
+  content: "";
+  height: 1px;
+  background: #e5e7eb;
+  flex: 1;
 }
 
 .info-grid {
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:10px;
-}
-
-@media(max-width:950px) {
-  .info-grid {
-    grid-template-columns:repeat(2,1fr);
-  }
-}
-
-@media(max-width:560px) {
-  .info-grid {
-    grid-template-columns:1fr;
-  }
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
 }
 
 .info-box {
-  background:#f8fafc;
-  border:1px solid #e5e7eb;
-  border-radius:14px;
-  padding:12px;
-  min-height:70px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 70px;
 }
 
-.info-box__key {
-  display:block;
-  color:#64748b;
-  font-size:11px;
-  font-weight:900;
-  margin-bottom:5px;
+.info-key {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  margin-bottom: 5px;
 }
 
-.info-box__val {
-  color:#0f172a;
-  font-size:13px;
-  font-weight:900;
-  word-break:break-word;
-}
-
-.status-flow {
-  display:grid;
-  grid-template-columns:1fr auto 1fr;
-  gap:12px;
-  align-items:center;
-}
-
-@media(max-width:700px) {
-  .status-flow {
-    grid-template-columns:1fr;
-  }
-
-  .status-arrow {
-    transform:rotate(90deg);
-    justify-self:center;
-  }
-}
-
-.status-card {
-  padding:16px;
-  border-radius:18px;
-  border:1px solid #e5e7eb;
-  background:#f8fafc;
-}
-
-.status-card__label {
-  color:#64748b;
-  font-size:12px;
-  font-weight:900;
-  display:block;
-  margin-bottom:8px;
-}
-
-.status-card__value {
-  font-size:18px;
-  font-weight:950;
-}
-
-.status-card.good {
-  background:#f0fdf4;
-  border-color:#bbf7d0;
-}
-
-.status-card.bad {
-  background:#fef2f2;
-  border-color:#fecaca;
-}
-
-.status-card.warn {
-  background:#fffbeb;
-  border-color:#fde68a;
-}
-
-.status-card.muted {
-  background:#f8fafc;
-  border-color:#e2e8f0;
-}
-
-.status-arrow {
-  color:#64748b;
-  font-size:26px;
-  font-weight:950;
+.info-val {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 850;
+  word-break: break-word;
 }
 
 .summary-row {
-  display:grid;
-  grid-template-columns:repeat(5,1fr);
-  gap:10px;
-}
-
-@media(max-width:900px) {
-  .summary-row {
-    grid-template-columns:repeat(2,1fr);
-  }
-}
-
-@media(max-width:520px) {
-  .summary-row {
-    grid-template-columns:1fr;
-  }
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
 }
 
 .summary-card {
-  border:1px solid #e5e7eb;
-  border-radius:16px;
-  padding:14px;
-  background:#f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 14px;
+  background: #f8fafc;
 }
 
-.summary-card__label {
-  display:block;
-  color:#64748b;
-  font-size:11px;
-  font-weight:900;
+.summary-label {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
 }
 
-.summary-card__value {
-  display:block;
-  margin-top:4px;
-  color:#0f172a;
-  font-size:24px;
-  font-weight:950;
+.summary-value {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 24px;
+  font-weight: 950;
 }
 
 .image-grid {
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
-  gap:12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 13px;
 }
 
 .image-card {
-  border:1px solid #e5e7eb;
-  border-radius:16px;
-  overflow:hidden;
-  background:#f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 17px;
+  overflow: hidden;
+  background: #f8fafc;
 }
 
 .image-card img {
-  display:block;
-  width:100%;
-  height:145px;
-  object-fit:cover;
-  cursor:pointer;
-  background:#e5e7eb;
+  display: block;
+  width: 100%;
+  height: 175px;
+  object-fit: cover;
+  cursor: pointer;
+  background: #e5e7eb;
 }
 
-.image-card__body {
-  padding:10px;
-  font-size:12px;
-  color:#475569;
-  font-weight:800;
-  line-height:1.55;
+.missing-image-box {
+  height: 175px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 950;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.image-body {
+  padding: 10px;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 800;
+  line-height: 1.55;
 }
 
 .issue-card {
-  border:1px solid #e5e7eb;
-  border-radius:18px;
-  padding:16px;
-  background:#f8fafc;
-  margin-bottom:12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  padding: 16px;
+  background: #f8fafc;
+  margin-bottom: 12px;
 }
 
 .issue-head {
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-  align-items:flex-start;
-  margin-bottom:12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
 }
 
 .issue-title {
-  font-size:15px;
-  font-weight:950;
-  color:#0f172a;
+  font-size: 15px;
+  font-weight: 950;
+  color: #0f172a;
 }
 
 .issue-meta {
-  font-size:12px;
-  color:#64748b;
-  font-weight:800;
-  margin-top:4px;
-  line-height:1.5;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 800;
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
 .solution-list {
-  display:flex;
-  flex-direction:column;
-  gap:8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .solution-row {
-  display:grid;
-  grid-template-columns:34px 1fr auto;
-  gap:10px;
-  align-items:flex-start;
-  background:#fff;
-  border:1px solid #e5e7eb;
-  border-radius:14px;
-  padding:10px;
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  gap: 10px;
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 10px;
 }
 
 .step-num {
-  width:28px;
-  height:28px;
-  border-radius:10px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:#eef2ff;
-  color:#4338ca;
-  font-size:12px;
-  font-weight:950;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 12px;
+  font-weight: 950;
 }
 
 .solution-title {
-  color:#0f172a;
-  font-size:13px;
-  font-weight:950;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 950;
 }
 
 .solution-desc {
-  color:#64748b;
-  font-size:12px;
-  font-weight:700;
-  margin-top:3px;
-  line-height:1.5;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 3px;
+  line-height: 1.5;
 }
 
 .done-time {
-  color:#64748b;
-  font-size:11px;
-  font-weight:800;
-  margin-top:4px;
-}
-
-.empty {
-  color:#94a3b8;
-  font-size:13px;
-  font-weight:800;
-  padding:14px;
-  background:#f8fafc;
-  border-radius:14px;
-  border:1px dashed #cbd5e1;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  margin-top: 4px;
 }
 
 .timeline {
-  display:flex;
-  flex-direction:column;
+  display: flex;
+  flex-direction: column;
 }
 
 .tl-item {
-  display:flex;
-  gap:12px;
+  display: flex;
+  gap: 12px;
 }
 
 .tl-left {
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  width:20px;
-  flex-shrink:0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 20px;
+  flex-shrink: 0;
 }
 
 .tl-dot {
-  width:12px;
-  height:12px;
-  border-radius:50%;
-  border:2px solid #64748b;
-  margin-top:4px;
-  background:#fff;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #64748b;
+  margin-top: 4px;
+  background: #fff;
 }
 
 .tl-dot.good {
-  background:#dcfce7;
-  border-color:#16a34a;
+  background: #dcfce7;
+  border-color: #16a34a;
 }
 
 .tl-dot.bad {
-  background:#fee2e2;
-  border-color:#dc2626;
+  background: #fee2e2;
+  border-color: #dc2626;
 }
 
 .tl-dot.warn {
-  background:#fef9c3;
-  border-color:#d97706;
+  background: #fef9c3;
+  border-color: #d97706;
 }
 
 .tl-dot.muted {
-  background:#f1f5f9;
-  border-color:#64748b;
+  background: #f1f5f9;
+  border-color: #64748b;
 }
 
 .tl-line {
-  width:1px;
-  flex:1;
-  min-height:20px;
-  background:#e5e7eb;
-  margin:3px 0;
+  width: 1px;
+  flex: 1;
+  min-height: 20px;
+  background: #e5e7eb;
+  margin: 3px 0;
 }
 
 .tl-right {
-  padding-bottom:16px;
+  padding-bottom: 16px;
 }
 
 .tl-time {
-  font-size:11px;
-  color:#94a3b8;
-  font-weight:900;
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 950;
 }
 
 .tl-title {
-  font-size:13px;
-  color:#0f172a;
-  font-weight:950;
-  margin-top:2px;
+  font-size: 13px;
+  color: #0f172a;
+  font-weight: 950;
+  margin-top: 2px;
 }
 
 .tl-note {
-  font-size:12px;
-  color:#64748b;
-  font-weight:700;
-  margin-top:2px;
-  line-height:1.5;
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 700;
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+.empty {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 850;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 14px;
+  border: 1px dashed #cbd5e1;
+}
+
+@media (max-width: 1350px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .filters-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 950px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .filters-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .grid-view {
+    grid-template-columns: 1fr;
+  }
+
+  .info-grid,
+  .summary-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .insp-hero-inner {
+    flex-direction: column;
+  }
+
+  .insp-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 560px) {
+  .inspections-page {
+    padding: 10px;
+  }
+
+  .stats-grid,
+  .info-grid,
+  .summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-body {
+    padding: 18px;
+  }
+
+  .solution-row {
+    grid-template-columns: 1fr;
+  }
 }
 `;
 
 function injectStyles() {
-  if (document.getElementById("inspection-details-page-styles-final")) return;
+  if (document.getElementById("smartit-inspections-final-css")) return;
 
   const el = document.createElement("style");
-  el.id = "inspection-details-page-styles-final";
+  el.id = "smartit-inspections-final-css";
   el.textContent = CSS;
   document.head.appendChild(el);
 }
 
-function StatCard({ label, value, sub }) {
+/* =========================
+   SMALL COMPONENTS
+========================= */
+
+function StatCard({ label, value, sub, color }) {
   return (
-    <div className="insp-stat">
-      <span className="insp-stat__label">{label}</span>
-      <span className="insp-stat__val">{value}</span>
-      {sub && <span className="insp-stat__sub">{sub}</span>}
+    <div className="stat-card" style={{ "--stat-color": color || "#4f46e5" }}>
+      <span className="stat-label">{label}</span>
+      <span className="stat-value">{value}</span>
+      {sub && <span className="stat-sub">{sub}</span>}
     </div>
   );
 }
@@ -1000,8 +1379,8 @@ function StatCard({ label, value, sub }) {
 function InfoBox({ label, value }) {
   return (
     <div className="info-box">
-      <span className="info-box__key">{label}</span>
-      <span className="info-box__val">{safeValue(value)}</span>
+      <span className="info-key">{label}</span>
+      <span className="info-val">{safe(value)}</span>
     </div>
   );
 }
@@ -1009,41 +1388,183 @@ function InfoBox({ label, value }) {
 function SummaryCard({ label, value }) {
   return (
     <div className="summary-card">
-      <span className="summary-card__label">{label}</span>
-      <span className="summary-card__value">{value}</span>
+      <span className="summary-label">{label}</span>
+      <span className="summary-value">{value}</span>
     </div>
   );
 }
 
-function DirectionBadge({ direction }) {
-  if (!direction || direction === "—") {
-    return <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>;
-  }
-
-  const isIn = direction === "IN";
-  const isOut = direction === "OUT";
-  const cls = isIn ? "in" : isOut ? "out" : "neutral";
-  const arrow = isIn ? "→" : isOut ? "←" : "";
-
+function LoadingScreen() {
   return (
-    <span className={`dir-badge ${cls}`}>
-      {arrow && <span style={{ fontSize: 10 }}>{arrow}</span>}
-      {direction}
-    </span>
+    <div className="inspections-page">
+      <div className="state-card">
+        <div>
+          <div className="spinner" />
+          جاري تحميل كل التفتيشات والصور...
+        </div>
+      </div>
+    </div>
   );
 }
 
-function LaneBadge({ lane }) {
-  if (!lane) {
-    return <span className="loc-lane empty">—</span>;
+/* =========================
+   IMAGE COMPONENTS
+========================= */
+
+function InspectionImage({ img, index, inspectionId, apiBase }) {
+  const [failed, setFailed] = useState(false);
+
+  const imagePath = getImagePath(img);
+  const src = fixImageUrl(imagePath, apiBase);
+
+  return (
+    <div className="image-card">
+      {failed || !src ? (
+        <div className="missing-image-box">
+          الصورة لم تظهر
+          <br />
+          تأكدي أن الملف موجود في السيرفر
+          <br />
+          أو أن الباك إند عامل static files
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={`Inspection ${inspectionId} image ${index + 1}`}
+          onClick={() => window.open(src, "_blank")}
+          onError={() => setFailed(true)}
+        />
+      )}
+
+      <div className="image-body">
+        <div>Image ID: {safe(img?.id)}</div>
+        <div>Type: {safe(img?.imageType || img?.type || "general")}</div>
+        <div>Created: {fmtFull(img?.createdAt)}</div>
+        <div style={{ wordBreak: "break-all" }}>Path: {safe(imagePath)}</div>
+      </div>
+    </div>
+  );
+}
+
+function FirstImagePreview({ inspection, apiBase }) {
+  const [failed, setFailed] = useState(false);
+  const images = getImages(inspection);
+  const first = images[0];
+  const path = getImagePath(first);
+  const src = fixImageUrl(path, apiBase);
+
+  if (!src || failed) {
+    return <div className="no-photo">No image uploaded</div>;
   }
 
-  return <span className="loc-lane">{lane}</span>;
+  return (
+    <img
+      src={src}
+      alt={`Inspection ${inspection.id}`}
+      onError={() => setFailed(true)}
+    />
+  );
 }
+
+function TableThumbs({ inspection, apiBase }) {
+  const images = getImages(inspection).slice(0, 3);
+
+  if (!images.length) {
+    return <span className="tag info">0 image</span>;
+  }
+
+  return (
+    <div className="thumb-list">
+      {images.map((img, index) => {
+        const src = fixImageUrl(getImagePath(img), apiBase);
+
+        return (
+          <img
+            key={img?.id || index}
+            className="thumb"
+            src={src}
+            alt={`thumb ${index + 1}`}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        );
+      })}
+
+      <span className="tag good">{getImages(inspection).length} image</span>
+    </div>
+  );
+}
+
+/* =========================
+   GRID CARD
+========================= */
+
+function InspectionCard({ inspection, apiBase, onOpen }) {
+  const device = inspection.device || {};
+  const loc = device.location || {};
+  const tech = inspection.technician || {};
+  const scan = getScanInfo(inspection);
+  const images = getImages(inspection);
+  const issues = getIssues(inspection);
+  const actions = getActions(inspection);
+  const doneActions = actions.filter((a) => a.status === "DONE");
+
+  return (
+    <div className="inspection-card" onClick={() => onOpen(inspection)}>
+      <div className="card-cover">
+        <FirstImagePreview inspection={inspection} apiBase={apiBase} />
+        <div className="photo-count">📷 {images.length}</div>
+      </div>
+
+      <div className="card-body">
+        <div className="card-topline">
+          <span className="card-id">#{inspection.id}</span>
+          <span className={`tag ${scan.scanned ? "good" : "warn"}`}>
+            {scan.scanned ? "تم Scan" : "لم يتم Scan"}
+          </span>
+        </div>
+
+        <div className="card-title">
+          {device.deviceName || device.deviceCode || "Device"}
+        </div>
+
+        <div className="card-meta">
+          Status: {arStatus(inspection.inspectionStatus)}
+          <br />
+          Technician:{" "}
+          {tech.fullName || tech.username || tech.email || `#${inspection.technicianId || "—"}`}
+          <br />
+          Location: {safe(loc.building)} · {safe(loc.cluster)} · {safe(loc.zone)}
+          <br />
+          Date: {fmtFull(inspection.inspectedAt || inspection.createdAt)}
+        </div>
+
+        <div className="card-tags">
+          <span className={`tag ${statusClass(inspection.inspectionStatus)}`}>
+            {arStatus(inspection.inspectionStatus)}
+          </span>
+          <span className={images.length ? "tag good" : "tag info"}>
+            {images.length} image
+          </span>
+          <span className={issues.length ? "tag warn" : "tag muted"}>
+            {issues.length} issue
+          </span>
+          <span className={doneActions.length ? "tag good" : "tag muted"}>
+            {doneActions.length}/{actions.length} actions
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   DETAILS MODAL
+========================= */
 
 function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
   const [detail, setDetail] = useState(inspection);
-  const [extraImages, setExtraImages] = useState([]);
   const [loading, setLoading] = useState(Boolean(inspection?.id));
   const [error, setError] = useState("");
 
@@ -1058,41 +1579,20 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
       setError("");
 
       try {
-        const fullRes = await fetch(`${base}/inspections/full/${inspection.id}`, {
+        const res = await fetch(`${base}/inspections/full/${inspection.id}`, {
           signal: controller.signal,
         });
 
-        if (!fullRes.ok) {
-          throw new Error(`HTTP ${fullRes.status}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const fullData = await fullRes.json();
-
-        let imageData = [];
-
-        try {
-          const imgRes = await fetch(
-            `${base}/inspection-image/inspection/${inspection.id}`,
-            { signal: controller.signal }
-          );
-
-          if (imgRes.ok) {
-            imageData = await imgRes.json();
-          }
-        } catch (imgErr) {
-          console.warn("Could not load images from inspection-image endpoint", imgErr);
-        }
-
-        setDetail(fullData);
-        setExtraImages(Array.isArray(imageData) ? imageData : []);
-        setLoading(false);
+        const data = await res.json();
+        setDetail(data);
       } catch (err) {
         if (err.name === "AbortError") return;
-
         console.error(err);
+        setError("تعذر تحميل التفاصيل الكاملة، سيتم عرض البيانات المتاحة.");
         setDetail(inspection);
-        setExtraImages([]);
-        setError("تعذر تحميل كل التفاصيل من الباك اند، هنعرض المتاح فقط.");
+      } finally {
         setLoading(false);
       }
     }
@@ -1112,24 +1612,17 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
   const task = d.task || {};
 
   const scan = getScanInfo(d);
+  const images = getImages(d);
+  const issues = getIssues(d);
+  const actions = getActions(d);
+  const history = Array.isArray(device.statusHistory) ? device.statusHistory : [];
 
-  const directImages = getInspectionImages(d);
-  const imagesMap = new Map();
-
-  [...directImages, ...extraImages].forEach((img, index) => {
-    const key = img?.id || img?.imageUrl || img?.url || index;
-    imagesMap.set(String(key), img);
-  });
-
-  const images = [...imagesMap.values()];
+  const doneActions = actions.filter((a) => a.status === "DONE").length;
+  const failedActions = actions.filter((a) => a.status === "FAILED").length;
+  const pendingActions = actions.filter((a) => a.status === "PENDING").length;
 
   const statusBefore = getStatusBefore(d) || "—";
   const statusAfter = getStatusAfter(d) || "—";
-
-  const history = Array.isArray(device.statusHistory) ? device.statusHistory : [];
-  const issues = getIssueList(d);
-  const actions = getSolutionActions(d);
-  const doneSummary = getDoneSummary(d);
 
   const actionBySolutionId = new Map();
 
@@ -1143,7 +1636,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
       time: d.createdAt,
       status: "muted",
       title: "Inspection created",
-      note: `Inspection #${d.id} was created.`,
+      note: `Inspection #${d.id}`,
     },
     d.inspectedAt && {
       time: d.inspectedAt,
@@ -1151,13 +1644,13 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
       title: `Inspection result: ${arStatus(d.inspectionStatus)}`,
       note: d.notes || d.issueReason || "—",
     },
-    scan && {
+    {
       time: d.inspectedAt || d.createdAt,
       status: scan.scanned ? "DONE" : "SKIPPED",
-      title: scan.scanned ? "Scan verification completed" : "No scan verification",
-      note: `Method: ${safeValue(scan.scanMethodLabel || scan.scanMethod)} · Type: ${safeValue(
-        scan.scanCodeTypeLabel || scan.scanCodeType
-      )} · QR attempts: ${safeValue(scan.qrAttempts)} · Manual fallback: ${
+      title: scan.scanned ? "Scan Done" : "No Scan",
+      note: `Method: ${getScanMethodText(d)} · Type: ${getScanCodeTypeText(
+        d
+      )} · QR attempts: ${scan.qrAttempts} · Manual fallback: ${
         scan.manualFallbackUsed ? "Yes" : "No"
       }`,
     },
@@ -1181,7 +1674,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
     ...actions.map((a) => ({
       time: a.doneAt || a.updatedAt || a.createdAt,
       status: a.status,
-      title: `Solution step: ${a.solution?.title || `#${a.solutionId}`}`,
+      title: `Solution action: ${a.solution?.title || `#${a.solutionId}`}`,
       note: `${arStatus(a.status)} ${
         a.technician
           ? `· By ${a.technician.fullName || a.technician.username || "—"}`
@@ -1191,7 +1684,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
     d.updatedAt && {
       time: d.updatedAt,
       status: "muted",
-      title: "Inspection last updated",
+      title: "Inspection updated",
       note: `Updated at ${fmtFull(d.updatedAt)}`,
     },
   ]
@@ -1204,18 +1697,18 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="modal">
-        <div className="modal__head">
+        <div className="modal-head">
           <div>
-            <span className="modal__eyebrow">
+            <span className="modal-eyebrow">
               Inspection #{d.id} · {fmtFull(d.inspectedAt || d.createdAt)}
             </span>
 
-            <div className="modal__title">
+            <div className="modal-title">
               {device.deviceName || device.deviceCode || "Device"} —{" "}
               {arStatus(d.inspectionStatus)}
             </div>
 
-            <div className="modal__sub">
+            <div className="modal-sub">
               Technician:{" "}
               {technician.fullName ||
                 technician.username ||
@@ -1223,84 +1716,55 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                 `#${d.technicianId || "—"}`}
             </div>
 
-            <div className="modal__head-tags">
+            <div className="modal-tags">
               <span className={`tag ${statusClass(d.inspectionStatus)}`}>
                 {arStatus(d.inspectionStatus)}
+              </span>
+
+              <span className={`tag ${scan.scanned ? "good" : "warn"}`}>
+                {scan.scanned ? "تم Scan" : "لم يتم Scan"}
               </span>
 
               <span className={images.length > 0 ? "tag good" : "tag info"}>
                 {images.length} image
               </span>
 
+              <span className="tag purple">{issues.length} issue</span>
+
               <span className="tag good">
-                Done {doneSummary.done}/{doneSummary.total}
+                Done {doneActions}/{actions.length}
               </span>
-
-              <span className="tag purple">Issues {issues.length}</span>
-
-              <span className={scan.scanned ? "tag good" : "tag warn"}>
-                {scan.scanned ? "Scan Done" : "No Scan"}
-              </span>
-
-              {scan.manualFallbackUsed && (
-                <span className="tag warn">Manual after QR attempts</span>
-              )}
             </div>
           </div>
 
-          <button className="modal__close" onClick={onClose}>
+          <button className="modal-close" onClick={onClose}>
             ×
           </button>
         </div>
 
-        <div className="modal__body">
+        <div className="modal-body">
           {loading ? (
-            <div className="modal__loading">جاري تحميل كل تفاصيل الفحص...</div>
+            <div className="state-card">
+              <div>
+                <div className="spinner" />
+                جاري تحميل كل تفاصيل الفحص...
+              </div>
+            </div>
           ) : (
             <>
-              {error && <div className="modal__error">{error}</div>}
+              {error && <div className="insp-error">{error}</div>}
 
               <div className="section">
                 <div className="section-title">Full summary</div>
-
                 <div className="summary-row">
+                  <SummaryCard label="Scan" value={scan.scanned ? "Yes" : "No"} />
                   <SummaryCard label="Images" value={images.length} />
                   <SummaryCard label="Issues" value={issues.length} />
                   <SummaryCard
-                    label="Done steps"
-                    value={`${doneSummary.done}/${doneSummary.total}`}
+                    label="Actions"
+                    value={`${doneActions}/${actions.length}`}
                   />
-                  <SummaryCard label="QR Attempts" value={scan.qrAttempts ?? 0} />
-                  <SummaryCard
-                    label="Scan"
-                    value={scan.scanned ? "Yes" : "No"}
-                  />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Device status before / after</div>
-
-                <div className="status-flow">
-                  <div className={`status-card ${statusClass(statusBefore)}`}>
-                    <span className="status-card__label">
-                      حالة الجهاز قبل الفحص
-                    </span>
-                    <div className="status-card__value">
-                      {arStatus(statusBefore)}
-                    </div>
-                  </div>
-
-                  <div className="status-arrow">→</div>
-
-                  <div className={`status-card ${statusClass(statusAfter)}`}>
-                    <span className="status-card__label">
-                      حالة الجهاز بعد الفحص
-                    </span>
-                    <div className="status-card__value">
-                      {arStatus(statusAfter)}
-                    </div>
-                  </div>
+                  <SummaryCard label="QR Attempts" value={scan.qrAttempts} />
                 </div>
               </div>
 
@@ -1310,41 +1774,33 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                 <div className="info-grid">
                   <InfoBox
                     label="Scan Status"
-                    value={scan.scannedLabel || getScanLabel(d)}
+                    value={scan.scanned ? "تم عمل Scan" : "لم يتم عمل Scan"}
                   />
-                  <InfoBox
-                    label="Scan Method"
-                    value={scan.scanMethodLabel || scan.scanMethod}
-                  />
-                  <InfoBox
-                    label="Scan Code Type"
-                    value={scan.scanCodeTypeLabel || scan.scanCodeType}
-                  />
-                  <InfoBox
-                    label="Masked Code"
-                    value={scan.scanCodeValueMasked}
-                  />
-                  <InfoBox label="QR Attempts" value={scan.qrAttempts ?? 0} />
+                  <InfoBox label="Scan Method" value={getScanMethodText(d)} />
+                  <InfoBox label="Scan Code Type" value={getScanCodeTypeText(d)} />
+                  <InfoBox label="Masked Code" value={scan.scanCodeValueMasked} />
+                  <InfoBox label="QR Attempts" value={scan.qrAttempts} />
                   <InfoBox
                     label="Manual Fallback"
                     value={
-                      scan.manualFallbackUsedLabel ||
-                      (scan.manualFallbackUsed ? "تم فتح البحث اليدوي" : "لم يتم فتح البحث اليدوي")
+                      scan.manualFallbackUsed
+                        ? "تم استخدام البحث اليدوي"
+                        : "لم يتم استخدام البحث اليدوي"
                     }
+                  />
+                  <InfoBox
+                    label="Verified"
+                    value={scan.scanned ? "Verified" : "Not Verified"}
                   />
                   <InfoBox
                     label="Security Note"
                     value={
-                      scan.scanCodeType === "SECRET_QR"
-                        ? "تم التحقق من الجهاز باستخدام QR السري"
-                        : scan.manualFallbackUsed
-                          ? "تم استخدام البحث اليدوي بعد محاولات QR"
-                          : "لا توجد بيانات Scan مسجلة"
+                      scan.inferred && scan.scanned
+                        ? "تم اعتبار الفحص Verified لأنه مربوط بجهاز"
+                        : scan.scanned
+                        ? "تم التحقق من الجهاز"
+                        : "لم يتم تسجيل Scan"
                     }
-                  />
-                  <InfoBox
-                    label="Scan Verified"
-                    value={scan.scanned ? "Verified" : "Not Verified"}
                   />
                 </div>
               </div>
@@ -1379,6 +1835,23 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
               </div>
 
               <div className="section">
+                <div className="section-title">Device status before / after</div>
+
+                <div className="info-grid">
+                  <InfoBox label="Before" value={arStatus(statusBefore)} />
+                  <InfoBox label="After" value={arStatus(statusAfter)} />
+                  <InfoBox
+                    label="Device Current Status"
+                    value={arStatus(device.currentStatus)}
+                  />
+                  <InfoBox
+                    label="Last Inspection At"
+                    value={fmtFull(device.lastInspectionAt)}
+                  />
+                </div>
+              </div>
+
+              <div className="section">
                 <div className="section-title">Technician information</div>
 
                 <div className="info-grid">
@@ -1392,10 +1865,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                   <InfoBox label="Phone" value={technician.phone} />
                   <InfoBox label="Job Title" value={technician.jobTitle} />
                   <InfoBox label="Role" value={technician.role?.name} />
-                  <InfoBox
-                    label="Done Steps"
-                    value={`${doneSummary.done}/${doneSummary.total}`}
-                  />
+                  <InfoBox label="Actions Done" value={doneActions} />
                 </div>
               </div>
 
@@ -1416,18 +1886,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                   <InfoBox label="Firmware" value={device.firmware} />
                   <InfoBox label="Excel Status" value={device.excelStatus} />
                   <InfoBox label="Excel Date" value={device.excelDate} />
-                  <InfoBox
-                    label="Install Date"
-                    value={fmtFull(device.installDate)}
-                  />
-                  <InfoBox
-                    label="Last Inspection At"
-                    value={fmtFull(device.lastInspectionAt)}
-                  />
-                  <InfoBox
-                    label="Current Status"
-                    value={arStatus(device.currentStatus)}
-                  />
+                  <InfoBox label="Install Date" value={fmtFull(device.installDate)} />
                   <InfoBox label="Notes" value={device.notes} />
                   <InfoBox label="Created At" value={fmtFull(device.createdAt)} />
                   <InfoBox label="Updated At" value={fmtFull(device.updatedAt)} />
@@ -1449,14 +1908,8 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                   <InfoBox label="Direction" value={location.direction} />
                   <InfoBox label="Type" value={location.type} />
                   <InfoBox label="Excel ID" value={location.excelId} />
-                  <InfoBox
-                    label="Created At"
-                    value={fmtFull(location.createdAt)}
-                  />
-                  <InfoBox
-                    label="Updated At"
-                    value={fmtFull(location.updatedAt)}
-                  />
+                  <InfoBox label="Created At" value={fmtFull(location.createdAt)} />
+                  <InfoBox label="Updated At" value={fmtFull(location.updatedAt)} />
                 </div>
               </div>
 
@@ -1475,14 +1928,6 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                     />
                     <InfoBox label="Frequency" value={task.frequency} />
                     <InfoBox label="Task Notes" value={task.notes} />
-                    <InfoBox
-                      label="Assigned To"
-                      value={task.assignedTo?.fullName || task.assignedTo?.username}
-                    />
-                    <InfoBox
-                      label="Created By"
-                      value={task.createdBy?.fullName || task.createdBy?.username}
-                    />
                     <InfoBox label="Created At" value={fmtFull(task.createdAt)} />
                     <InfoBox label="Updated At" value={fmtFull(task.updatedAt)} />
                   </div>
@@ -1495,65 +1940,29 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                 </div>
 
                 {images.length === 0 ? (
-                  <div className="empty">
-                    لا توجد صور مرفوعة لهذا الفحص. لو الصورة موجودة في Prisma
-                    Studio اتأكدي إن inspectionId بتاعها نفس رقم الفحص.
-                  </div>
+                  <div className="empty">لا توجد صور مرفوعة لهذا الفحص.</div>
                 ) : (
                   <div className="image-grid">
-                    {images.map((img, index) => {
-                      const imagePath =
-                        img.imageUrl ||
-                        img.url ||
-                        img.path ||
-                        img.filePath ||
-                        img.filename ||
-                        "";
-
-                      const src = fixImageUrl(imagePath, apiBase);
-
-                      return (
-                        <div
-                          className="image-card"
-                          key={img.id || imagePath || index}
-                        >
-                          <img
-                            src={src}
-                            alt={`Inspection ${d.id} image ${index + 1}`}
-                            onClick={() => window.open(src, "_blank")}
-                            onError={(e) => {
-                              e.currentTarget.style.opacity = "0.25";
-                              e.currentTarget.title = "Image failed to load";
-                            }}
-                          />
-
-                          <div className="image-card__body">
-                            <div>Image ID: {safeValue(img.id)}</div>
-                            <div>
-                              Type: {safeValue(img.imageType || "general")}
-                            </div>
-                            <div>Created: {fmtFull(img.createdAt)}</div>
-                            <div style={{ wordBreak: "break-all" }}>
-                              Path: {safeValue(imagePath)}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {images.map((img, index) => (
+                      <InspectionImage
+                        key={img?.id || getImagePath(img) || index}
+                        img={img}
+                        index={index}
+                        inspectionId={d.id}
+                        apiBase={apiBase}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
 
               <div className="section">
                 <div className="section-title">
-                  Issues and solution steps — Done {doneSummary.done}/
-                  {doneSummary.total}
+                  Issues and solution steps — Done {doneActions}/{actions.length}
                 </div>
 
                 {issues.length === 0 ? (
-                  <div className="empty">
-                    لا توجد مشاكل مسجلة على هذا الفحص.
-                  </div>
+                  <div className="empty">لا توجد مشاكل مسجلة على هذا الفحص.</div>
                 ) : (
                   issues.map((item, itemIndex) => {
                     const issue = item.issue || item;
@@ -1569,16 +1978,16 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                             </div>
 
                             <div className="issue-meta">
-                              Inspection Issue ID: {safeValue(item.id)} · Issue
-                              ID: {safeValue(issue.id || item.issueId)} · Code:{" "}
-                              {safeValue(issue.issueCode)} · Category:{" "}
-                              {safeValue(issue.category?.name)} · Severity:{" "}
-                              {safeValue(issue.severity)}
+                              Inspection Issue ID: {safe(item.id)} · Issue ID:{" "}
+                              {safe(issue.id || item.issueId)} · Code:{" "}
+                              {safe(issue.issueCode)} · Category:{" "}
+                              {safe(issue.category?.name)} · Severity:{" "}
+                              {safe(issue.severity)}
                             </div>
 
                             <div className="issue-meta">
                               Status: {arStatus(item.status)} · Reported By:{" "}
-                              {safeValue(
+                              {safe(
                                 item.reportedBy?.fullName ||
                                   item.reportedBy?.username ||
                                   item.reportedById
@@ -1664,9 +2073,9 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                                     {action && (
                                       <>
                                         <div className="solution-desc">
-                                          Action ID: {safeValue(action.id)} ·
+                                          Action ID: {safe(action.id)} ·
                                           Technician:{" "}
-                                          {safeValue(
+                                          {safe(
                                             action.technician?.fullName ||
                                               action.technician?.username ||
                                               action.technicianId
@@ -1706,9 +2115,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                                   className="solution-row"
                                   key={action.id || actionIndex}
                                 >
-                                  <div className="step-num">
-                                    {actionIndex + 1}
-                                  </div>
+                                  <div className="step-num">{actionIndex + 1}</div>
 
                                   <div>
                                     <div className="solution-title">
@@ -1769,14 +2176,14 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                           </div>
 
                           <div className="solution-desc">
-                            Action ID: {safeValue(action.id)} · Solution ID:{" "}
-                            {safeValue(action.solutionId)} · Inspection Issue
-                            ID: {safeValue(action.inspectionIssueId)}
+                            Action ID: {safe(action.id)} · Solution ID:{" "}
+                            {safe(action.solutionId)} · Inspection Issue ID:{" "}
+                            {safe(action.inspectionIssueId)}
                           </div>
 
                           <div className="solution-desc">
                             Technician:{" "}
-                            {safeValue(
+                            {safe(
                               action.technician?.fullName ||
                                 action.technician?.username ||
                                 action.technicianId
@@ -1784,9 +2191,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                           </div>
 
                           {action.note && (
-                            <div className="solution-desc">
-                              Note: {action.note}
-                            </div>
+                            <div className="solution-desc">Note: {action.note}</div>
                           )}
 
                           <div className="done-time">
@@ -1816,9 +2221,7 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                       <div className="tl-item" key={h.id || index}>
                         <div className="tl-left">
                           <div className={`tl-dot ${statusClass(h.newStatus)}`} />
-                          {index < history.length - 1 && (
-                            <div className="tl-line" />
-                          )}
+                          {index < history.length - 1 && <div className="tl-line" />}
                         </div>
 
                         <div className="tl-right">
@@ -1827,13 +2230,13 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
                             {arStatus(h.oldStatus)} → {arStatus(h.newStatus)}
                           </div>
                           <div className="tl-note">
-                            History ID: {safeValue(h.id)} · Changed By:{" "}
-                            {safeValue(
+                            History ID: {safe(h.id)} · Changed By:{" "}
+                            {safe(
                               h.changedBy?.fullName ||
                                 h.changedBy?.username ||
                                 h.changedById
                             )}{" "}
-                            · Note: {safeValue(h.note)}
+                            · Note: {safe(h.note)}
                           </div>
                         </div>
                       </div>
@@ -1876,15 +2279,28 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
   );
 }
 
+/* =========================
+   MAIN PAGE
+========================= */
+
 export function InspectionsPage({
-  inspections = [],
+  inspections: propInspections,
   technicians = [],
   locations = [],
   apiBase = "",
 }) {
   injectStyles();
 
+  const [inspections, setInspections] = useState(
+    Array.isArray(propInspections) ? propInspections : []
+  );
+
+  const [loading, setLoading] = useState(!Array.isArray(propInspections));
+  const [error, setError] = useState("");
+  const [viewMode, setViewMode] = useState("GRID");
+
   const [selectedInspection, setSelectedInspection] = useState(null);
+
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [techId, setTechId] = useState("");
@@ -1894,26 +2310,109 @@ export function InspectionsPage({
   const [scanOnly, setScanOnly] = useState(false);
   const [manualFallbackOnly, setManualFallbackOnly] = useState(false);
 
-  const clusters = useMemo(
-    () =>
-      unique(inspections, (i) => i.device?.location?.cluster).length
-        ? unique(inspections, (i) => i.device?.location?.cluster)
-        : unique(locations, (l) => l.cluster),
-    [inspections, locations]
-  );
+  const base = getApiBase(apiBase);
 
-  const buildings = useMemo(
-    () =>
-      unique(inspections, (i) => i.device?.location?.building).length
-        ? unique(inspections, (i) => i.device?.location?.building)
-        : unique(locations, (l) => l.building),
-    [inspections, locations]
-  );
+  const loadInspections = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const token =
+        localStorage.getItem("token") ||
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("authToken");
+
+      const res = await fetch(`${base}/inspections`, {
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data = await res.json();
+
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.result)
+        ? data.result
+        : [];
+
+      setInspections(list);
+    } catch (err) {
+      console.error(err);
+      setError("تعذر تحميل التفتيشات من الباك إند.");
+    } finally {
+      setLoading(false);
+    }
+  }, [base]);
+
+  useEffect(() => {
+    if (Array.isArray(propInspections)) {
+      setInspections(propInspections);
+      setLoading(false);
+      return;
+    }
+
+    loadInspections();
+  }, [propInspections, loadInspections]);
+
+  const clusters = useMemo(() => {
+    const fromInspections = [
+      ...new Set(
+        inspections.map((i) => i.device?.location?.cluster).filter(Boolean)
+      ),
+    ].sort();
+
+    if (fromInspections.length) return fromInspections;
+
+    return [...new Set(locations.map((l) => l.cluster).filter(Boolean))].sort();
+  }, [inspections, locations]);
+
+  const buildings = useMemo(() => {
+    const fromInspections = [
+      ...new Set(
+        inspections.map((i) => i.device?.location?.building).filter(Boolean)
+      ),
+    ].sort();
+
+    if (fromInspections.length) return fromInspections;
+
+    return [...new Set(locations.map((l) => l.building).filter(Boolean))].sort();
+  }, [inspections, locations]);
 
   const statuses = useMemo(
-    () => unique(inspections, (i) => i.inspectionStatus),
+    () => [...new Set(inspections.map((i) => i.inspectionStatus).filter(Boolean))],
     [inspections]
   );
+
+  const techOptions = useMemo(() => {
+    const map = new Map();
+
+    technicians.forEach((t) => {
+      if (t?.id) map.set(String(t.id), t);
+    });
+
+    inspections.forEach((i) => {
+      const t = i.technician;
+      const id = i.technicianId || t?.id;
+      if (id && !map.has(String(id))) {
+        map.set(String(id), {
+          id,
+          fullName: t?.fullName,
+          username: t?.username,
+          email: t?.email,
+        });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [technicians, inspections]);
 
   const stats = useMemo(() => {
     const total = inspections.length;
@@ -1924,24 +2423,29 @@ export function InspectionsPage({
       (i) => i.inspectionStatus === "NOT_REACHABLE"
     ).length;
 
-    const imagesCount = inspections.reduce((sum, i) => sum + getImagesCount(i), 0);
-
-    const doneActions = inspections.reduce((sum, i) => {
-      const s = getDoneSummary(i);
-      return sum + s.done;
-    }, 0);
-
-    const totalActions = inspections.reduce((sum, i) => {
-      const s = getDoneSummary(i);
-      return sum + s.total;
-    }, 0);
+    const imagesCount = inspections.reduce(
+      (sum, i) => sum + getImages(i).length,
+      0
+    );
 
     const issuesCount = inspections.reduce(
-      (sum, i) => sum + getIssueList(i).length,
+      (sum, i) => sum + getIssues(i).length,
+      0
+    );
+
+    const actionsCount = inspections.reduce(
+      (sum, i) => sum + getActions(i).length,
+      0
+    );
+
+    const doneActions = inspections.reduce(
+      (sum, i) => sum + getActions(i).filter((a) => a.status === "DONE").length,
       0
     );
 
     const scannedCount = inspections.filter((i) => getScanInfo(i).scanned).length;
+    const notScannedCount = total - scannedCount;
+
     const manualFallbackCount = inspections.filter(
       (i) => getScanInfo(i).manualFallbackUsed
     ).length;
@@ -1953,10 +2457,11 @@ export function InspectionsPage({
       partial,
       notReachable,
       imagesCount,
-      doneActions,
-      totalActions,
       issuesCount,
+      actionsCount,
+      doneActions,
       scannedCount,
+      notScannedCount,
       manualFallbackCount,
     };
   }, [inspections]);
@@ -1969,7 +2474,6 @@ export function InspectionsPage({
       const device = ins.device || {};
       const loc = device.location || {};
       const tech = ins.technician || {};
-      const task = ins.task || {};
       const scan = getScanInfo(ins);
 
       if (status && ins.inspectionStatus !== status) return false;
@@ -1981,7 +2485,6 @@ export function InspectionsPage({
 
       if (cluster && loc.cluster !== cluster) return false;
       if (building && loc.building !== building) return false;
-
       if (scanOnly && !scan.scanned) return false;
       if (manualFallbackOnly && !scan.manualFallbackUsed) return false;
 
@@ -2004,13 +2507,10 @@ export function InspectionsPage({
           ins.notes,
           getStatusBefore(ins),
           getStatusAfter(ins),
-          scan.scannedLabel,
+          scan.scanned ? "scanned تم scan" : "not scanned لم يتم scan",
           scan.scanMethod,
-          scan.scanMethodLabel,
           scan.scanCodeType,
-          scan.scanCodeTypeLabel,
           scan.scanCodeValueMasked,
-          scan.manualFallbackUsedLabel,
           device.id,
           device.deviceCode,
           device.deviceName,
@@ -2027,8 +2527,7 @@ export function InspectionsPage({
           tech.fullName,
           tech.username,
           tech.email,
-          task.status,
-          task.notes,
+          getImages(ins).map(getImagePath).join(" "),
         ]
           .filter(Boolean)
           .join(" ")
@@ -2051,376 +2550,389 @@ export function InspectionsPage({
     manualFallbackOnly,
   ]);
 
-  const columns = useMemo(
-    () => [
-      {
-        key: "id",
-        label: "ID",
-        width: 70,
-      },
-      {
-        key: "inspectionStatus",
-        label: "Status",
-        render: (val) => (
-          <span className={`tag ${statusClass(val)}`}>{arStatus(val)}</span>
-        ),
-      },
-      {
-        key: "beforeDeviceStatus",
-        label: "Before",
-        render: (_, row) => {
-          const before = getStatusBefore(row);
-          return (
-            <span className={`tag ${statusClass(before)}`}>
-              {arStatus(before)}
-            </span>
-          );
-        },
-      },
-      {
-        key: "afterDeviceStatus",
-        label: "After",
-        render: (_, row) => {
-          const after = getStatusAfter(row);
-          return (
-            <span className={`tag ${statusClass(after)}`}>
-              {arStatus(after)}
-            </span>
-          );
-        },
-      },
-      {
-        key: "scanInfo",
-        label: "Scan",
-        render: (_, row) => {
-          const scan = getScanInfo(row);
+  function resetFilters() {
+    setSearch("");
+    setStatus("");
+    setTechId("");
+    setCluster("");
+    setBuilding("");
+    setMonthlyOnly(false);
+    setScanOnly(false);
+    setManualFallbackOnly(false);
+  }
 
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className={`tag ${scan.scanned ? "good" : "warn"}`}>
-                {scan.scanned ? "تم Scan" : "لم يتم"}
-              </span>
-              <span style={{ fontSize: 11, color: "#64748b", fontWeight: 800 }}>
-                {scan.scanMethodLabel || scan.scanMethod || "—"} · QR:{" "}
-                {scan.qrAttempts ?? 0}
-              </span>
-            </div>
-          );
-        },
-      },
-      {
-        key: "manualFallback",
-        label: "Manual",
-        render: (_, row) => {
-          const scan = getScanInfo(row);
-
-          return (
-            <span className={`tag ${scan.manualFallbackUsed ? "warn" : "muted"}`}>
-              {scan.manualFallbackUsed ? "بعد 3 محاولات" : "لا"}
-            </span>
-          );
-        },
-      },
-      {
-        key: "device",
-        label: "Device",
-        render: (_, row) => {
-          const d = row.device || {};
-
-          return (
-            <div>
-              <div style={{ fontWeight: 900, color: "#0f172a" }}>
-                {d.deviceName || d.deviceCode || "—"}
-              </div>
-              <div style={{ fontSize: 11, color: "#64748b", fontWeight: 800 }}>
-                SN: {d.serialNumber || "—"} · Code: {d.deviceCode || "—"}
-              </div>
-            </div>
-          );
-        },
-      },
-      {
-        key: "technician",
-        label: "Technician",
-        render: (_, row) =>
-          row.technician?.fullName ||
-          row.technician?.username ||
-          row.technician?.email ||
-          `#${row.technicianId || "—"}`,
-      },
-      {
-        key: "loc_excelId",
-        label: "Excel ID",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-
-          return l.excelId ? (
-            <span className="loc-excel">{l.excelId}</span>
-          ) : (
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>
-          );
-        },
-      },
-      {
-        key: "loc_cluster",
-        label: "Cluster",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-
-          return l.cluster ? (
-            <span className="loc-cluster">{l.cluster}</span>
-          ) : (
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>
-          );
-        },
-      },
-      {
-        key: "loc_building",
-        label: "Building",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-
-          return l.building ? (
-            <span className="loc-building">{l.building}</span>
-          ) : (
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>
-          );
-        },
-      },
-      {
-        key: "loc_zone",
-        label: "Zone",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-
-          return l.zone ? (
-            <span className="loc-zone">{l.zone}</span>
-          ) : (
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>
-          );
-        },
-      },
-      {
-        key: "loc_lane",
-        label: "Lane",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-          return <LaneBadge lane={l.lane} />;
-        },
-      },
-      {
-        key: "loc_direction",
-        label: "Direction",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-          return <DirectionBadge direction={l.direction} />;
-        },
-      },
-      {
-        key: "loc_type",
-        label: "Loc. Type",
-        render: (_, row) => {
-          const l = row.device?.location || {};
-
-          return l.type ? (
-            <span className="loc-type">{l.type}</span>
-          ) : (
-            <span style={{ color: "#94a3b8", fontSize: 13 }}>—</span>
-          );
-        },
-      },
-      {
-        key: "images",
-        label: "Images",
-        render: (_, row) => {
-          const count = getImagesCount(row);
-
-          return (
-            <span className={`tag ${count > 0 ? "good" : "info"}`}>
-              {count} image
-            </span>
-          );
-        },
-      },
-      {
-        key: "solutionActions",
-        label: "Done steps",
-        render: (_, row) => {
-          const s = getDoneSummary(row);
-
-          return (
-            <span className={`tag ${s.done > 0 ? "good" : "muted"}`}>
-              {s.done}/{s.total}
-            </span>
-          );
-        },
-      },
-      {
-        key: "inspectionIssues",
-        label: "Issues",
-        render: (_, row) => {
-          const count = getIssueList(row).length;
-
-          return (
-            <span className={`tag ${count > 0 ? "warn" : "muted"}`}>
-              {count} issue
-            </span>
-          );
-        },
-      },
-      {
-        key: "issueReason",
-        label: "Issue Reason",
-        render: (val) => val || "—",
-      },
-      {
-        key: "inspectedAt",
-        label: "Inspected At",
-        render: (val) => fmtDate(val),
-      },
-    ],
-    []
-  );
-
-  const handleRowClick = useCallback((row) => {
-    setSelectedInspection(row);
-  }, []);
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
   return (
-    <div className="insp-page">
-      <div className="insp-stats">
-        <StatCard label="Total inspections" value={stats.total} sub="all records" />
-        <StatCard label="OK" value={stats.ok} sub="سليم" />
-        <StatCard label="Full faults" value={stats.notOk} sub="عطل كامل" />
-        <StatCard label="Partial faults" value={stats.partial} sub="عطل جزئي" />
-        <StatCard label="Not reachable" value={stats.notReachable} sub="غير متاح" />
-        <StatCard
-          label="Uploaded images"
-          value={stats.imagesCount}
-          sub="inspection photos"
-        />
-        <StatCard
-          label="Done steps"
-          value={`${stats.doneActions}/${stats.totalActions}`}
-          sub="solution actions"
-        />
-        <StatCard label="Issues" value={stats.issuesCount} sub="reported issues" />
-        <StatCard label="Scanned" value={stats.scannedCount} sub="QR / Manual" />
-        <StatCard
-          label="Manual fallback"
-          value={stats.manualFallbackCount}
-          sub="after QR attempts"
-        />
-      </div>
+    <div className="inspections-page">
+      <div className="inspections-shell">
+        <section className="insp-hero">
+          <div className="insp-hero-inner">
+            <div className="insp-title-wrap">
+              <div className="insp-logo">🔍</div>
 
-      <div className="insp-config">
-        <div className="insp-config__title">Inspection filters</div>
+              <div>
+                <div className="insp-eyebrow">SmartIT Inspect</div>
+                <h1 className="insp-title">Inspections Dashboard</h1>
+                <div className="insp-subtitle">
+                  كل التفتيشات + حالة الـ Scan + الصور + الفني + الجهاز + الموقع.
+                  الصفحة دلوقتي فيها Scroll كامل، Grid/List، والصور تظهر في الكروت
+                  والتفاصيل.
+                </div>
+              </div>
+            </div>
 
-        <div className="insp-filters">
-          <div className="insp-filter">
-            <span className="insp-filter__label">Search</span>
-            <input
-              type="text"
-              value={search}
-              placeholder="device / serial / technician / scan / issue..."
-              onChange={(e) => setSearch(e.target.value)}
-            />
+            <div className="insp-actions">
+              <div className="view-toggle">
+                <button
+                  className={viewMode === "GRID" ? "active" : ""}
+                  onClick={() => setViewMode("GRID")}
+                >
+                  Grid
+                </button>
+
+                <button
+                  className={viewMode === "LIST" ? "active" : ""}
+                  onClick={() => setViewMode("LIST")}
+                >
+                  List
+                </button>
+              </div>
+
+              <button className="insp-btn glass" onClick={loadInspections}>
+                ↻ Refresh Data
+              </button>
+
+              <button className="insp-btn primary" onClick={resetFilters}>
+                Clear Filters
+              </button>
+            </div>
           </div>
+        </section>
 
-          <div className="insp-filter">
-            <span className="insp-filter__label">Status</span>
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All statuses</option>
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {arStatus(s)}
-                </option>
+        {error && <div className="insp-error">⚠ {error}</div>}
+
+        <section className="stats-grid">
+          <StatCard
+            label="Total"
+            value={stats.total}
+            sub="all records"
+            color="#4f46e5"
+          />
+          <StatCard
+            label="Scanned"
+            value={stats.scannedCount}
+            sub="تم Scan"
+            color="#16a34a"
+          />
+          <StatCard
+            label="Not scanned"
+            value={stats.notScannedCount}
+            sub="لم يتم Scan"
+            color="#f59e0b"
+          />
+          <StatCard
+            label="Images"
+            value={stats.imagesCount}
+            sub="uploaded photos"
+            color="#0ea5e9"
+          />
+          <StatCard label="OK" value={stats.ok} sub="سليم" color="#22c55e" />
+          <StatCard
+            label="Faults"
+            value={stats.notOk}
+            sub="عطل كامل"
+            color="#ef4444"
+          />
+          <StatCard
+            label="Partial"
+            value={stats.partial}
+            sub="عطل جزئي"
+            color="#f59e0b"
+          />
+          <StatCard
+            label="Not reachable"
+            value={stats.notReachable}
+            sub="غير متاح"
+            color="#64748b"
+          />
+          <StatCard
+            label="Issues"
+            value={stats.issuesCount}
+            sub="reported issues"
+            color="#a855f7"
+          />
+          <StatCard
+            label="Done actions"
+            value={`${stats.doneActions}/${stats.actionsCount}`}
+            sub="solution actions"
+            color="#10b981"
+          />
+          <StatCard
+            label="Manual fallback"
+            value={stats.manualFallbackCount}
+            sub="after QR attempts"
+            color="#f97316"
+          />
+        </section>
+
+        <section className="filter-panel">
+          <div className="filter-title">Inspection filters</div>
+
+          <div className="filters-grid">
+            <div className="filter-field">
+              <label>Search</label>
+              <input
+                type="text"
+                value={search}
+                placeholder="device / serial / technician / scan / issue..."
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="filter-field">
+              <label>Status</label>
+              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="">All statuses</option>
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    {arStatus(s)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-field">
+              <label>Technician</label>
+              <select value={techId} onChange={(e) => setTechId(e.target.value)}>
+                <option value="">All technicians</option>
+                {techOptions.map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    #{t.id} — {t.fullName || t.username || t.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-field">
+              <label>Cluster</label>
+              <select value={cluster} onChange={(e) => setCluster(e.target.value)}>
+                <option value="">All clusters</option>
+                {clusters.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="filter-field">
+              <label>Building</label>
+              <select
+                value={building}
+                onChange={(e) => setBuilding(e.target.value)}
+              >
+                <option value="">All buildings</option>
+                {buildings.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="check-pill">
+              <input
+                type="checkbox"
+                checked={monthlyOnly}
+                onChange={(e) => setMonthlyOnly(e.target.checked)}
+              />
+              Current month
+            </label>
+
+            <label className="check-pill">
+              <input
+                type="checkbox"
+                checked={scanOnly}
+                onChange={(e) => setScanOnly(e.target.checked)}
+              />
+              Scanned only
+            </label>
+
+            <label className="check-pill">
+              <input
+                type="checkbox"
+                checked={manualFallbackOnly}
+                onChange={(e) => setManualFallbackOnly(e.target.checked)}
+              />
+              Manual fallback
+            </label>
+          </div>
+        </section>
+
+        <section className="content-area">
+          {filtered.length === 0 ? (
+            <div className="state-card">لا توجد بيانات مطابقة للفلاتر.</div>
+          ) : viewMode === "GRID" ? (
+            <div className="grid-view">
+              {filtered.map((row) => (
+                <InspectionCard
+                  key={row.id}
+                  inspection={row}
+                  apiBase={base}
+                  onOpen={setSelectedInspection}
+                />
               ))}
-            </select>
-          </div>
+            </div>
+          ) : (
+            <div className="table-card">
+              <div className="table-scroll">
+                <table className="insp-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Images</th>
+                      <th>Scan</th>
+                      <th>Status</th>
+                      <th>Device</th>
+                      <th>Technician</th>
+                      <th>Location</th>
+                      <th>Issues</th>
+                      <th>Actions</th>
+                      <th>Inspected At</th>
+                    </tr>
+                  </thead>
 
-          <div className="insp-filter">
-            <span className="insp-filter__label">Technician</span>
-            <select value={techId} onChange={(e) => setTechId(e.target.value)}>
-              <option value="">All technicians</option>
-              {technicians.map((t) => (
-                <option key={t.id} value={String(t.id)}>
-                  #{t.id} — {t.fullName || t.username || t.email}
-                </option>
-              ))}
-            </select>
-          </div>
+                  <tbody>
+                    {filtered.map((row) => {
+                      const device = row.device || {};
+                      const loc = device.location || {};
+                      const tech = row.technician || {};
+                      const scan = getScanInfo(row);
+                      const images = getImages(row);
+                      const issues = getIssues(row);
+                      const actions = getActions(row);
+                      const doneActions = actions.filter(
+                        (a) => a.status === "DONE"
+                      );
 
-          <div className="insp-filter">
-            <span className="insp-filter__label">Cluster</span>
-            <select value={cluster} onChange={(e) => setCluster(e.target.value)}>
-              <option value="">All clusters</option>
-              {clusters.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
+                      return (
+                        <tr
+                          key={row.id}
+                          onClick={() => setSelectedInspection(row)}
+                        >
+                          <td>#{row.id}</td>
 
-          <div className="insp-filter">
-            <span className="insp-filter__label">Building</span>
-            <select value={building} onChange={(e) => setBuilding(e.target.value)}>
-              <option value="">All buildings</option>
-              {buildings.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-          </div>
+                          <td>
+                            <TableThumbs inspection={row} apiBase={base} />
+                          </td>
 
-          <label className="insp-check">
-            <input
-              type="checkbox"
-              checked={monthlyOnly}
-              onChange={(e) => setMonthlyOnly(e.target.checked)}
-            />
-            Current month only
-          </label>
+                          <td>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 4,
+                              }}
+                            >
+                              <span
+                                className={`tag ${
+                                  scan.scanned ? "good" : "warn"
+                                }`}
+                              >
+                                {scan.scanned ? "تم Scan" : "لم يتم Scan"}
+                              </span>
 
-          <label className="insp-check">
-            <input
-              type="checkbox"
-              checked={scanOnly}
-              onChange={(e) => setScanOnly(e.target.checked)}
-            />
-            Scanned only
-          </label>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: "#64748b",
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {getScanMethodText(row)} · QR: {scan.qrAttempts}
+                              </span>
+                            </div>
+                          </td>
 
-          <label className="insp-check">
-            <input
-              type="checkbox"
-              checked={manualFallbackOnly}
-              onChange={(e) => setManualFallbackOnly(e.target.checked)}
-            />
-            Manual fallback only
-          </label>
-        </div>
-      </div>
+                          <td>
+                            <span
+                              className={`tag ${statusClass(
+                                row.inspectionStatus
+                              )}`}
+                            >
+                              {arStatus(row.inspectionStatus)}
+                            </span>
+                          </td>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
-        <DataGrid
-          data={filtered}
-          columns={columns}
-          keyField="id"
-          onRowClick={handleRowClick}
-          rowClassName={() => "row-clickable"}
-        />
+                          <td>
+                            <div style={{ fontWeight: 950 }}>
+                              {device.deviceName || device.deviceCode || "—"}
+                            </div>
+                            <div style={{ color: "#64748b", fontSize: 11 }}>
+                              Code: {safe(device.deviceCode)} · SN:{" "}
+                              {safe(device.serialNumber)}
+                            </div>
+                          </td>
+
+                          <td>
+                            {tech.fullName ||
+                              tech.username ||
+                              tech.email ||
+                              `#${row.technicianId || "—"}`}
+                          </td>
+
+                          <td>
+                            <div>{safe(loc.building)}</div>
+                            <div style={{ color: "#64748b", fontSize: 11 }}>
+                              {safe(loc.cluster)} · {safe(loc.zone)} ·{" "}
+                              {safe(loc.lane)}
+                            </div>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`tag ${
+                                issues.length ? "warn" : "muted"
+                              }`}
+                            >
+                              {issues.length} issue
+                            </span>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`tag ${
+                                doneActions.length ? "good" : "muted"
+                              }`}
+                            >
+                              {doneActions.length}/{actions.length}
+                            </span>
+                          </td>
+
+                          <td>{fmtDate(row.inspectedAt || row.createdAt)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
 
       {selectedInspection && (
         <InspectionDetailsModal
           inspection={selectedInspection}
-          apiBase={apiBase}
+          apiBase={base}
           onClose={() => setSelectedInspection(null)}
         />
       )}
     </div>
   );
 }
+
+export default InspectionsPage;

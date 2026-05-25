@@ -37,9 +37,11 @@ export function PageLayout({
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-wrap">
-          <div className="brand-icon">⚡</div>
+          <div className="brand-icon">
+            <img src="/favicon.svg" alt="SmartIT logo" style={{ width: 26, height: 26 }} />
+          </div>
           <div className="brand-text">
-            <h1>{t.brand || "Access Dashboard"}</h1>
+            <h1>{t.brand || "SmartIT Inspect"}</h1>
             <p>{t.brandSub || "Monitoring & Inspection System"}</p>
           </div>
         </div>

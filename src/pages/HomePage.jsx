@@ -66,6 +66,7 @@ async function apiRequest(path, options = {}) {
 
 async function tryGet(paths = []) {
   let lastError = null;
+
   for (const path of paths) {
     try {
       return await apiRequest(path, { method: "GET" });
@@ -73,6 +74,7 @@ async function tryGet(paths = []) {
       lastError = err;
     }
   }
+
   throw lastError || new Error("All GET endpoints failed");
 }
 
@@ -102,13 +104,18 @@ const issueInspectionStatuses = new Set([
   "REJECTED",
   "NEEDS_REPAIR",
   "MAINTENANCE_REQUIRED",
+  "NOT_OK",
+  "PARTIAL",
 ]);
 
 const isResolvedInspection = (ins) =>
-  resolvedInspectionStatuses.has(String(ins?.inspectionStatus || "").toUpperCase());
+  resolvedInspectionStatuses.has(
+    String(ins?.inspectionStatus || ins?.result || "").toUpperCase()
+  );
 
 const isIssueInspection = (ins) => {
-  const status = String(ins?.inspectionStatus || "").toUpperCase();
+  const status = String(ins?.inspectionStatus || ins?.result || "").toUpperCase();
+
   return (
     issueInspectionStatuses.has(status) ||
     Boolean(ins?.issueReason) ||
@@ -126,7 +133,8 @@ const isCompletedTask = (task) =>
   String(task?.status || "").toUpperCase() === "COMPLETED";
 
 const isPendingTask = (task) =>
-  String(task?.status || "").toUpperCase() === "PENDING";
+  String(task?.status || "").toUpperCase() === "PENDING" ||
+  String(task?.status || "").toUpperCase() === "IN_PROGRESS";
 
 const startOfDay = (date) => {
   const d = new Date(date);
@@ -138,7 +146,10 @@ const formatShortTime = (value) => {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 const getTechnicianName = (ins) =>
@@ -149,10 +160,16 @@ const getTechnicianName = (ins) =>
   ins?.technicianName ||
   "Technician";
 
-const getInspectionTime = (ins) => ins?.inspectedAt || ins?.createdAt;
+const getInspectionTime = (ins) =>
+  ins?.inspectedAt || ins?.createdAt || ins?.updatedAt;
 
 const getTaskDate = (task) =>
   task?.scheduledDate || task?.createdAt || task?.updatedAt || null;
+
+const n = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 /* ─────────────────────────────────────────────────────────────────
    CSS
@@ -274,13 +291,26 @@ const CustomTooltip = ({ active, payload, label }) => {
           boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
         }}
       >
-        <p style={{ margin: "0 0 8px 0", fontWeight: 700, color: "#f8fafc", fontSize: "13px" }}>
+        <p
+          style={{
+            margin: "0 0 8px 0",
+            fontWeight: 700,
+            color: "#f8fafc",
+            fontSize: "13px",
+          }}
+        >
           {label}
         </p>
+
         {payload.map((entry, index) => (
           <div
             key={index}
-            style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginTop: "4px",
+            }}
           >
             <div
               style={{
@@ -289,11 +319,25 @@ const CustomTooltip = ({ active, payload, label }) => {
                 borderRadius: "50%",
                 background: entry.color,
               }}
-            ></div>
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "#e2e8f0" }}>
+            />
+
+            <span
+              style={{
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#e2e8f0",
+              }}
+            >
               {entry.name}:
             </span>
-            <span style={{ fontSize: "13px", fontWeight: 800, color: "#fff" }}>
+
+            <span
+              style={{
+                fontSize: "13px",
+                fontWeight: 800,
+                color: "#fff",
+              }}
+            >
               {Number(entry.value || 0).toLocaleString()}
             </span>
           </div>
@@ -301,14 +345,24 @@ const CustomTooltip = ({ active, payload, label }) => {
       </div>
     );
   }
+
   return null;
 };
 
-export function HomePage({ summary, techniciansCount, tasks = [], inspections = [], onOpen }) {
+export function HomePage({
+  summary,
+  techniciansCount,
+  tasks = [],
+  inspections = [],
+  onOpen,
+}) {
+  const [adminOverview, setAdminOverview] = useState(null);
   const [liveSummary, setLiveSummary] = useState(summary || null);
   const [liveTasks, setLiveTasks] = useState(tasks || []);
   const [liveInspections, setLiveInspections] = useState(inspections || []);
-  const [liveTechniciansCount, setLiveTechniciansCount] = useState(techniciansCount || 0);
+  const [liveTechniciansCount, setLiveTechniciansCount] = useState(
+    techniciansCount || 0
+  );
   const [liveDevices, setLiveDevices] = useState([]);
 
   const [loading, setLoading] = useState(false);
@@ -318,6 +372,7 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
 
   useEffect(() => {
     let el = document.getElementById("lux-home-css");
+
     if (!el) {
       el = document.createElement("style");
       el.id = "lux-home-css";
@@ -331,18 +386,45 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
       setError("");
       setLoading(true);
 
-      const [summaryRes, tasksRes, inspectionsRes, techniciansRes, devicesRes] =
-        await Promise.all([
-          tryGet(["/dashboard/summary"]).catch(() => null),
-          tryGet(["/inspection-tasks", "/tasks"]).catch(() => []),
-          tryGet(["/inspections"]).catch(() => []),
-          tryGet([
-            "/users?role=technician",
-            "/users?type=technician",
-            "/users/technicians",
-          ]).catch(() => []),
-          tryGet(["/devices"]).catch(() => []),
-        ]);
+      const [
+        techniciansCountStatsRes,
+        summaryRes,
+        tasksRes,
+        inspectionsRes,
+        techniciansRes,
+        devicesRes,
+      ] = await Promise.all([
+        tryGet(["/inspections/debug/technicians-count"]).catch(() => []),
+        tryGet(["/dashboard/summary"]).catch(() => null),
+        tryGet(["/inspection-tasks", "/tasks"]).catch(() => []),
+
+        // ده لآخر التفتيشات فقط، مش للإجمالي
+        tryGet(["/inspections"]).catch(() => []),
+
+        tryGet([
+          "/users?role=technician",
+          "/users?type=technician",
+          "/users/technicians",
+        ]).catch(() => []),
+
+        tryGet(["/devices"]).catch(() => []),
+      ]);
+
+      const techniciansStatsList = normalizeArrayResponse(
+        techniciansCountStatsRes
+      );
+
+      const totalInspectionsFromTechnicians = techniciansStatsList.reduce(
+        (sum, item) => sum + Number(item.totalInspections || 0),
+        0
+      );
+
+      const activeTechniciansFromStats = techniciansStatsList.length;
+
+      setAdminOverview({
+        totalInspections: totalInspectionsFromTechnicians,
+        activeTechnicians: activeTechniciansFromStats,
+      });
 
       setLiveSummary(summaryRes || null);
       setLiveTasks(normalizeArrayResponse(tasksRes));
@@ -381,90 +463,142 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
     const allInspections = liveInspections || [];
     const allDevices = liveDevices || [];
 
-    const totalTasks =
-      liveSummary?.totalInspectionTasks ??
-      liveSummary?.totalTasks ??
-      allTasks.length;
+    const activeTechnicians =
+      n(liveSummary?.activeTechnicians) ||
+      n(liveSummary?.techniciansCount) ||
+      liveTechniciansCount ||
+      n(adminOverview?.activeTechnicians) ||
+      0;
 
-    const completedByTaskStatus = allTasks.filter(isCompletedTask).length;
+    const totalDevices =
+      n(liveSummary?.totalDevices) || allDevices.length || 0;
 
-    const completedFromInspections = allInspections.filter(isResolvedInspection).length;
+    const totalInspections =
+      n(adminOverview?.totalInspections) ||
+      n(liveSummary?.totalInspections) ||
+      n(liveSummary?.totalInspected) ||
+      0;
 
-    const completed = Math.max(
-      liveSummary?.completedTasks ?? 0,
-      completedByTaskStatus,
-      completedFromInspections
-    );
+    const goodInspections =
+      n(liveSummary?.goodInspections) ||
+      n(liveSummary?.good) ||
+      allInspections.filter(isResolvedInspection).length ||
+      0;
 
-    const pending = Math.max(
-      liveSummary?.pendingTasks ?? 0,
-      allTasks.filter(isPendingTask).length,
-      totalTasks - completed,
-      0
-    );
+    const needsRepair =
+      n(liveSummary?.needsMaintenance) ||
+      n(liveSummary?.needsMaintenanceDevices) ||
+      allInspections.filter(isIssueInspection).length ||
+      0;
 
-    const emergencyActive = Math.max(
-      liveSummary?.emergencyTasks ?? 0,
+    const underReview = n(liveSummary?.underReview) || 0;
+
+    const completedTasks =
+      n(liveSummary?.completedTasks) ||
+      allTasks.filter(isCompletedTask).length ||
+      0;
+
+    const pendingTasks =
+      n(liveSummary?.pendingTasks) ||
+      allTasks.filter(isPendingTask).length ||
+      0;
+
+    const emergencyActive =
+      n(liveSummary?.emergencyTasks) ||
       allTasks.filter(
         (t) =>
           isEmergencyTask(t) &&
-          !["COMPLETED", "CANCELLED"].includes(String(t?.status || "").toUpperCase())
-      ).length
-    );
-
-    const totalDevices = liveSummary?.totalDevices ?? allDevices.length ?? 0;
-
-    const needsRepair = Math.max(
-      liveSummary?.needsMaintenanceDevices ?? 0,
-      allInspections.filter(isIssueInspection).length
-    );
+          !["COMPLETED", "CANCELLED"].includes(
+            String(t?.status || "").toUpperCase()
+          )
+      ).length ||
+      0;
 
     const now = startOfDay(new Date());
 
     const weekBuckets = [0, 1, 2, 3].map((index) => {
       const start = new Date(now);
       start.setDate(now.getDate() - (27 - index * 7));
+
       const end = new Date(start);
       end.setDate(start.getDate() + 6);
-      return { start, end };
+
+      return {
+        start,
+        end,
+      };
     });
 
     const trendData = weekBuckets.map((bucket, index) => {
+      const inspectionsInWeek = allInspections.filter((ins) => {
+        const ts = getInspectionTime(ins);
+        if (!ts) return false;
+
+        const d = startOfDay(ts);
+        return d >= bucket.start && d <= bucket.end;
+      });
+
       const tasksInWeek = allTasks.filter((task) => {
         const ts = getTaskDate(task);
         if (!ts) return false;
+
         const d = startOfDay(ts);
         return d >= bucket.start && d <= bucket.end;
       });
 
       return {
         name: `Week ${index + 1}`,
-        tasks: tasksInWeek.length,
+        inspections: inspectionsInWeek.length,
         completed: tasksInWeek.filter(isCompletedTask).length,
       };
     });
 
     const recentInspections = [...allInspections]
-      .sort((a, b) => new Date(getInspectionTime(b)) - new Date(getInspectionTime(a)))
+      .sort(
+        (a, b) =>
+          new Date(getInspectionTime(b)) - new Date(getInspectionTime(a))
+      )
       .slice(0, 5);
 
     return {
-      totalTasks,
-      completed,
-      pending,
-      emergencyActive,
+      activeTechnicians,
       totalDevices,
+      totalInspections,
+      goodInspections,
       needsRepair,
+      underReview,
+      completedTasks,
+      pendingTasks,
+      emergencyActive,
       trendData,
       recentInspections,
     };
-  }, [liveTasks, liveInspections, liveDevices, liveSummary]);
+  }, [
+    adminOverview,
+    liveTasks,
+    liveInspections,
+    liveDevices,
+    liveSummary,
+    liveTechniciansCount,
+  ]);
 
   const pieData = useMemo(() => {
     return [
-      { name: "Completed", value: computed.completed, color: "#10b981" },
-      { name: "Pending", value: computed.pending, color: "#f59e0b" },
-      { name: "Emergency", value: computed.emergencyActive, color: "#ef4444" },
+      {
+        name: "Good",
+        value: computed.goodInspections,
+        color: "#10b981",
+      },
+      {
+        name: "Needs Repair",
+        value: computed.needsRepair,
+        color: "#f59e0b",
+      },
+      {
+        name: "Under Review",
+        value: computed.underReview,
+        color: "#ef4444",
+      },
     ];
   }, [computed]);
 
@@ -485,7 +619,14 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
       <div className="lux-sec-header">
         <div>
           <h2 className="lux-sec-title">Global Overview Tracker</h2>
-          <p style={{ marginTop: "4px", fontSize: "13px", color: "#64748b" }}>
+
+          <p
+            style={{
+              marginTop: "4px",
+              fontSize: "13px",
+              color: "#64748b",
+            }}
+          >
             Real-time statistics covering operations across all sectors.
           </p>
         </div>
@@ -499,68 +640,146 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
                 })}`
               : "Waiting for backend..."}
           </div>
-          <button className="lux-refresh-btn" onClick={loadDashboardData} disabled={loading}>
+
+          <button
+            className="lux-refresh-btn"
+            onClick={loadDashboardData}
+            disabled={loading}
+          >
             {loading ? "Refreshing..." : "Refresh now"}
           </button>
         </div>
       </div>
 
       <div className="lux-kpi-grid">
-        <div className="lux-kpi-card lux-kpi-1" onClick={() => openSection("technicians")}>
-          <div className="lux-kpi-icon" style={{ background: "#e0e7ff", color: "#4f46e5" }}>
+        <div
+          className="lux-kpi-card lux-kpi-1"
+          onClick={() => openSection("technicians")}
+        >
+          <div
+            className="lux-kpi-icon"
+            style={{
+              background: "#e0e7ff",
+              color: "#4f46e5",
+            }}
+          >
             👨‍🔧
           </div>
-          <div className="lux-kpi-val">{liveTechniciansCount}</div>
+
+          <div className="lux-kpi-val">
+            {computed.activeTechnicians.toLocaleString()}
+          </div>
+
           <div className="lux-kpi-label">Active Technicians</div>
           <div className="lux-kpi-sub">Total field units registered</div>
         </div>
 
-        <div className="lux-kpi-card lux-kpi-2" onClick={() => openSection("tasks_completed")}>
-          <div className="lux-kpi-icon" style={{ background: "#d1fae5", color: "#059669" }}>
+        <div
+          className="lux-kpi-card lux-kpi-2"
+          onClick={() => openSection("inspections")}
+        >
+          <div
+            className="lux-kpi-icon"
+            style={{
+              background: "#d1fae5",
+              color: "#059669",
+            }}
+          >
             ✅
           </div>
+
           <div className="lux-kpi-val">
-            {computed.completed}{" "}
-            <span style={{ fontSize: "16px", color: "#10b981" }}>
-              / {computed.totalTasks}
-            </span>
+            {computed.totalInspections.toLocaleString()}
           </div>
-          <div className="lux-kpi-label">Tasks Completed</div>
-          <div className="lux-kpi-sub">Live from backend</div>
+
+          <div className="lux-kpi-label">Total Inspections</div>
+          <div className="lux-kpi-sub">All inspections from all technicians</div>
         </div>
 
-        <div className="lux-kpi-card lux-kpi-3" onClick={() => openSection("tasks_emergency")}>
-          <div className="lux-kpi-icon" style={{ background: "#fee2e2", color: "#e11d48" }}>
+        <div
+          className="lux-kpi-card lux-kpi-3"
+          onClick={() => openSection("tasks_emergency")}
+        >
+          <div
+            className="lux-kpi-icon"
+            style={{
+              background: "#fee2e2",
+              color: "#e11d48",
+            }}
+          >
             🚨
           </div>
-          <div className="lux-kpi-val">{computed.emergencyActive}</div>
+
+          <div className="lux-kpi-val">
+            {computed.emergencyActive.toLocaleString()}
+          </div>
+
           <div className="lux-kpi-label">Emergency Alerts</div>
           <div className="lux-kpi-sub">Requiring immediate response</div>
         </div>
 
-        <div className="lux-kpi-card lux-kpi-4" onClick={() => openSection("tasks_pending")}>
-          <div className="lux-kpi-icon" style={{ background: "#fef3c7", color: "#d97706" }}>
+        <div
+          className="lux-kpi-card lux-kpi-4"
+          onClick={() => openSection("tasks_pending")}
+        >
+          <div
+            className="lux-kpi-icon"
+            style={{
+              background: "#fef3c7",
+              color: "#d97706",
+            }}
+          >
             ⏱️
           </div>
-          <div className="lux-kpi-val">{computed.pending}</div>
-          <div className="lux-kpi-label">Pending Inspections</div>
+
+          <div className="lux-kpi-val">
+            {computed.pendingTasks.toLocaleString()}
+          </div>
+
+          <div className="lux-kpi-label">Pending Tasks</div>
           <div className="lux-kpi-sub">Live queue from backend</div>
         </div>
 
-        <div className="lux-kpi-card lux-kpi-5" onClick={() => openSection("devices")}>
-          <div className="lux-kpi-icon" style={{ background: "#dbeafe", color: "#1d4ed8" }}>
+        <div
+          className="lux-kpi-card lux-kpi-5"
+          onClick={() => openSection("devices")}
+        >
+          <div
+            className="lux-kpi-icon"
+            style={{
+              background: "#dbeafe",
+              color: "#1d4ed8",
+            }}
+          >
             📡
           </div>
-          <div className="lux-kpi-val">{computed.totalDevices}</div>
+
+          <div className="lux-kpi-val">
+            {computed.totalDevices.toLocaleString()}
+          </div>
+
           <div className="lux-kpi-label">Total Devices</div>
           <div className="lux-kpi-sub">Registered hardware online</div>
         </div>
 
-        <div className="lux-kpi-card lux-kpi-6" onClick={() => openSection("devices")}>
-          <div className="lux-kpi-icon" style={{ background: "#f3e8ff", color: "#7e22ce" }}>
+        <div
+          className="lux-kpi-card lux-kpi-6"
+          onClick={() => openSection("devices")}
+        >
+          <div
+            className="lux-kpi-icon"
+            style={{
+              background: "#f3e8ff",
+              color: "#7e22ce",
+            }}
+          >
             🔧
           </div>
-          <div className="lux-kpi-val">{computed.needsRepair}</div>
+
+          <div className="lux-kpi-val">
+            {computed.needsRepair.toLocaleString()}
+          </div>
+
           <div className="lux-kpi-label">Hardware Needs Repair</div>
           <div className="lux-kpi-sub">Detected from backend inspections</div>
         </div>
@@ -570,55 +789,95 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
         <div className="lux-panel">
           <div className="lux-panel-head">
             <h3 className="lux-panel-title">Operations Completion Trend</h3>
-            <span className="lux-panel-meta">Tasks vs Completed</span>
+            <span className="lux-panel-meta">Inspections vs Completed Tasks</span>
           </div>
 
-          <div style={{ width: "100%", height: "300px" }}>
-            <ResponsiveContainer>
+          <div
+            style={{
+              width: "100%",
+              height: "300px",
+              minHeight: "300px",
+            }}
+          >
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart
                 data={computed.trendData}
-                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                margin={{
+                  top: 10,
+                  right: 30,
+                  left: 0,
+                  bottom: 0,
+                }}
               >
                 <defs>
-                  <linearGradient id="colorTasks" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient
+                    id="colorInspections"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
                     <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.28} />
                     <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
+
+                  <linearGradient
+                    id="colorCompleted"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.28} />
                     <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                   </linearGradient>
                 </defs>
 
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#e2e8f0"
+                />
+
                 <XAxis
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }}
+                  tick={{
+                    fontSize: 12,
+                    fill: "#64748b",
+                    fontWeight: 600,
+                  }}
                   dy={10}
                 />
+
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }}
+                  tick={{
+                    fontSize: 12,
+                    fill: "#64748b",
+                    fontWeight: 600,
+                  }}
                   dx={-10}
                 />
+
                 <Tooltip content={<CustomTooltip />} />
 
                 <Area
                   type="monotone"
-                  dataKey="tasks"
-                  name="Tasks"
+                  dataKey="inspections"
+                  name="Inspections"
                   stroke="#f59e0b"
                   strokeWidth={3}
                   fillOpacity={1}
-                  fill="url(#colorTasks)"
+                  fill="url(#colorInspections)"
                 />
+
                 <Area
                   type="monotone"
                   dataKey="completed"
-                  name="Completed"
+                  name="Completed Tasks"
                   stroke="#10b981"
                   strokeWidth={3}
                   fillOpacity={1}
@@ -629,13 +888,38 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <div className="lux-panel" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <div className="lux-panel-head" style={{ marginBottom: 0 }}>
-              <h3 className="lux-panel-title">Task Distribution</h3>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "24px",
+          }}
+        >
+          <div
+            className="lux-panel"
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              className="lux-panel-head"
+              style={{
+                marginBottom: 0,
+              }}
+            >
+              <h3 className="lux-panel-title">Inspection Distribution</h3>
             </div>
 
-            <div style={{ flex: 1, minHeight: "180px", position: "relative" }}>
+            <div
+              style={{
+                flex: 1,
+                minHeight: "220px",
+                height: "220px",
+                position: "relative",
+              }}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -646,27 +930,52 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
                     dataKey="value"
                   >
                     {pieData.map((entry, index) => (
-                      <Cell key={index} fill={entry.color} stroke="transparent" />
+                      <Cell
+                        key={index}
+                        fill={entry.color}
+                        stroke="transparent"
+                      />
                     ))}
                   </Pie>
+
                   <Tooltip content={<CustomTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="lux-panel" style={{ flex: 1 }}>
-            <div className="lux-panel-head" style={{ marginBottom: "16px" }}>
+          <div
+            className="lux-panel"
+            style={{
+              flex: 1,
+            }}
+          >
+            <div
+              className="lux-panel-head"
+              style={{
+                marginBottom: "16px",
+              }}
+            >
               <h3 className="lux-panel-title">Recent Inspections</h3>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
               {computed.recentInspections.length > 0 ? (
                 computed.recentInspections.map((ins, i) => {
                   const techName = getTechnicianName(ins);
+
                   const status =
                     ins?.inspectionStatus ||
-                    (isResolvedInspection(ins) ? "OK" : isIssueInspection(ins) ? "ISSUE" : "DONE");
+                    (isResolvedInspection(ins)
+                      ? "OK"
+                      : isIssueInspection(ins)
+                      ? "ISSUE"
+                      : "DONE");
 
                   return (
                     <div
@@ -678,9 +987,12 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
                         <div className="lux-li-icon">
                           {techName?.[0]?.toUpperCase() || "T"}
                         </div>
+
                         <div>
                           <div className="lux-li-title">{techName}</div>
-                          <div className="lux-li-sub">Inspected Hardware/Loc</div>
+                          <div className="lux-li-sub">
+                            Inspected Hardware/Loc
+                          </div>
                         </div>
                       </div>
 
@@ -697,7 +1009,10 @@ export function HomePage({ summary, techniciansCount, tasks = [], inspections = 
                         >
                           {status}
                         </div>
-                        <div className="lux-li-date">{formatShortTime(getInspectionTime(ins))}</div>
+
+                        <div className="lux-li-date">
+                          {formatShortTime(getInspectionTime(ins))}
+                        </div>
                       </div>
                     </div>
                   );

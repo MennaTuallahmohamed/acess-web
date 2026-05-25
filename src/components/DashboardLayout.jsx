@@ -300,6 +300,7 @@ const LUX_NAV_CSS = `
     color: #64748b;
     font-weight: 500;
     margin: 2px 0 0;
+    display: none;
   }
 
   .lux-user-card {
@@ -489,10 +490,12 @@ export function DashboardLayout({
     <div className={`lux-layout-root ${readOnly ? "viewer-mode" : ""}`}>
       <aside className="lux-sidebar">
         <div className="lux-brand">
-          <div className="lux-brand-icon">⚡</div>
+          <div className="lux-brand-icon">
+            <img src="/favicon.svg" alt="SmartIT logo" style={{ width: 26, height: 26 }} />
+          </div>
           <div className="lux-brand-text">
-            <h1>{t.brand || "Access Dashboard"}</h1>
-            <p>{t.brandSub || "Executive Portal"}</p>
+            <h1>{t.brand || "SmartIT Inspect"}</h1>
+            <p>{t.brandSub || "SmartIT Inspection"}</p>
           </div>
         </div>
 

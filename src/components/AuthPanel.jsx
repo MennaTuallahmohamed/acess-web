@@ -451,16 +451,16 @@ export function AuthPanel({ onLogin, onRegister, loading }) {
         <div className="auth-left">
           <div>
             <div className="auth-brand-wrap">
-              <div className="auth-brand-icon">⚡</div>
-              <h1 className="auth-brand-text">InspectPro</h1>
+              <div className="auth-brand-icon">SI</div>
+              <h1 className="auth-brand-text">SmartIT Inspect</h1>
             </div>
 
             <h2 className="auth-tagline">
-              Next-Generation <br /> Maintenance Dashboard
+              SmartIT Inspection <br /> Control Center
             </h2>
 
             <p className="auth-desc">
-              Seamlessly monitor, filter, and analyze all your data in real-time.
+              Secure company access for SmartIT inspection and operational monitoring.
             </p>
           </div>
 

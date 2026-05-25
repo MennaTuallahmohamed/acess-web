@@ -192,6 +192,129 @@ const normalizeExcelRow = (row, idx) => ({
   direction: row.direction || row["Direction"] || row["الاتجاه"] || "",
 });
 
+
+/* ─────────────────────────────────────────────────────────────────
+   INSPECTION INTELLIGENCE — Frontend only, no backend changes
+───────────────────────────────────────────────────────────────── */
+const normalizeId = (v) => (v === null || v === undefined ? "" : String(v).trim().toLowerCase());
+
+const getInspectionDate = (ins) =>
+  ins?.inspectedAt ||
+  ins?.createdAt ||
+  ins?.updatedAt ||
+  ins?.date ||
+  ins?.scanDate ||
+  ins?.inspectionDate ||
+  null;
+
+const getTechnicianName = (ins) =>
+  ins?.technician?.fullName ||
+  ins?.technician?.username ||
+  ins?.technicianName ||
+  ins?.techName ||
+  ins?.user?.fullName ||
+  ins?.user?.username ||
+  "—";
+
+const getInspectionImages = (ins) => {
+  if (Array.isArray(ins?.images)) return ins.images;
+  if (Array.isArray(ins?.photos)) return ins.photos;
+  if (Array.isArray(ins?.attachments)) return ins.attachments;
+  return [];
+};
+
+const getImageUrl = (img) =>
+  typeof img === "string" ? img : img?.imageUrl || img?.url || img?.path || img?.src || "";
+
+const getInspectionDeviceId = (ins) =>
+  normalizeId(
+    ins?.deviceId ||
+    ins?.device?.id ||
+    ins?.device_id ||
+    ins?.hardwareDeviceId ||
+    ins?.assetId ||
+    ""
+  );
+
+const getDeviceId = (device) =>
+  normalizeId(
+    device?.id ||
+    device?.deviceId ||
+    device?.device_id ||
+    device?.hardwareDeviceId ||
+    device?.assetId ||
+    ""
+  );
+
+const deviceMatchesInspection = (device, ins) => {
+  // مهم جدًا: هنا الربط من الباك إند فقط بالـ ID الحقيقي.
+  // لا نستخدم deviceCode / barcode / serialNumber في المطابقة عشان ما يطلعش رقم أكبر من عدد سجلات الفحص.
+  const devId = getDeviceId(device);
+  const insDeviceId = getInspectionDeviceId(ins);
+  return Boolean(devId && insDeviceId && devId === insDeviceId);
+};
+
+const getInspectionAgeDays = (dateValue) => {
+  if (!dateValue) return null;
+  const d = new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return null;
+  return Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const buildInspectionSummary = (device, inspections = []) => {
+  const related = inspections
+    .filter((ins) => deviceMatchesInspection(device, ins))
+    .map((ins) => ({ ...ins, _inspectionDate: getInspectionDate(ins) }))
+    .sort((a, b) => new Date(b._inspectionDate || 0) - new Date(a._inspectionDate || 0));
+
+  const latest = related[0] || null;
+  const lastDate = latest?._inspectionDate || null;
+  const ageDays = getInspectionAgeDays(lastDate);
+  const hasInspection = related.length > 0;
+  const hasImages = related.some((ins) => getInspectionImages(ins).length > 0);
+  const latestStatus = latest?.inspectionStatus || latest?.status || latest?.result || "NOT_INSPECTED";
+
+  let riskLevel = "Not Inspected";
+  let riskColor = "#ef4444";
+  let riskBg = "#fef2f2";
+
+  if (hasInspection && ageDays !== null && ageDays <= 7) {
+    riskLevel = "Fresh Scan";
+    riskColor = "#10b981";
+    riskBg = "#ecfdf5";
+  } else if (hasInspection && ageDays !== null && ageDays <= 30) {
+    riskLevel = "Old Scan";
+    riskColor = "#f59e0b";
+    riskBg = "#fffbeb";
+  } else if (hasInspection) {
+    riskLevel = "Stale Scan";
+    riskColor = "#f97316";
+    riskBg = "#fff7ed";
+  }
+
+  return {
+    hasInspection,
+    inspectionCount: related.length,
+    latestInspection: latest,
+    lastInspectionDate: lastDate,
+    lastInspectionAgeDays: ageDays,
+    latestInspectionStatus: latestStatus,
+    lastTechnician: latest ? getTechnicianName(latest) : "—",
+    hasInspectionImages: hasImages,
+    riskLevel,
+    riskColor,
+    riskBg,
+    relatedInspections: related,
+  };
+};
+
+const formatDateTimeSafe = (dateValue) => {
+  if (!dateValue) return "—";
+  const d = new Date(dateValue);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+};
+
 /* ─────────────────────────────────────────────────────────────────
    INJECTED LUXURY CSS
 ───────────────────────────────────────────────────────────────── */
@@ -486,6 +609,52 @@ const LUX_CSS = `
   .lux-slide-panel { position: fixed; top: 0; right: 0; bottom: 0; width: 100%; max-width: 600px; background: #f8fafc; z-index: 999; box-shadow: -10px 0 40px rgba(0,0,0,0.1); transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); display: flex; flex-direction: column; }
   .lux-slide-panel.open { transform: translateX(0); }
 
+
+
+  /* ── Inspection intelligence ── */
+  .lux-audit-board {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #312e81 100%);
+    border-radius: 24px;
+    padding: 22px;
+    margin-bottom: 24px;
+    color: #fff;
+    box-shadow: 0 18px 40px rgba(15,23,42,0.18);
+    overflow: hidden;
+    position: relative;
+  }
+  .lux-audit-board:before {
+    content: "";
+    position: absolute;
+    right: -70px;
+    top: -80px;
+    width: 220px;
+    height: 220px;
+    background: rgba(99,102,241,0.35);
+    border-radius: 999px;
+    filter: blur(5px);
+  }
+  .lux-audit-head { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .lux-audit-title { font-size: 18px; font-weight: 900; margin-bottom: 6px; letter-spacing: -0.3px; }
+  .lux-audit-sub { font-size: 13px; color: rgba(255,255,255,0.7); font-weight: 600; }
+  .lux-audit-grid { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 18px; }
+  .lux-audit-card { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.14); border-radius: 18px; padding: 16px; backdrop-filter: blur(8px); cursor: pointer; transition: all 0.2s; }
+  .lux-audit-card:hover { transform: translateY(-3px); background: rgba(255,255,255,0.16); }
+  .lux-audit-label { font-size: 11px; font-weight: 800; color: rgba(255,255,255,0.62); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .lux-audit-value { font-size: 26px; font-weight: 900; line-height: 1; }
+  .lux-audit-note { font-size: 12px; color: rgba(255,255,255,0.68); font-weight: 700; margin-top: 8px; }
+  .lux-coverage-ring { width: 84px; height: 84px; border-radius: 999px; background: conic-gradient(#22c55e var(--p), rgba(255,255,255,0.18) 0); display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 10px rgba(255,255,255,0.06); }
+  .lux-coverage-ring-inner { width: 58px; height: 58px; border-radius: 999px; background: #111827; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 900; }
+  .lux-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; position: relative; }
+  .lux-chip { border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.1); color: #fff; border-radius: 999px; padding: 7px 12px; font-size: 12px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
+  .lux-chip:hover { background: rgba(255,255,255,0.18); }
+  .lux-scan-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border-radius: 999px; font-size: 10px; font-weight: 900; text-transform: uppercase; }
+  .lux-card-alert { border-color: #fecaca !important; box-shadow: 0 12px 28px rgba(239,68,68,0.10) !important; }
+  .lux-priority-ribbon { padding: 10px 14px; border-top: 1px solid #fee2e2; background: #fef2f2; color: #991b1b; font-size: 12px; font-weight: 900; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .lux-mini-muted { color: #94a3b8; font-size: 11px; font-weight: 800; }
+  .lux-map-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .lux-map-table th { text-align: left; padding: 10px; background: #f8fafc; color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+  .lux-map-table td { padding: 10px; border-top: 1px solid #f1f5f9; font-weight: 700; color: #334155; }
+
   @keyframes luxPulse {
     0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); }
     70% { box-shadow: 0 0 0 6px rgba(16,185,129,0); }
@@ -494,8 +663,8 @@ const LUX_CSS = `
   @keyframes luxFadeIn { from { opacity: 0; } to { opacity: 1; } }
   @keyframes luxSpin { to { transform: rotate(360deg); } }
 
-  @media (max-width: 1100px) { .lux-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 700px) { .lux-tp-root { padding: 16px 14px; } .lux-kpi-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 1100px) { .lux-kpi-grid { grid-template-columns: repeat(2, 1fr); } .lux-audit-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 700px) { .lux-tp-root { padding: 16px 14px; } .lux-kpi-grid { grid-template-columns: 1fr; } .lux-audit-grid { grid-template-columns: 1fr; } }
 `;
 
 /* ─────────────────────────────────────────────────────────────────
@@ -879,12 +1048,31 @@ function DeviceDetailsOverlay({ device, inspections = [], onBack }) {
               </div>
             ))}
           </div>
+          <h3 style={{ fontSize: "13px", textTransform: "uppercase", color: "#475569", letterSpacing: "0.5px", margin: "0 0 16px 0", fontWeight: 800 }}>Scan Intelligence</h3>
+          <div style={{ padding: "18px", background: device.inspectionInfo?.riskBg || "#f8fafc", border: `1px solid ${device.inspectionInfo?.riskColor || "#cbd5e1"}`, borderRadius: "16px", marginBottom: "32px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+              {[
+                ["Scan Status", device.inspectionInfo?.hasInspection ? "تم الفحص" : "لم يتم الفحص"],
+                ["Risk Level", device.inspectionInfo?.riskLevel || "Not Inspected"],
+                ["Last Scan", formatDateTimeSafe(device.inspectionInfo?.lastInspectionDate)],
+                ["Technician", device.inspectionInfo?.lastTechnician || "—"],
+                ["Total Logs", device.inspectionInfo?.inspectionCount || 0],
+                ["Proof Photos", device.inspectionInfo?.hasInspectionImages ? "Available" : "No photos"],
+              ].map(([l, v], i) => (
+                <div key={i} style={{ background: "rgba(255,255,255,0.65)", border: "1px solid rgba(255,255,255,0.8)", padding: "12px", borderRadius: "12px" }}>
+                  <div style={{ fontSize: "10px", textTransform: "uppercase", fontWeight: 900, color: "#64748b", marginBottom: 4 }}>{l}</div>
+                  <div style={{ fontSize: "14px", fontWeight: 900, color: "#0f172a" }}>{v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
 
           <h3 style={{ fontSize: "13px", textTransform: "uppercase", color: "#475569", letterSpacing: "0.5px", margin: "0 0 16px 0", fontWeight: 800 }}>Inspection Log</h3>
 
           {inspections.length === 0 ? (
             <div style={{ padding: "24px", textAlign: "center", background: "#fff", borderRadius: "12px", border: "1px dashed #cbd5e1" }}>
-              <div style={{ fontSize: "13px", color: "#94a3b8", fontWeight: 500 }}>No maintenance logs filed for this unit.</div>
+              <div style={{ fontSize: "13px", color: "#94a3b8", fontWeight: 500 }}>لم يتم فحص هذا الجهاز حتى الآن — يظهر في قائمة الأجهزة غير المفحوصة.</div>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -911,7 +1099,7 @@ function DeviceDetailsOverlay({ device, inspections = [], onBack }) {
                     {ins.images?.length > 0 && (
                       <div style={{ display: "flex", gap: "8px", marginTop: "12px", flexWrap: "wrap" }}>
                         {ins.images.map((img, i) => (
-                          <img key={i} src={img.imageUrl} alt="Inspection proof" style={{ width: "56px", height: "56px", borderRadius: "8px", objectFit: "cover", border: "1px solid #e2e8f0" }} />
+                          <img key={i} src={getImageUrl(img)} alt="Inspection proof" style={{ width: "56px", height: "56px", borderRadius: "8px", objectFit: "cover", border: "1px solid #e2e8f0" }} />
                         ))}
                       </div>
                     )}
@@ -943,20 +1131,52 @@ export function DevicesPage({ devices = [], inspections = [] }) {
   }, []);
 
   const devicesMapped = useMemo(
-    () => devices.map((d) => ({ ...d, parsedLoc: parseDeviceLocation(d) })),
-    [devices]
+    () =>
+      devices.map((d) => {
+        const parsedLoc = parseDeviceLocation(d);
+        const inspectionInfo = buildInspectionSummary(d, inspections);
+        return { ...d, parsedLoc, inspectionInfo };
+      }),
+    [devices, inspections]
   );
 
   const stats = useMemo(() => {
     let ok = 0, maint = 0, out = 0, under = 0;
+    let inspected = 0, notInspected = 0, stale = 0, withPhotos = 0, missingLocation = 0;
+
     devicesMapped.forEach((d) => {
       if (d.currentStatus === "OK") ok++;
       else if (d.currentStatus === "NEEDS_MAINTENANCE") maint++;
       else if (d.currentStatus === "OUT_OF_SERVICE") out++;
       else if (d.currentStatus === "UNDER_MAINTENANCE") under++;
+
+      if (d.inspectionInfo?.hasInspection) inspected++;
+      else notInspected++;
+
+      if (!d.inspectionInfo?.hasInspection || (d.inspectionInfo?.lastInspectionAgeDays ?? 9999) > 30) stale++;
+      if (d.inspectionInfo?.hasInspectionImages) withPhotos++;
+      if (!d.parsedLoc.cluster && !d.parsedLoc.zone && !d.parsedLoc.building) missingLocation++;
     });
-    return { total: devicesMapped.length, ok, maint, out, under };
-  }, [devicesMapped]);
+
+    const total = devicesMapped.length;
+    const inspectionRecords = inspections.length; // نفس رقم صفحة Inspections من الباك إند
+    const coveragePct = total ? Math.round((inspected / total) * 100) : 0;
+
+    return {
+      total,
+      inspectionRecords,
+      ok,
+      maint,
+      out,
+      under,
+      inspected,
+      notInspected,
+      stale,
+      withPhotos,
+      missingLocation,
+      coveragePct,
+    };
+  }, [devicesMapped, inspections]);
 
   const uniqueLocs = useMemo(() => {
     const l = { cluster: new Set(), building: new Set(), zone: new Set() };
@@ -972,12 +1192,30 @@ export function DevicesPage({ devices = [], inspections = [] }) {
     };
   }, [devicesMapped]);
 
+  const groupedMissingByLocation = useMemo(() => {
+    const map = new Map();
+    devicesMapped
+      .filter((d) => !d.inspectionInfo?.hasInspection)
+      .forEach((d) => {
+        const key = `${d.parsedLoc.cluster || "Unknown Cluster"} / ${d.parsedLoc.zone || "No Zone"}`;
+        if (!map.has(key)) map.set(key, { key, count: 0, examples: [] });
+        const item = map.get(key);
+        item.count += 1;
+        if (item.examples.length < 3) item.examples.push(d.deviceCode || d.deviceName || d.id);
+      });
+    return [...map.values()].sort((a, b) => b.count - a.count).slice(0, 6);
+  }, [devicesMapped]);
+
   const filtered = useMemo(() => {
     return devicesMapped.filter((d) => {
-      if (activeStat !== "ALL" && d.currentStatus !== activeStat) return false;
+      if (activeStat === "HAS_INSPECTION" && !d.inspectionInfo?.hasInspection) return false;
+      else if (activeStat === "NOT_INSPECTED" && d.inspectionInfo?.hasInspection) return false;
+      else if (activeStat === "STALE_SCAN" && d.inspectionInfo?.hasInspection && (d.inspectionInfo?.lastInspectionAgeDays ?? 0) <= 30) return false;
+      else if (!["ALL", "HAS_INSPECTION", "NOT_INSPECTED", "STALE_SCAN"].includes(activeStat) && d.currentStatus !== activeStat) return false;
+
       if (search) {
         const q = search.toLowerCase();
-        const text = `${d.deviceCode} ${d.deviceName} ${d.serialNumber} ${d.barcode} ${d.ipAddress}`.toLowerCase();
+        const text = `${d.deviceCode} ${d.deviceName} ${d.serialNumber} ${d.barcode} ${d.ipAddress} ${d.parsedLoc.cluster} ${d.parsedLoc.building} ${d.parsedLoc.zone} ${d.inspectionInfo?.lastTechnician}`.toLowerCase();
         if (!text.includes(q)) return false;
       }
       const pl = d.parsedLoc;
@@ -988,32 +1226,45 @@ export function DevicesPage({ devices = [], inspections = [] }) {
     });
   }, [devicesMapped, activeStat, search, filterLoc]);
 
+  const exportRows = (sourceRows = filtered) => sourceRows.map((dev) => ({
+    id: dev.id,
+    deviceCode: dev.deviceCode || "",
+    deviceName: dev.deviceName || "",
+    barcode: dev.barcode || "",
+    serialNumber: dev.serialNumber || "",
+    ipAddress: dev.ipAddress || "",
+    firmware: dev.firmware || "",
+    currentStatus: dev.currentStatus || "",
+    scanStatus: dev.inspectionInfo?.hasInspection ? "INSPECTED" : "NOT_INSPECTED",
+    riskLevel: dev.inspectionInfo?.riskLevel || "Not Inspected",
+    inspectionCount: dev.inspectionInfo?.inspectionCount || 0,
+    lastInspectionDate: dev.inspectionInfo?.lastInspectionDate || "",
+    lastTechnician: dev.inspectionInfo?.lastTechnician || "",
+    hasProofPhotos: dev.inspectionInfo?.hasInspectionImages ? "YES" : "NO",
+    cluster: dev.parsedLoc?.cluster || "",
+    building: dev.parsedLoc?.building || "",
+    zone: dev.parsedLoc?.zone || "",
+    lane: dev.parsedLoc?.lane || "",
+    direction: dev.parsedLoc?.direction || "",
+  }));
+
+  const downloadCsvFromRows = (rows, filename) => {
+    const headers = [
+      "id","deviceCode","deviceName","barcode","serialNumber","ipAddress","firmware","currentStatus",
+      "scanStatus","riskLevel","inspectionCount","lastInspectionDate","lastTechnician","hasProofPhotos",
+      "cluster","building","zone","lane","direction"
+    ];
+    const csv = [headers.join(","), ...rows.map((row) => headers.map((h) => safeCsv(row[h])).join(","))].join("\n");
+    downloadTextFile(filename, csv, "text/csv;charset=utf-8;");
+  };
+
   const handleExportCsv = () => {
-    const rows = filtered.map((dev) => ({
-      id: dev.id,
-      deviceCode: dev.deviceCode || "",
-      deviceName: dev.deviceName || "",
-      barcode: dev.barcode || "",
-      serialNumber: dev.serialNumber || "",
-      ipAddress: dev.ipAddress || "",
-      firmware: dev.firmware || "",
-      currentStatus: dev.currentStatus || "",
-      cluster: dev.parsedLoc?.cluster || "",
-      building: dev.parsedLoc?.building || "",
-      zone: dev.parsedLoc?.zone || "",
-      lane: dev.parsedLoc?.lane || "",
-      direction: dev.parsedLoc?.direction || "",
-    }));
-    const headers = ["id","deviceCode","deviceName","barcode","serialNumber","ipAddress","firmware","currentStatus","cluster","building","zone","lane","direction"];
-    const csv = [
-      headers.join(","),
-      ...rows.map((row) => headers.map((h) => safeCsv(row[h])).join(",")),
-    ].join("\n");
-    downloadTextFile(
-      `devices_export_${new Date().toISOString().slice(0, 10)}.csv`,
-      csv,
-      "text/csv;charset=utf-8;"
-    );
+    downloadCsvFromRows(exportRows(filtered), `devices_scan_report_${new Date().toISOString().slice(0, 10)}.csv`);
+  };
+
+  const handleExportMissingCsv = () => {
+    const missing = devicesMapped.filter((d) => !d.inspectionInfo?.hasInspection);
+    downloadCsvFromRows(exportRows(missing), `not_inspected_devices_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
   const handleExportJson = () => {
@@ -1026,13 +1277,21 @@ export function DevicesPage({ devices = [], inspections = [] }) {
       ipAddress: dev.ipAddress,
       firmware: dev.firmware,
       currentStatus: dev.currentStatus,
+      scanStatus: dev.inspectionInfo?.hasInspection ? "INSPECTED" : "NOT_INSPECTED",
+      inspectionInfo: dev.inspectionInfo,
       location: dev.parsedLoc,
     }));
     downloadTextFile(
-      `devices_export_${new Date().toISOString().slice(0, 10)}.json`,
+      `devices_scan_report_${new Date().toISOString().slice(0, 10)}.json`,
       JSON.stringify(payload, null, 2),
       "application/json;charset=utf-8;"
     );
+  };
+
+  const resetFilters = () => {
+    setActiveStat("ALL");
+    setSearch("");
+    setFilterLoc({ cluster: "ALL", building: "ALL", zone: "ALL" });
   };
 
   return (
@@ -1047,36 +1306,10 @@ export function DevicesPage({ devices = [], inspections = [] }) {
         </div>
 
         <div className="lux-top-actions">
-          <button
-            className="lux-btn-primary"
-            onClick={() => setShowExcelImport((v) => !v)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="8" y1="13" x2="16" y2="13"/>
-              <line x1="8" y1="17" x2="16" y2="17"/>
-            </svg>
-            📊 Import Excel
-          </button>
-
-          <button className="lux-btn-outline" onClick={handleExportCsv}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            Export CSV
-          </button>
-
-          <button className="lux-btn-outline" onClick={handleExportJson}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/>
-              <line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            Export JSON
-          </button>
+          <button className="lux-btn-primary" onClick={() => setShowExcelImport((v) => !v)}>📊 Import Excel</button>
+          <button className="lux-btn-outline" onClick={handleExportMissingCsv}>🚨 Export Not Inspected</button>
+          <button className="lux-btn-outline" onClick={handleExportCsv}>Export CSV</button>
+          <button className="lux-btn-outline" onClick={handleExportJson}>Export JSON</button>
         </div>
       </div>
 
@@ -1084,15 +1317,20 @@ export function DevicesPage({ devices = [], inspections = [] }) {
       <div className="lux-kpi-grid">
         {[
           { key: "ALL", label: "Fleet Size", val: stats.total, color: "#4f46e5" },
+          { key: "INSPECTION_RECORDS", label: "Inspection Records", val: stats.inspectionRecords, color: "#0ea5e9", locked: true },
+          { key: "HAS_INSPECTION", label: "Inspected Devices", val: stats.inspected, color: "#10b981" },
+          { key: "NOT_INSPECTED", label: "Not Inspected", val: stats.notInspected, color: "#ef4444" },
+          { key: "STALE_SCAN", label: "No / Old Scan", val: stats.stale, color: "#f97316" },
           { key: "OK", label: "Operational", val: stats.ok, color: "#10b981" },
           { key: "NEEDS_MAINTENANCE", label: "Degraded", val: stats.maint, color: "#f59e0b" },
           { key: "UNDER_MAINTENANCE", label: "Under Repair", val: stats.under, color: "#6366f1" },
           { key: "OUT_OF_SERVICE", label: "Offline/Dead", val: stats.out, color: "#ef4444" },
-        ].map(({ key, label, val, color }) => (
+        ].map(({ key, label, val, color, locked }) => (
           <div
             key={key}
             className={`lux-kpi-card ${activeStat === key ? "active" : ""}`}
-            onClick={() => setActiveStat(key)}
+            onClick={() => !locked && setActiveStat(key)}
+            style={locked ? { cursor: "default" } : undefined}
           >
             <div className="lux-kpi-title">{label}</div>
             <div className="lux-kpi-val" style={{ color }}>{val}</div>
@@ -1100,13 +1338,80 @@ export function DevicesPage({ devices = [], inspections = [] }) {
         ))}
       </div>
 
+      {/* Inspection Command Center */}
+      <div className="lux-audit-board">
+        <div className="lux-audit-head">
+          <div>
+            <div className="lux-audit-title">Inspection Command Center</div>
+            <div className="lux-audit-sub">All numbers are calculated from backend devices + backend inspections only. No backend changes.</div>
+            <div className="lux-audit-sub" style={{ marginTop: 4, opacity: 0.9 }}>
+              Backend inspection records: <b>{stats.inspectionRecords}</b> · Matched inspected devices by real deviceId: <b>{stats.inspected}</b>
+            </div>
+            <div className="lux-chip-row">
+              <button className="lux-chip" onClick={() => setActiveStat("NOT_INSPECTED")}>Show not inspected</button>
+              <button className="lux-chip" onClick={() => setActiveStat("STALE_SCAN")}>Show stale scans</button>
+              <button className="lux-chip" onClick={handleExportMissingCsv}>Download missing list</button>
+              <button className="lux-chip" onClick={resetFilters}>Reset filters</button>
+            </div>
+          </div>
+          <div className="lux-coverage-ring" style={{ "--p": `${stats.coveragePct}%` }}>
+            <div className="lux-coverage-ring-inner">{stats.coveragePct}%</div>
+          </div>
+        </div>
+
+        <div className="lux-audit-grid">
+          <div className="lux-audit-card" onClick={() => setActiveStat("NOT_INSPECTED")}>
+            <div className="lux-audit-label">Unscanned Devices</div>
+            <div className="lux-audit-value">{stats.notInspected}</div>
+            <div className="lux-audit-note">أجهزة لم يظهر لها أي فحص</div>
+          </div>
+          <div className="lux-audit-card" onClick={() => setActiveStat("HAS_INSPECTION")}>
+            <div className="lux-audit-label">Scanned Devices</div>
+            <div className="lux-audit-value">{stats.inspected}</div>
+            <div className="lux-audit-note">متربطة بسجل فحص واحد أو أكثر</div>
+          </div>
+          <div className="lux-audit-card" onClick={() => setActiveStat("STALE_SCAN")}>
+            <div className="lux-audit-label">No / Old Scan</div>
+            <div className="lux-audit-value">{stats.stale}</div>
+            <div className="lux-audit-note">لم يفحص أو آخر فحص أقدم من 30 يوم</div>
+          </div>
+          <div className="lux-audit-card">
+            <div className="lux-audit-label">With Proof Photos</div>
+            <div className="lux-audit-value">{stats.withPhotos}</div>
+            <div className="lux-audit-note">فحوصات عليها صور إثبات</div>
+          </div>
+        </div>
+      </div>
+
+      {groupedMissingByLocation.length > 0 && (
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, marginBottom: 24, overflow: "hidden", boxShadow: "0 4px 15px rgba(0,0,0,0.02)" }}>
+          <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#0f172a" }}>Top Locations With Missing Inspections</div>
+            <button className="lux-btn-danger" onClick={() => setActiveStat("NOT_INSPECTED")}>Open missing devices</button>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table className="lux-map-table">
+              <thead><tr><th>Location</th><th>Missing Count</th><th>Examples</th></tr></thead>
+              <tbody>
+                {groupedMissingByLocation.map((g) => (
+                  <tr key={g.key}>
+                    <td>{g.key}</td>
+                    <td>{g.count}</td>
+                    <td>{g.examples.join(" · ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Excel Import Panel */}
       {showExcelImport && (
         <ExcelImportPanel
           onClose={() => setShowExcelImport(false)}
           onImportSuccess={({ created, updated, total }) => {
             console.log(`Import done: ${created} created, ${updated} updated out of ${total}`);
-            // ممكن هنا تعمل refetch للداتا من الباك إند
           }}
         />
       )}
@@ -1120,7 +1425,7 @@ export function DevicesPage({ devices = [], inspections = [] }) {
           </svg>
           <input
             type="text"
-            placeholder="Smart Search: Device ID, Name, Serial..."
+            placeholder="Smart Search: Device ID, Name, Serial, Technician, Location..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -1128,11 +1433,7 @@ export function DevicesPage({ devices = [], inspections = [] }) {
 
         <div className="lux-select-wrap">
           <label>Cluster</label>
-          <select
-            className="lux-select"
-            value={filterLoc.cluster}
-            onChange={(e) => setFilterLoc({ ...filterLoc, cluster: e.target.value })}
-          >
+          <select className="lux-select" value={filterLoc.cluster} onChange={(e) => setFilterLoc({ ...filterLoc, cluster: e.target.value })}>
             <option value="ALL">All Clusters</option>
             {uniqueLocs.cluster.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -1140,11 +1441,7 @@ export function DevicesPage({ devices = [], inspections = [] }) {
 
         <div className="lux-select-wrap">
           <label>Sector / Zone</label>
-          <select
-            className="lux-select"
-            value={filterLoc.zone}
-            onChange={(e) => setFilterLoc({ ...filterLoc, zone: e.target.value })}
-          >
+          <select className="lux-select" value={filterLoc.zone} onChange={(e) => setFilterLoc({ ...filterLoc, zone: e.target.value })}>
             <option value="ALL">All Zones</option>
             {uniqueLocs.zone.map((z) => <option key={z} value={z}>{z}</option>)}
           </select>
@@ -1152,11 +1449,7 @@ export function DevicesPage({ devices = [], inspections = [] }) {
 
         <div className="lux-select-wrap">
           <label>Facility</label>
-          <select
-            className="lux-select"
-            value={filterLoc.building}
-            onChange={(e) => setFilterLoc({ ...filterLoc, building: e.target.value })}
-          >
+          <select className="lux-select" value={filterLoc.building} onChange={(e) => setFilterLoc({ ...filterLoc, building: e.target.value })}>
             <option value="ALL">All Facilities</option>
             {uniqueLocs.building.map((b) => <option key={b} value={b}>{b}</option>)}
           </select>
@@ -1171,34 +1464,45 @@ export function DevicesPage({ devices = [], inspections = [] }) {
       <div className="lux-hw-grid">
         {filtered.map((dev) => {
           const sMeta = STATUS_META[dev.currentStatus || "OK"] || STATUS_META.OK;
+          const audit = dev.inspectionInfo;
           return (
-            <div key={dev.id} className="lux-hw-card">
+            <div key={dev.id} className={`lux-hw-card ${!audit?.hasInspection ? "lux-card-alert" : ""}`}>
               <div className="lux-hw-head">
                 <div style={{ display: "flex", gap: "12px" }}>
-                  <div className="lux-hw-icon">
-                    {dev.deviceName ? dev.deviceName[0].toUpperCase() : "H"}
-                  </div>
+                  <div className="lux-hw-icon">{dev.deviceName ? dev.deviceName[0].toUpperCase() : "H"}</div>
                   <div>
-                    <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>
-                      {dev.deviceCode || "N/A"}
-                    </div>
-                    <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>
-                      {dev.deviceName}
-                    </div>
+                    <div style={{ fontSize: "16px", fontWeight: 800, color: "#0f172a" }}>{dev.deviceCode || "N/A"}</div>
+                    <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 600 }}>{dev.deviceName}</div>
                   </div>
                 </div>
                 <div style={{ width: "12px", height: "12px", borderRadius: "50%", background: sMeta.color, boxShadow: `0 0 0 4px ${sMeta.bg}` }}></div>
               </div>
+
+              {!audit?.hasInspection && (
+                <div className="lux-priority-ribbon">
+                  <span>🚨 لم يتم فحص هذا الجهاز</span>
+                  <span>Priority</span>
+                </div>
+              )}
+
+              <div style={{ padding: "14px 16px", borderBottom: "1px solid #f1f5f9", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="lux-scan-badge" style={{ background: audit?.riskBg, color: audit?.riskColor }}>
+                  {audit?.hasInspection ? "✅ INSPECTED" : "❌ NOT INSPECTED"}
+                </span>
+                <span className="lux-mini-muted">Last: {formatDateTimeSafe(audit?.lastInspectionDate)}</span>
+              </div>
+
               <div className="lux-hw-body">
                 <div className="lux-hw-stat"><span>Cluster</span><span>{dev.parsedLoc.cluster || "Unknown"}</span></div>
                 <div className="lux-hw-stat"><span>Zone</span><span>{dev.parsedLoc.zone || "—"}</span></div>
                 <div className="lux-hw-stat"><span>IP Address</span><span style={{ fontFamily: "monospace" }}>{dev.ipAddress || "DHCP"}</span></div>
                 <div className="lux-hw-stat"><span>Direction</span><span>{dev.parsedLoc.direction || "—"}</span></div>
+                <div className="lux-hw-stat"><span>Technician</span><span>{audit?.lastTechnician || "—"}</span></div>
+                <div className="lux-hw-stat"><span>Scan Logs</span><span>{audit?.inspectionCount || 0}</span></div>
               </div>
+
               <div style={{ padding: "16px", borderTop: "1px solid #f1f5f9" }}>
-                <button className="lux-btn-readmore" onClick={() => setSelectedDevice(dev)}>
-                  Read More Details →
-                </button>
+                <button className="lux-btn-readmore" onClick={() => setSelectedDevice(dev)}>Read More Details →</button>
               </div>
             </div>
           );
@@ -1213,7 +1517,7 @@ export function DevicesPage({ devices = [], inspections = [] }) {
       {selectedDevice && (
         <DeviceDetailsOverlay
           device={selectedDevice}
-          inspections={inspections.filter((i) => i.deviceId === selectedDevice.id)}
+          inspections={selectedDevice.inspectionInfo?.relatedInspections || inspections.filter((i) => deviceMatchesInspection(selectedDevice, i))}
           onBack={() => setSelectedDevice(null)}
         />
       )}

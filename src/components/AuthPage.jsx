@@ -57,7 +57,7 @@ const styles = `
     margin: 24px;
   }
   .auth-left {
-    background: linear-gradient(135deg, #6c63ff, #5a52d5);
+    background: linear-gradient(135deg, #0066d6, #0d97ff);
     padding: 48px;
     color: white;
     display: flex;
@@ -84,21 +84,23 @@ const styles = `
     z-index: 1;
   }
   .auth-brand-icon {
-    width: 48px; height: 48px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 14px;
+    width: 54px; height: 54px;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 24px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.08em;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.26);
   }
   .auth-brand-text {
-    font-size: 28px;
-    font-weight: 800;
+    font-size: 30px;
+    font-weight: 900;
     margin: 0;
-    letter-spacing: -1px;
+    letter-spacing: -1.2px;
   }
   .auth-tagline {
     font-size: 32px;
@@ -198,9 +200,9 @@ const styles = `
   }
   .auth-input-group input:focus {
     outline: none;
-    border-color: #6c63ff;
+    border-color: #0d97ff;
     background: white;
-    box-shadow: 0 0 0 4px rgba(108, 99, 255, 0.1);
+    box-shadow: 0 0 0 4px rgba(13, 151, 255, 0.12);
   }
   .auth-input-group input::placeholder { color: #a3aec7; }
   .auth-error {
@@ -214,7 +216,7 @@ const styles = `
   }
   .auth-submit {
     height: 48px;
-    background: linear-gradient(135deg, #6c63ff, #5a52d5);
+    background: linear-gradient(135deg, #0d97ff, #0066d6);
     color: white;
     border: none;
     border-radius: 12px;
@@ -226,12 +228,12 @@ const styles = `
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(108, 99, 255, 0.3);
+    box-shadow: 0 4px 12px rgba(13, 151, 255, 0.3);
     width: 100%;
   }
   .auth-submit:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(108, 99, 255, 0.4);
+    box-shadow: 0 8px 20px rgba(13, 151, 255, 0.4);
   }
   .auth-submit:disabled { opacity: 0.7; cursor: not-allowed; }
   .auth-loader {
@@ -275,14 +277,14 @@ export function AuthPage({ onLogin, loading }) {
         <div className="auth-container">
           <div className="auth-left">
             <div className="auth-brand-wrap">
-              <div className="auth-brand-icon">⚡</div>
-              <h1 className="auth-brand-text">InspectPro</h1>
+              <div className="auth-brand-icon">SI</div>
+              <h1 className="auth-brand-text">SmartIT</h1>
             </div>
             <h2 className="auth-tagline">
-              Next-Generation <br /> Maintenance Dashboard
+              Integrated Solutions <br /> for Smart Operations
             </h2>
             <p className="auth-desc">
-              Seamlessly monitor, filter, and analyze all your data in real-time.
+              Secure access to SmartIT company systems, dashboards, and monitoring tools.
             </p>
             <div className="auth-stats">
               <div className="auth-stat">
@@ -299,8 +301,8 @@ export function AuthPage({ onLogin, loading }) {
           <div className="auth-right">
             <div className="auth-form-card">
               <div className="auth-header">
-                <h2>Welcome Back</h2>
-                <p>Enter your credentials to access the dashboard</p>
+                <h2>SmartIT Login</h2>
+                <p>Enter your company credentials to access the SmartIT portal</p>
               </div>
 
               <form className="auth-form" onSubmit={handleSubmit}>
@@ -338,7 +340,7 @@ export function AuthPage({ onLogin, loading }) {
                   {loading ? (
                     <span className="auth-loader"></span>
                   ) : (
-                    "Sign In to Dashboard"
+                    "Login to SmartIT"
                   )}
                 </button>
               </form>

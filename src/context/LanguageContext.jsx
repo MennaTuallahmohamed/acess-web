@@ -4,8 +4,8 @@ import { createContext, useContext, useState, useEffect } from "react";
 const translations = {
   en: {
     dir: "ltr",
-    brand: "InspectPro",
-    brandSub: "Dashboard",
+    brand: "SmartIT Inspect",
+    brandSub: "SmartIT Inspection",
     home: "Home",
     tasks: "Tasks",
     technicians: "Technicians",
@@ -114,8 +114,8 @@ const translations = {
   },
   ar: {
     dir: "rtl",
-    brand: "إنسبكت برو",
-    brandSub: "لوحة التحكم",
+    brand: "سمارت IT",
+    brandSub: "تفتيش سمارت IT",
     home: "الرئيسية",
     tasks: "المهام",
     technicians: "الفنيون",
