@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const DEFAULT_API_BASE_URL = "https://acess-backend-production.up.railway.app";
+const DEFAULT_API_BASE_URL = "https://acess-backend-production-8856.up.railway.app";
+const EXPECTED_NOT_INSPECTED_COUNT = 170;
+
+/* =========================================================
+   SMART IT — TRUE REPORTS DASHBOARD
+   Source of truth:
+   1) GET /reports/devices-scan-report
+   2) GET /inspections or /reports/latest-inspections
+
+   Important rule:
+   Device is NOT_SCANNED when it has zero Inspection records.
+========================================================= */
 
 /* =========================
-   API / IMAGE HELPERS
+   API HELPERS
 ========================= */
 
 function getApiBase(apiBase = "") {
@@ -17,9 +28,16 @@ function getApiBase(apiBase = "") {
     return cleanProp;
   }
 
-  const saved = String(localStorage.getItem("dashboard_api_base_url") || "")
-    .trim()
-    .replace(/\/+$/, "");
+  const saved =
+    String(localStorage.getItem("dashboard_api_base_url") || "")
+      .trim()
+      .replace(/\/+$/, "") ||
+    String(localStorage.getItem("apiBaseUrl") || "")
+      .trim()
+      .replace(/\/+$/, "") ||
+    String(localStorage.getItem("baseUrl") || "")
+      .trim()
+      .replace(/\/+$/, "");
 
   if (
     saved &&
@@ -32,49 +50,134 @@ function getApiBase(apiBase = "") {
   return DEFAULT_API_BASE_URL;
 }
 
-function fixImageUrl(value, apiBase = "") {
-  if (!value) return "";
-
-  let raw = String(value).trim().replace(/\\/g, "/");
-  if (!raw) return "";
-
-  const base = getApiBase(apiBase);
-
-  raw = raw
-    .replace("http://localhost:3000", base)
-    .replace("https://localhost:3000", base)
-    .replace("http://127.0.0.1:3000", base)
-    .replace("https://127.0.0.1:3000", base)
-    .replace("http://localhost:5173", base)
-    .replace("https://localhost:5173", base)
-    .replace("http://127.0.0.1:5173", base)
-    .replace("https://127.0.0.1:5173", base);
-
-  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
-
-  if (raw.startsWith("/")) return `${base}${raw}`;
-
-  return `${base}/${raw}`;
+function getToken() {
+  return (
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("authToken") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("accessToken") ||
+    sessionStorage.getItem("authToken") ||
+    ""
+  );
 }
+
+async function apiGetJson(base, path) {
+  const token = getToken();
+
+  const res = await fetch(`${base}${path}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`${path} HTTP ${res.status} ${text}`);
+  }
+
+  return res.json();
+}
+
+async function tryPaths(base, paths, validator) {
+  let lastError = null;
+
+  for (const path of paths) {
+    try {
+      const data = await apiGetJson(base, path);
+
+      if (validator && !validator(data)) {
+        throw new Error(`${path} returned invalid format`);
+      }
+
+      return { data, path };
+    } catch (err) {
+      lastError = err;
+      console.warn("Failed endpoint:", path, err);
+    }
+  }
+
+  throw lastError || new Error("All endpoints failed");
+}
+
+function extractArray(payload, keys = []) {
+  if (Array.isArray(payload)) return payload;
+
+  for (const key of keys) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+  }
+
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.result)) return payload.result;
+  if (Array.isArray(payload?.inspections)) return payload.inspections;
+  if (Array.isArray(payload?.devices)) return payload.devices;
+  if (Array.isArray(payload?.locations)) return payload.locations;
+
+  return [];
+}
+
+async function apiGetReportSummary(base) {
+  return tryPaths(
+    base,
+    [
+      "/reports/devices-scan-report",
+      "/reports/locations-scan-summary",
+      "/api/reports/devices-scan-report",
+      "/api/reports/locations-scan-summary",
+    ],
+    (data) => data && Array.isArray(data.locations)
+  );
+}
+
+async function apiGetAllInspections(base) {
+  try {
+    return await tryPaths(
+      base,
+      [
+        "/inspections",
+        "/api/inspections",
+        "/reports/latest-inspections",
+        "/api/reports/latest-inspections",
+        "/viewer/inspections",
+        "/dashboard/inspections",
+        "/dashboard/viewer/inspections",
+      ],
+      (data) => extractArray(data, ["inspections", "latestInspections", "data", "items"]).length >= 0
+    );
+  } catch {
+    return { data: [], path: "" };
+  }
+}
+
+/* =========================
+   COMMON HELPERS
+========================= */
 
 function safe(value) {
   if (value === undefined || value === null || value === "") return "—";
   return value;
 }
 
-function fmtDate(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-
-  return d.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[أإآا]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ");
 }
 
-function fmtFull(value) {
+function includesNormalized(text, query) {
+  const q = normalizeText(query);
+  if (!q) return true;
+  return normalizeText(text).includes(q);
+}
+
+function fmtDateTime(value) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
@@ -85,28 +188,7 @@ function fmtFull(value) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   });
-}
-
-function boolFromAny(value) {
-  if (value === true) return true;
-  if (value === false) return false;
-
-  const text = String(value || "").trim().toLowerCase();
-
-  return [
-    "true",
-    "yes",
-    "1",
-    "done",
-    "scanned",
-    "verified",
-    "scan_done",
-    "scan done",
-    "تم",
-    "تم scan",
-  ].includes(text);
 }
 
 function arStatus(status) {
@@ -128,15 +210,37 @@ function arStatus(status) {
     UNRESOLVED: "لم يتم الحل",
     COMPLETED: "مكتمل",
     CANCELLED: "ملغي",
+    ACTIVE: "نشط",
+    INACTIVE: "غير نشط",
+    SCANNED: "تم فحصه",
+    NOT_SCANNED: "لم يتم فحصه",
+    ALL_SCANNED: "كل الأجهزة اتفحصت",
+    HAS_NOT_SCANNED_DEVICES: "يوجد أجهزة لم تفحص",
   };
 
   return map[status] || status || "—";
 }
 
 function statusClass(status) {
-  if (["OK", "DONE", "RESOLVED", "COMPLETED"].includes(status)) return "good";
+  if (
+    ["OK", "DONE", "RESOLVED", "COMPLETED", "ACTIVE", "SCANNED", "ALL_SCANNED"].includes(
+      status
+    )
+  ) {
+    return "good";
+  }
 
-  if (["NOT_OK", "FAILED", "OUT_OF_SERVICE", "UNRESOLVED"].includes(status)) {
+  if (
+    [
+      "NOT_OK",
+      "FAILED",
+      "OUT_OF_SERVICE",
+      "UNRESOLVED",
+      "INACTIVE",
+      "NOT_SCANNED",
+      "HAS_NOT_SCANNED_DEVICES",
+    ].includes(status)
+  ) {
     return "bad";
   }
 
@@ -147,6 +251,7 @@ function statusClass(status) {
       "IN_PROGRESS",
       "UNDER_MAINTENANCE",
       "PENDING",
+      "NOT_REACHABLE",
     ].includes(status)
   ) {
     return "warn";
@@ -161,21 +266,16 @@ function getImages(obj) {
   const possible =
     obj.images ||
     obj.inspectionImages ||
-    obj.InspectionImage ||
-    obj.inspectionImage ||
     obj.photos ||
     obj.attachments ||
     obj.files ||
     [];
 
-  if (!Array.isArray(possible)) return [];
-
-  return possible;
+  return Array.isArray(possible) ? possible : [];
 }
 
 function getImagePath(img) {
   if (!img) return "";
-
   if (typeof img === "string") return img;
 
   return (
@@ -192,146 +292,145 @@ function getImagePath(img) {
   );
 }
 
-function getIssues(obj) {
-  if (!obj) return [];
-  if (Array.isArray(obj.inspectionIssues)) return obj.inspectionIssues;
-  if (Array.isArray(obj.issues)) return obj.issues;
-  return [];
+function fixImageUrl(value, apiBase = "") {
+  if (!value) return "";
+
+  let raw = String(value).trim().replace(/\\/g, "/");
+  if (!raw) return "";
+
+  const base = getApiBase(apiBase);
+
+  raw = raw
+    .replace("http://localhost:3000", base)
+    .replace("https://localhost:3000", base)
+    .replace("http://127.0.0.1:3000", base)
+    .replace("https://127.0.0.1:3000", base)
+    .replace("http://localhost:5173", base)
+    .replace("https://localhost:5173", base)
+    .replace("http://127.0.0.1:5173", base)
+    .replace("https://127.0.0.1:5173", base);
+
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  if (raw.startsWith("/")) return `${base}${raw}`;
+
+  return `${base}/${raw}`;
 }
 
-function getActions(obj) {
-  if (!obj) return [];
-
-  if (Array.isArray(obj.solutionActions)) return obj.solutionActions;
-
-  if (Array.isArray(obj.inspectionIssues)) {
-    return obj.inspectionIssues.flatMap((issue) => issue.actions || []);
-  }
-
-  return [];
+function getDeviceId(device) {
+  return device?.id || device?.deviceId || device?.ID || null;
 }
 
-function getScanInfo(obj) {
-  const scan = obj?.scanInfo || obj?.scan || obj?.security || {};
+function getLocationId(location) {
+  return location?.id || location?.locationId || location?.ID || null;
+}
 
-  const explicit =
-    scan.scanned ??
-    scan.isScanned ??
-    scan.scanDone ??
-    scan.verified ??
-    scan.scanVerified ??
-    obj?.scanned ??
-    obj?.isScanned ??
-    obj?.scanDone ??
-    null;
-
-  const hasExplicit =
-    explicit !== null && explicit !== undefined && explicit !== "";
-
-  const inferred =
-    Boolean(obj?.id) &&
-    Boolean(
-      obj?.deviceId ||
-        obj?.device?.id ||
-        obj?.device?.deviceCode ||
-        obj?.device?.barcode ||
-        obj?.device?.secretCode
-    );
-
-  const scanned = hasExplicit ? boolFromAny(explicit) : inferred;
-
-  const manualFallbackUsed = boolFromAny(
-    scan.manualFallbackUsed ??
-      scan.manualFallback ??
-      scan.usedManualFallback ??
-      obj?.manualFallbackUsed ??
-      obj?.manualFallback
+function getDeviceDisplayName(device = {}) {
+  return (
+    device.deviceName ||
+    device.name ||
+    device.deviceCode ||
+    device.code ||
+    device.serialNumber ||
+    `Device #${safe(getDeviceId(device))}`
   );
+}
 
-  const qrAttempts =
-    Number(
-      scan.qrAttempts ??
-        scan.scanAttempts ??
-        scan.attempts ??
-        obj?.qrAttempts ??
-        obj?.scanAttempts ??
-        0
-    ) || 0;
+function getLocationDisplay(location = {}) {
+  const parts = [
+    location.cluster,
+    location.building,
+    location.zone,
+    location.lane,
+    location.direction,
+    location.type,
+  ].filter(Boolean);
 
-  const scanMethod =
-    scan.scanMethod ||
-    scan.method ||
-    obj?.scanMethod ||
-    (scanned ? "VERIFIED_BY_INSPECTION" : "");
+  return parts.length ? parts.join(" · ") : `Location #${safe(getLocationId(location))}`;
+}
 
-  const scanCodeType =
-    scan.scanCodeType || scan.codeType || obj?.scanCodeType || "";
+function getTechObj(input) {
+  return input?.technician || input?.lastTechnician || input?.user || input?.createdBy || {};
+}
 
-  const scanCodeValueMasked =
-    scan.scanCodeValueMasked ||
-    scan.maskedCode ||
-    scan.masked ||
-    obj?.scanCodeValueMasked ||
-    "";
+function getTechName(input) {
+  const tech = getTechObj(input);
+
+  return (
+    tech.fullName ||
+    tech.username ||
+    tech.email ||
+    input?.technicianName ||
+    input?.techName ||
+    input?.createdByName ||
+    (input?.technicianId ? `#${input.technicianId}` : "—")
+  );
+}
+
+function getTechId(input) {
+  const tech = getTechObj(input);
+  return input?.technicianId || tech?.id || input?.userId || input?.createdById || "";
+}
+
+function getDeviceLocation(device = {}) {
+  return device.location || {};
+}
+
+function normalizeInspection(raw, fallbackLocation = null) {
+  const device = raw?.device || {};
+  const location = device.location || raw?.location || fallbackLocation || {};
+  const technician = getTechObj(raw);
 
   return {
-    scanned,
-    manualFallbackUsed,
-    qrAttempts,
-    scanMethod,
-    scanCodeType,
-    scanCodeValueMasked,
-    inferred: !hasExplicit && scanned,
+    ...raw,
+    id: raw?.id,
+    deviceId: raw?.deviceId || device?.id,
+    technicianId: raw?.technicianId || technician?.id || raw?.userId || raw?.createdById,
+    inspectionStatus:
+      String(raw?.inspectionStatus || raw?.status || "NOT_REACHABLE").toUpperCase(),
+    inspectedAt: raw?.inspectedAt || raw?.createdAt || null,
+    createdAt: raw?.createdAt || raw?.inspectedAt || null,
+    technician: {
+      ...technician,
+      fullName:
+        technician.fullName ||
+        technician.name ||
+        raw?.technicianName ||
+        raw?.techName ||
+        technician.username ||
+        technician.email ||
+        "",
+    },
+    device: {
+      ...device,
+      id: device.id || raw?.deviceId,
+      location: {
+        ...location,
+      },
+    },
   };
 }
 
-function getScanMethodText(obj) {
-  const scan = getScanInfo(obj);
-  const method = String(scan.scanMethod || "").toUpperCase();
+function exportCsv(filename, rows) {
+  const escapeCell = (v) => {
+    const text = String(v ?? "");
+    if (text.includes(",") || text.includes('"') || text.includes("\n")) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
 
-  if (method === "VERIFIED_BY_INSPECTION") return "تم التحقق من الفحص";
-  if (method === "QR" || method === "SECRET_QR") return "QR Code";
-  if (method === "MANUAL" || method === "MANUAL_SEARCH") return "بحث يدوي";
-  if (method === "BARCODE") return "Barcode";
-  if (method === "SECRET_CODE") return "Secret Code";
+  const csv = rows.map((row) => row.map(escapeCell).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
 
-  return scan.scanMethod || "—";
-}
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 
-function getScanCodeTypeText(obj) {
-  const scan = getScanInfo(obj);
-  const type = String(scan.scanCodeType || "").toUpperCase();
-
-  if (type === "SECRET_QR") return "QR سري";
-  if (type === "BARCODE") return "Barcode";
-  if (type === "DEVICE_CODE") return "كود الجهاز";
-  if (type === "SERIAL_NUMBER") return "Serial Number";
-  if (type === "SECRET_CODE") return "Secret Code";
-
-  return scan.scanCodeType || "—";
-}
-
-function getStatusBefore(obj) {
-  return (
-    obj?.statusBeforeInspection ||
-    obj?.beforeDeviceStatus ||
-    obj?.beforeStatus ||
-    obj?.deviceStatusBefore ||
-    obj?.oldStatus ||
-    null
-  );
-}
-
-function getStatusAfter(obj) {
-  return (
-    obj?.statusAfterInspection ||
-    obj?.afterDeviceStatus ||
-    obj?.afterStatus ||
-    obj?.currentDeviceStatus ||
-    obj?.deviceStatusAfter ||
-    obj?.device?.currentStatus ||
-    null
-  );
+  URL.revokeObjectURL(url);
 }
 
 /* =========================
@@ -339,17 +438,10 @@ function getStatusAfter(obj) {
 ========================= */
 
 const CSS = `
-html,
-body,
-#root {
-  height: 100%;
-}
+html, body, #root { height: 100%; }
+body { overflow: hidden; }
 
-body {
-  overflow: hidden;
-}
-
-.inspections-page {
+.smart-inspections-page {
   height: 100vh;
   min-height: 100vh;
   width: 100%;
@@ -364,17 +456,17 @@ body {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.inspections-shell {
+.smart-shell {
   width: 100%;
-  max-width: 1700px;
+  max-width: 1760px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-bottom: 50px;
+  padding-bottom: 60px;
 }
 
-.insp-hero {
+.smart-hero {
   background:
     linear-gradient(135deg, rgba(15,23,42,.97), rgba(30,41,59,.94)),
     radial-gradient(circle at top right, rgba(79,70,229,.45), transparent 45%);
@@ -386,7 +478,7 @@ body {
   position: relative;
 }
 
-.insp-hero::before {
+.smart-hero::before {
   content: "";
   position: absolute;
   width: 380px;
@@ -397,7 +489,7 @@ body {
   border-radius: 50%;
 }
 
-.insp-hero-inner {
+.smart-hero-inner {
   position: relative;
   z-index: 1;
   display: flex;
@@ -407,13 +499,13 @@ body {
   flex-wrap: wrap;
 }
 
-.insp-title-wrap {
+.smart-title-wrap {
   display: flex;
   gap: 14px;
   align-items: flex-start;
 }
 
-.insp-logo {
+.smart-logo {
   width: 54px;
   height: 54px;
   border-radius: 18px;
@@ -425,7 +517,7 @@ body {
   flex: 0 0 auto;
 }
 
-.insp-eyebrow {
+.smart-eyebrow {
   color: #c4b5fd;
   font-size: 12px;
   font-weight: 950;
@@ -434,7 +526,7 @@ body {
   margin-bottom: 6px;
 }
 
-.insp-title {
+.smart-title {
   margin: 0;
   color: white;
   font-size: clamp(25px, 3vw, 38px);
@@ -443,16 +535,16 @@ body {
   letter-spacing: -1.3px;
 }
 
-.insp-subtitle {
+.smart-subtitle {
   margin-top: 9px;
   color: #cbd5e1;
   font-size: 14px;
   font-weight: 650;
   line-height: 1.65;
-  max-width: 760px;
+  max-width: 900px;
 }
 
-.insp-actions {
+.smart-actions {
   display: flex;
   gap: 9px;
   flex-wrap: wrap;
@@ -460,7 +552,7 @@ body {
   align-items: center;
 }
 
-.insp-btn {
+.smart-btn {
   height: 40px;
   padding: 0 14px;
   border: 1px solid rgba(15,23,42,.10);
@@ -478,26 +570,38 @@ body {
   white-space: nowrap;
 }
 
-.insp-btn:hover {
+.smart-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(15,23,42,.14);
 }
 
-.insp-btn.primary {
+.smart-btn.primary {
   color: white;
   border-color: transparent;
   background: linear-gradient(135deg, #4f46e5, #7c3aed);
   box-shadow: 0 14px 30px rgba(79,70,229,.30);
 }
 
-.insp-btn.glass {
+.smart-btn.danger {
+  color: white;
+  border-color: transparent;
+  background: linear-gradient(135deg, #ef4444, #f97316);
+}
+
+.smart-btn.glass {
   color: white;
   background: rgba(255,255,255,.10);
   border-color: rgba(255,255,255,.16);
   backdrop-filter: blur(10px);
 }
 
-.view-toggle {
+.smart-btn.small {
+  height: 34px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.smart-toggle {
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -506,7 +610,7 @@ body {
   border-radius: 14px;
 }
 
-.view-toggle button {
+.smart-toggle button {
   height: 32px;
   padding: 0 13px;
   border: 0;
@@ -518,19 +622,37 @@ body {
   cursor: pointer;
 }
 
-.view-toggle button.active {
+.smart-toggle button.active {
   background: white;
   color: #0f172a;
 }
 
-.insp-error {
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+.error-box,
+.success-box,
+.warning-box {
   border-radius: 16px;
   padding: 13px 15px;
   font-weight: 850;
   font-size: 13px;
+  line-height: 1.6;
+}
+
+.error-box {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+.success-box {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.warning-box {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
 }
 
 .stats-grid {
@@ -541,13 +663,35 @@ body {
 
 .stat-card {
   background: rgba(255,255,255,.92);
-  backdrop-filter: blur(12px);
   border: 1px solid rgba(255,255,255,.70);
   border-radius: 22px;
   padding: 16px;
   box-shadow: 0 12px 30px rgba(15,23,42,.07);
   position: relative;
   overflow: hidden;
+}
+
+.stat-card.clickable {
+  cursor: pointer;
+  transition: .18s ease;
+}
+
+.stat-card.clickable:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 44px rgba(15,23,42,.12);
+  border-color: rgba(79,70,229,.28);
+}
+
+.stat-card.clickable::after {
+  content: "Click";
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .4px;
 }
 
 .stat-card::before {
@@ -584,7 +728,7 @@ body {
   font-weight: 750;
 }
 
-.filter-panel {
+.panel {
   background: rgba(255,255,255,.92);
   border: 1px solid rgba(255,255,255,.70);
   border-radius: 24px;
@@ -592,16 +736,44 @@ body {
   padding: 16px;
 }
 
-.filter-title {
+.panel-title {
   font-size: 15px;
   font-weight: 950;
   color: #0f172a;
   margin-bottom: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  height: 40px;
+  padding: 0 15px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #0f172a;
+  color: #fff;
+  border-color: #0f172a;
 }
 
 .filters-grid {
   display: grid;
-  grid-template-columns: minmax(230px, 2fr) repeat(4, minmax(130px, 1fr)) repeat(3, auto);
+  grid-template-columns: minmax(260px, 2fr) minmax(190px, 1.2fr) repeat(4, minmax(130px, 1fr)) repeat(2, auto);
   gap: 10px;
   align-items: end;
 }
@@ -633,13 +805,6 @@ body {
   font-weight: 750;
 }
 
-.filter-field input:focus,
-.filter-field select:focus {
-  background: white;
-  border-color: rgba(79,70,229,.45);
-  box-shadow: 0 0 0 4px rgba(79,70,229,.10);
-}
-
 .check-pill {
   height: 40px;
   padding: 0 12px;
@@ -659,33 +824,39 @@ body {
   accent-color: #4f46e5;
 }
 
-.content-area {
-  min-height: 300px;
-}
-
+.location-grid,
+.device-list,
 .grid-view {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
   gap: 14px;
 }
 
+.location-card,
+.device-card,
 .inspection-card {
   background: rgba(255,255,255,.94);
   border: 1px solid rgba(255,255,255,.76);
   border-radius: 24px;
   box-shadow: 0 12px 30px rgba(15,23,42,.07);
   overflow: hidden;
-  cursor: pointer;
   transition: .18s ease;
 }
 
+.location-card,
+.inspection-card {
+  cursor: pointer;
+}
+
+.location-card:hover,
+.device-card:hover,
 .inspection-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 20px 48px rgba(15,23,42,.11);
+  transform: translateY(-3px);
+  box-shadow: 0 18px 42px rgba(15,23,42,.10);
 }
 
 .card-cover {
-  height: 190px;
+  height: 185px;
   background: #e2e8f0;
   position: relative;
   overflow: hidden;
@@ -696,7 +867,7 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
-	background: #e2e8f0;
+  background: #e2e8f0;
 }
 
 .no-photo {
@@ -704,8 +875,7 @@ body {
   height: 100%;
   display: grid;
   place-items: center;
-  background:
-    linear-gradient(135deg, #eef2ff, #f8fafc);
+  background: linear-gradient(135deg, #eef2ff, #f8fafc);
   color: #64748b;
   font-size: 13px;
   font-weight: 950;
@@ -723,10 +893,10 @@ body {
   padding: 6px 10px;
   font-size: 11px;
   font-weight: 950;
-  backdrop-filter: blur(8px);
 }
 
-.card-body {
+.card-body,
+.device-card {
   padding: 15px;
 }
 
@@ -748,7 +918,8 @@ body {
   font-weight: 950;
 }
 
-.card-title {
+.card-title,
+.device-name {
   color: #0f172a;
   font-size: 17px;
   line-height: 1.25;
@@ -756,85 +927,24 @@ body {
   margin-bottom: 8px;
 }
 
-.card-meta {
+.device-name {
+  font-size: 14px;
+}
+
+.card-meta,
+.device-meta {
   color: #64748b;
   font-size: 12px;
   line-height: 1.65;
   font-weight: 700;
 }
 
-.card-tags {
+.card-tags,
+.device-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
   margin-top: 12px;
-}
-
-.table-card {
-  background: rgba(255,255,255,.94);
-  border: 1px solid rgba(255,255,255,.76);
-  border-radius: 24px;
-  box-shadow: 0 12px 30px rgba(15,23,42,.07);
-  overflow: hidden;
-}
-
-.table-scroll {
-  width: 100%;
-  max-height: calc(100vh - 390px);
-  min-height: 360px;
-  overflow: auto;
-}
-
-.insp-table {
-  width: 100%;
-  min-width: 1320px;
-  border-collapse: collapse;
-}
-
-.insp-table th {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: #f8fafc;
-  color: #475569;
-  font-size: 11px;
-  font-weight: 950;
-  padding: 13px;
-  border-bottom: 1px solid #e5e7eb;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.insp-table td {
-  padding: 12px 13px;
-  border-bottom: 1px solid #f1f5f9;
-  color: #0f172a;
-  font-size: 13px;
-  font-weight: 720;
-  vertical-align: top;
-}
-
-.insp-table tr {
-  cursor: pointer;
-}
-
-.insp-table tbody tr:hover td {
-  background: #f8fafc;
-}
-
-.thumb-list {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.thumb {
-  width: 54px;
-  height: 42px;
-  border-radius: 10px;
-  object-fit: cover;
-  background: #e2e8f0;
-  border: 1px solid #e5e7eb;
 }
 
 .tag {
@@ -850,41 +960,13 @@ body {
   white-space: nowrap;
 }
 
-.tag.good {
-  background: #dcfce7;
-  color: #15803d;
-  border-color: #86efac;
-}
-
-.tag.bad {
-  background: #fee2e2;
-  color: #b91c1c;
-  border-color: #fecaca;
-}
-
-.tag.warn {
-  background: #fef9c3;
-  color: #a16207;
-  border-color: #fde68a;
-}
-
-.tag.muted {
-  background: #f1f5f9;
-  color: #475569;
-  border-color: #e2e8f0;
-}
-
-.tag.info {
-  background: #dbeafe;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
-}
-
-.tag.purple {
-  background: #f3e8ff;
-  color: #7e22ce;
-  border-color: #e9d5ff;
-}
+.tag.good { background: #dcfce7; color: #15803d; border-color: #86efac; }
+.tag.bad { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
+.tag.warn { background: #fef9c3; color: #a16207; border-color: #fde68a; }
+.tag.muted { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+.tag.info { background: #dbeafe; color: #1d4ed8; border-color: #bfdbfe; }
+.tag.purple { background: #f3e8ff; color: #7e22ce; border-color: #e9d5ff; }
+.tag.orange { background: #ffedd5; color: #c2410c; border-color: #fed7aa; }
 
 .state-card {
   min-height: 260px;
@@ -911,11 +993,257 @@ body {
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.table-card {
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(255,255,255,.76);
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.07);
+  overflow: hidden;
 }
 
-/* MODAL */
+.table-scroll {
+  width: 100%;
+  max-height: calc(100vh - 405px);
+  min-height: 360px;
+  overflow: auto;
+}
+
+.smart-table {
+  width: 100%;
+  min-width: 1250px;
+  border-collapse: collapse;
+}
+
+.smart-table th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 950;
+  padding: 13px;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.smart-table td {
+  padding: 12px 13px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 720;
+  vertical-align: top;
+}
+
+.smart-table tbody tr:hover td { background: #f8fafc; }
+.clickable-row { cursor: pointer; }
+
+.thumb-list {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.thumb {
+  width: 54px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #e2e8f0;
+  border: 1px solid #e5e7eb;
+}
+
+.split-layout {
+  display: grid;
+  grid-template-columns: 410px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: calc(100vh - 375px);
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.location-row {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 18px;
+  padding: 13px;
+  cursor: pointer;
+  transition: .18s ease;
+}
+
+.location-row:hover {
+  border-color: #c7d2fe;
+  box-shadow: 0 10px 24px rgba(15,23,42,.07);
+}
+
+.location-row.active {
+  border-color: #4f46e5;
+  background: #eef2ff;
+}
+
+.location-row-title {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 950;
+  margin-bottom: 7px;
+}
+
+.location-row-meta {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.location-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.location-header {
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(255,255,255,.76);
+  border-radius: 24px;
+  box-shadow: 0 12px 30px rgba(15,23,42,.07);
+  padding: 18px;
+}
+
+.location-header-title {
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 950;
+  letter-spacing: -.4px;
+}
+
+.location-header-sub {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+  margin-top: 8px;
+  line-height: 1.7;
+}
+
+.mini-stats {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.mini-stat {
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  border-radius: 16px;
+  padding: 12px;
+}
+
+.mini-stat strong {
+  display: block;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.mini-stat span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+
+.section {
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  padding: 16px;
+  background: #fff;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 950;
+  margin-bottom: 14px;
+}
+
+.section-title::after {
+  content: "";
+  height: 1px;
+  background: #e5e7eb;
+  flex: 1;
+}
+
+.empty {
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 850;
+  padding: 14px;
+  background: #f8fafc;
+  border-radius: 14px;
+  border: 1px dashed #cbd5e1;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 13px;
+}
+
+.image-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 17px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.image-card img {
+  display: block;
+  width: 100%;
+  height: 175px;
+  object-fit: cover;
+  cursor: pointer;
+  background: #e5e7eb;
+}
+
+.missing-image-box {
+  height: 175px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 10px;
+  background: #f1f5f9;
+  color: #64748b;
+  font-weight: 950;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.image-body {
+  padding: 10px;
+  font-size: 12px;
+  color: #475569;
+  font-weight: 800;
+  line-height: 1.55;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -970,6 +1298,7 @@ body {
   color: #64748b;
   font-size: 13px;
   font-weight: 750;
+  line-height: 1.6;
 }
 
 .modal-tags {
@@ -995,31 +1324,7 @@ body {
   padding: 24px 26px 30px;
   display: flex;
   flex-direction: column;
-  gap: 22px;
-}
-
-.section {
-  border: 1px solid #e5e7eb;
-  border-radius: 19px;
-  padding: 18px;
-  background: #fff;
-}
-
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #0f172a;
-  font-size: 15px;
-  font-weight: 950;
-  margin-bottom: 14px;
-}
-
-.section-title::after {
-  content: "";
-  height: 1px;
-  background: #e5e7eb;
-  flex: 1;
+  gap: 18px;
 }
 
 .info-grid {
@@ -1051,313 +1356,89 @@ body {
   word-break: break-word;
 }
 
-.summary-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-}
-
-.summary-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  padding: 14px;
-  background: #f8fafc;
-}
-
-.summary-label {
-  display: block;
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 950;
-}
-
-.summary-value {
-  display: block;
-  margin-top: 4px;
-  color: #0f172a;
-  font-size: 24px;
-  font-weight: 950;
-}
-
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 13px;
-}
-
-.image-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 17px;
-  overflow: hidden;
-  background: #f8fafc;
-}
-
-.image-card img {
-  display: block;
-  width: 100%;
-  height: 175px;
-  object-fit: cover;
-  cursor: pointer;
-  background: #e5e7eb;
-}
-
-.missing-image-box {
-  height: 175px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 10px;
-  background: #f1f5f9;
-  color: #64748b;
-  font-weight: 950;
-  font-size: 13px;
-  line-height: 1.5;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.image-body {
-  padding: 10px;
-  font-size: 12px;
-  color: #475569;
-  font-weight: 800;
-  line-height: 1.55;
-}
-
-.issue-card {
-  border: 1px solid #e5e7eb;
+.summary-modal-table-wrap {
+  max-height: 62vh;
+  overflow: auto;
   border-radius: 18px;
-  padding: 16px;
-  background: #f8fafc;
-  margin-bottom: 12px;
-}
-
-.issue-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  margin-bottom: 12px;
-}
-
-.issue-title {
-  font-size: 15px;
-  font-weight: 950;
-  color: #0f172a;
-}
-
-.issue-meta {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 800;
-  margin-top: 4px;
-  line-height: 1.5;
-}
-
-.solution-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.solution-row {
-  display: grid;
-  grid-template-columns: 34px 1fr auto;
-  gap: 10px;
-  align-items: flex-start;
-  background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  padding: 10px;
-}
-
-.step-num {
-  width: 28px;
-  height: 28px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #eef2ff;
-  color: #4338ca;
-  font-size: 12px;
-  font-weight: 950;
-}
-
-.solution-title {
-  color: #0f172a;
-  font-size: 13px;
-  font-weight: 950;
-}
-
-.solution-desc {
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
-  margin-top: 3px;
-  line-height: 1.5;
-}
-
-.done-time {
-  color: #64748b;
-  font-size: 11px;
-  font-weight: 800;
-  margin-top: 4px;
-}
-
-.timeline {
-  display: flex;
-  flex-direction: column;
-}
-
-.tl-item {
-  display: flex;
-  gap: 12px;
-}
-
-.tl-left {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 20px;
-  flex-shrink: 0;
-}
-
-.tl-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #64748b;
-  margin-top: 4px;
   background: #fff;
 }
 
-.tl-dot.good {
-  background: #dcfce7;
-  border-color: #16a34a;
+.summary-modal-table {
+  width: 100%;
+  min-width: 1050px;
+  border-collapse: collapse;
 }
 
-.tl-dot.bad {
-  background: #fee2e2;
-  border-color: #dc2626;
-}
-
-.tl-dot.warn {
-  background: #fef9c3;
-  border-color: #d97706;
-}
-
-.tl-dot.muted {
-  background: #f1f5f9;
-  border-color: #64748b;
-}
-
-.tl-line {
-  width: 1px;
-  flex: 1;
-  min-height: 20px;
-  background: #e5e7eb;
-  margin: 3px 0;
-}
-
-.tl-right {
-  padding-bottom: 16px;
-}
-
-.tl-time {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 950;
-}
-
-.tl-title {
-  font-size: 13px;
-  color: #0f172a;
-  font-weight: 950;
-  margin-top: 2px;
-}
-
-.tl-note {
-  font-size: 12px;
-  color: #64748b;
-  font-weight: 700;
-  margin-top: 2px;
-  line-height: 1.5;
-}
-
-.empty {
-  color: #94a3b8;
-  font-size: 13px;
-  font-weight: 850;
-  padding: 14px;
+.summary-modal-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   background: #f8fafc;
-  border-radius: 14px;
-  border: 1px dashed #cbd5e1;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 950;
+  text-align: left;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
 }
 
-@media (max-width: 1350px) {
-  .stats-grid {
-    grid-template-columns: repeat(4, 1fr);
-  }
+.summary-modal-table td {
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 750;
+  padding: 11px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
 
-  .filters-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
+.summary-modal-table tr:hover td {
+  background: #f8fafc;
+}
+
+.modal-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-width: 1450px) {
+  .stats-grid { grid-template-columns: repeat(4, 1fr); }
+  .filters-grid { grid-template-columns: repeat(3, 1fr); }
+  .split-layout { grid-template-columns: 360px 1fr; }
+  .mini-stats { grid-template-columns: repeat(3, 1fr); }
+}
+
+@media (max-width: 1050px) {
+  .split-layout { grid-template-columns: 1fr; }
+  .side-list { max-height: 360px; }
+  .mini-stats { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 950px) {
-  .stats-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .filters-grid {
+  .stats-grid, .filters-grid, .location-grid, .device-list, .grid-view {
     grid-template-columns: 1fr;
   }
-
-  .grid-view {
-    grid-template-columns: 1fr;
-  }
-
-  .info-grid,
-  .summary-row {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .insp-hero-inner {
-    flex-direction: column;
-  }
-
-  .insp-actions {
-    justify-content: flex-start;
-  }
+  .info-grid { grid-template-columns: repeat(2, 1fr); }
+  .smart-hero-inner { flex-direction: column; }
+  .smart-actions { justify-content: flex-start; }
 }
 
 @media (max-width: 560px) {
-  .inspections-page {
-    padding: 10px;
-  }
-
-  .stats-grid,
-  .info-grid,
-  .summary-row {
-    grid-template-columns: 1fr;
-  }
-
-  .modal-body {
-    padding: 18px;
-  }
-
-  .solution-row {
-    grid-template-columns: 1fr;
-  }
+  .smart-inspections-page { padding: 10px; }
+  .stats-grid, .info-grid, .mini-stats { grid-template-columns: 1fr; }
+  .modal-body { padding: 18px; }
 }
 `;
 
 function injectStyles() {
-  if (document.getElementById("smartit-inspections-final-css")) return;
+  if (document.getElementById("smartit-reports-dashboard-css")) return;
 
   const el = document.createElement("style");
-  el.id = "smartit-inspections-final-css";
+  el.id = "smartit-reports-dashboard-css";
   el.textContent = CSS;
   document.head.appendChild(el);
 }
@@ -1366,12 +1447,31 @@ function injectStyles() {
    SMALL COMPONENTS
 ========================= */
 
-function StatCard({ label, value, sub, color }) {
+function StatCard({ label, value, sub, color, onClick }) {
   return (
-    <div className="stat-card" style={{ "--stat-color": color || "#4f46e5" }}>
+    <div
+      className={`stat-card ${onClick ? "clickable" : ""}`}
+      style={{ "--stat-color": color || "#4f46e5" }}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onClick) return;
+        if (e.key === "Enter" || e.key === " ") onClick();
+      }}
+    >
       <span className="stat-label">{label}</span>
-      <span className="stat-value">{value}</span>
+      <span className="stat-value">{safe(value)}</span>
       {sub && <span className="stat-sub">{sub}</span>}
+    </div>
+  );
+}
+
+function MiniStat({ label, value }) {
+  return (
+    <div className="mini-stat">
+      <strong>{safe(value)}</strong>
+      <span>{label}</span>
     </div>
   );
 }
@@ -1385,22 +1485,13 @@ function InfoBox({ label, value }) {
   );
 }
 
-function SummaryCard({ label, value }) {
-  return (
-    <div className="summary-card">
-      <span className="summary-label">{label}</span>
-      <span className="summary-value">{value}</span>
-    </div>
-  );
-}
-
 function LoadingScreen() {
   return (
-    <div className="inspections-page">
+    <div className="smart-inspections-page">
       <div className="state-card">
         <div>
           <div className="spinner" />
-          جاري تحميل كل التفتيشات والصور...
+          جاري تحميل التقرير الصحيح من الباك إند...
         </div>
       </div>
     </div>
@@ -1410,41 +1501,6 @@ function LoadingScreen() {
 /* =========================
    IMAGE COMPONENTS
 ========================= */
-
-function InspectionImage({ img, index, inspectionId, apiBase }) {
-  const [failed, setFailed] = useState(false);
-
-  const imagePath = getImagePath(img);
-  const src = fixImageUrl(imagePath, apiBase);
-
-  return (
-    <div className="image-card">
-      {failed || !src ? (
-        <div className="missing-image-box">
-          الصورة لم تظهر
-          <br />
-          تأكدي أن الملف موجود في السيرفر
-          <br />
-          أو أن الباك إند عامل static files
-        </div>
-      ) : (
-        <img
-          src={src}
-          alt={`Inspection ${inspectionId} image ${index + 1}`}
-          onClick={() => window.open(src, "_blank")}
-          onError={() => setFailed(true)}
-        />
-      )}
-
-      <div className="image-body">
-        <div>Image ID: {safe(img?.id)}</div>
-        <div>Type: {safe(img?.imageType || img?.type || "general")}</div>
-        <div>Created: {fmtFull(img?.createdAt)}</div>
-        <div style={{ wordBreak: "break-all" }}>Path: {safe(imagePath)}</div>
-      </div>
-    </div>
-  );
-}
 
 function FirstImagePreview({ inspection, apiBase }) {
   const [failed, setFailed] = useState(false);
@@ -1460,9 +1516,41 @@ function FirstImagePreview({ inspection, apiBase }) {
   return (
     <img
       src={src}
-      alt={`Inspection ${inspection.id}`}
+      alt={`Inspection ${inspection?.id || "image"}`}
       onError={() => setFailed(true)}
     />
+  );
+}
+
+function InspectionImage({ img, index, inspectionId, apiBase }) {
+  const [failed, setFailed] = useState(false);
+  const imagePath = getImagePath(img);
+  const src = fixImageUrl(imagePath, apiBase);
+
+  return (
+    <div className="image-card">
+      {failed || !src ? (
+        <div className="missing-image-box">
+          الصورة لم تظهر
+          <br />
+          تأكدي أن الملف موجود في السيرفر
+        </div>
+      ) : (
+        <img
+          src={src}
+          alt={`Inspection ${inspectionId} image ${index + 1}`}
+          onClick={() => window.open(src, "_blank")}
+          onError={() => setFailed(true)}
+        />
+      )}
+
+      <div className="image-body">
+        <div>Image ID: {safe(img?.id)}</div>
+        <div>Type: {safe(img?.imageType || img?.type || "general")}</div>
+        <div>Created: {fmtDateTime(img?.createdAt)}</div>
+        <div style={{ wordBreak: "break-all" }}>Path: {safe(imagePath)}</div>
+      </div>
+    </div>
   );
 }
 
@@ -1497,18 +1585,126 @@ function TableThumbs({ inspection, apiBase }) {
 }
 
 /* =========================
-   GRID CARD
+   CARDS
 ========================= */
+
+function LocationCard({ locationSummary, onOpen }) {
+  const {
+    location,
+    devices,
+    inspections,
+    uninspectedDevices,
+    counts,
+    lastInspectionAt,
+    scanStatus,
+  } = locationSummary;
+
+  const missingCount =
+    counts?.notInspectedDevices ?? uninspectedDevices?.length ?? 0;
+
+  return (
+    <div className="location-card" onClick={() => onOpen(locationSummary)}>
+      <div className="card-body">
+        <div className="card-topline">
+          <span className="card-id">Location #{safe(getLocationId(location))}</span>
+          <span className={`tag ${missingCount ? "warn" : "good"}`}>
+            {missingCount ? `${missingCount} لم يتم فحصهم` : "كل الأجهزة اتفحصت"}
+          </span>
+        </div>
+
+        <div className="card-title">{getLocationDisplay(location)}</div>
+
+        <div className="card-meta">
+          Cluster: {safe(location.cluster)}
+          <br />
+          Building: {safe(location.building)}
+          <br />
+          Zone: {safe(location.zone)} · Lane: {safe(location.lane)}
+          <br />
+          Last inspection: {fmtDateTime(lastInspectionAt)}
+        </div>
+
+        <div className="card-tags">
+          <span className="tag info">{counts?.totalDevices ?? devices.length} أجهزة</span>
+          <span className="tag good">{counts?.inspectedDevices ?? 0} تم فحصهم</span>
+          <span className="tag warn">{missingCount} لم يتم فحصهم</span>
+          <span className="tag purple">{inspections.length} تفتيش</span>
+          <span className={`tag ${statusClass(scanStatus)}`}>{arStatus(scanStatus)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeviceCard({ device, latestInspection, onOpenInspection }) {
+  const hasInspection =
+    Boolean(latestInspection) ||
+    device?.isInspected === true ||
+    device?.scanStatus === "SCANNED";
+
+  const loc = getDeviceLocation(device);
+  const inspection = latestInspection || device?.latestInspection || null;
+
+  return (
+    <div className="device-card">
+      <div className="card-topline">
+        <span className="card-id">Device #{safe(getDeviceId(device))}</span>
+        <span className={`tag ${hasInspection ? "good" : "warn"}`}>
+          {hasInspection ? "تم فحصه" : "لم يتم فحصه"}
+        </span>
+      </div>
+
+      <div className="device-name">{getDeviceDisplayName(device)}</div>
+
+      <div className="device-meta">
+        Code: {safe(device.deviceCode || device.code)}
+        <br />
+        Serial: {safe(device.serialNumber)}
+        <br />
+        Barcode: {safe(device.barcode)}
+        <br />
+        IP: {safe(device.ipAddress)}
+        <br />
+        Type: {safe(device.deviceType?.name)}
+        <br />
+        Current Status: {arStatus(device.currentStatus)}
+        <br />
+        Location: {getLocationDisplay(loc)}
+        <br />
+        Last Inspection:{" "}
+        {inspection
+          ? fmtDateTime(inspection.inspectedAt || inspection.createdAt)
+          : "—"}
+        <br />
+        Technician: {inspection ? getTechName(inspection) : "—"}
+      </div>
+
+      <div className="device-actions">
+        {inspection ? (
+          <>
+            <span className={`tag ${statusClass(inspection.inspectionStatus)}`}>
+              {arStatus(inspection.inspectionStatus)}
+            </span>
+            <button
+              className="smart-btn small"
+              type="button"
+              onClick={() => onOpenInspection(inspection)}
+            >
+              فتح آخر فحص
+            </button>
+          </>
+        ) : (
+          <span className="tag warn">لا يوجد أي فحص مسجل للجهاز</span>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function InspectionCard({ inspection, apiBase, onOpen }) {
   const device = inspection.device || {};
-  const loc = device.location || {};
-  const tech = inspection.technician || {};
-  const scan = getScanInfo(inspection);
+  const loc = getDeviceLocation(device);
   const images = getImages(inspection);
-  const issues = getIssues(inspection);
-  const actions = getActions(inspection);
-  const doneActions = actions.filter((a) => a.status === "DONE");
 
   return (
     <div className="inspection-card" onClick={() => onOpen(inspection)}>
@@ -1519,39 +1715,29 @@ function InspectionCard({ inspection, apiBase, onOpen }) {
 
       <div className="card-body">
         <div className="card-topline">
-          <span className="card-id">#{inspection.id}</span>
-          <span className={`tag ${scan.scanned ? "good" : "warn"}`}>
-            {scan.scanned ? "تم Scan" : "لم يتم Scan"}
-          </span>
-        </div>
-
-        <div className="card-title">
-          {device.deviceName || device.deviceCode || "Device"}
-        </div>
-
-        <div className="card-meta">
-          Status: {arStatus(inspection.inspectionStatus)}
-          <br />
-          Technician:{" "}
-          {tech.fullName || tech.username || tech.email || `#${inspection.technicianId || "—"}`}
-          <br />
-          Location: {safe(loc.building)} · {safe(loc.cluster)} · {safe(loc.zone)}
-          <br />
-          Date: {fmtFull(inspection.inspectedAt || inspection.createdAt)}
-        </div>
-
-        <div className="card-tags">
+          <span className="card-id">Inspection #{safe(inspection.id)}</span>
           <span className={`tag ${statusClass(inspection.inspectionStatus)}`}>
             {arStatus(inspection.inspectionStatus)}
           </span>
+        </div>
+
+        <div className="card-title">{getDeviceDisplayName(device)}</div>
+
+        <div className="card-meta">
+          Technician: {getTechName(inspection)}
+          <br />
+          Location: {getLocationDisplay(loc)}
+          <br />
+          Date: {fmtDateTime(inspection.inspectedAt || inspection.createdAt)}
+        </div>
+
+        <div className="card-tags">
+          <span className="tag good">تم فحصه</span>
           <span className={images.length ? "tag good" : "tag info"}>
             {images.length} image
           </span>
-          <span className={issues.length ? "tag warn" : "tag muted"}>
-            {issues.length} issue
-          </span>
-          <span className={doneActions.length ? "tag good" : "tag muted"}>
-            {doneActions.length}/{actions.length} actions
+          <span className="tag purple">
+            Issues: {inspection.issuesCount ?? inspection.inspectionIssues?.length ?? 0}
           </span>
         </div>
       </div>
@@ -1560,136 +1746,20 @@ function InspectionCard({ inspection, apiBase, onOpen }) {
 }
 
 /* =========================
-   DETAILS MODAL
+   MODALS
 ========================= */
 
 function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
-  const [detail, setDetail] = useState(inspection);
-  const [loading, setLoading] = useState(Boolean(inspection?.id));
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!inspection?.id) return;
-
-    const controller = new AbortController();
-    const base = getApiBase(apiBase);
-
-    async function loadFullDetails() {
-      setLoading(true);
-      setError("");
-
-      try {
-        const res = await fetch(`${base}/inspections/full/${inspection.id}`, {
-          signal: controller.signal,
-        });
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-        const data = await res.json();
-        setDetail(data);
-      } catch (err) {
-        if (err.name === "AbortError") return;
-        console.error(err);
-        setError("تعذر تحميل التفاصيل الكاملة، سيتم عرض البيانات المتاحة.");
-        setDetail(inspection);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadFullDetails();
-
-    return () => controller.abort();
-  }, [inspection?.id, apiBase]);
-
   if (!inspection) return null;
 
-  const d = detail || inspection;
-  const device = d.device || {};
-  const location = device.location || {};
+  const device = inspection.device || {};
+  const location = getDeviceLocation(device);
   const deviceType = device.deviceType || {};
-  const technician = d.technician || {};
-  const task = d.task || {};
-
-  const scan = getScanInfo(d);
-  const images = getImages(d);
-  const issues = getIssues(d);
-  const actions = getActions(d);
-  const history = Array.isArray(device.statusHistory) ? device.statusHistory : [];
-
-  const doneActions = actions.filter((a) => a.status === "DONE").length;
-  const failedActions = actions.filter((a) => a.status === "FAILED").length;
-  const pendingActions = actions.filter((a) => a.status === "PENDING").length;
-
-  const statusBefore = getStatusBefore(d) || "—";
-  const statusAfter = getStatusAfter(d) || "—";
-
-  const actionBySolutionId = new Map();
-
-  actions.forEach((a) => {
-    if (a.solutionId) actionBySolutionId.set(String(a.solutionId), a);
-    if (a.solution?.id) actionBySolutionId.set(String(a.solution.id), a);
-  });
-
-  const timelineItems = [
-    d.createdAt && {
-      time: d.createdAt,
-      status: "muted",
-      title: "Inspection created",
-      note: `Inspection #${d.id}`,
-    },
-    d.inspectedAt && {
-      time: d.inspectedAt,
-      status: d.inspectionStatus,
-      title: `Inspection result: ${arStatus(d.inspectionStatus)}`,
-      note: d.notes || d.issueReason || "—",
-    },
-    {
-      time: d.inspectedAt || d.createdAt,
-      status: scan.scanned ? "DONE" : "SKIPPED",
-      title: scan.scanned ? "Scan Done" : "No Scan",
-      note: `Method: ${getScanMethodText(d)} · Type: ${getScanCodeTypeText(
-        d
-      )} · QR attempts: ${scan.qrAttempts} · Manual fallback: ${
-        scan.manualFallbackUsed ? "Yes" : "No"
-      }`,
-    },
-    ...history.map((h) => ({
-      time: h.changedAt,
-      status: h.newStatus,
-      title: `Device status changed: ${arStatus(h.oldStatus)} → ${arStatus(
-        h.newStatus
-      )}`,
-      note: `${h.note || "—"} ${
-        h.changedBy
-          ? `· By ${
-              h.changedBy.fullName ||
-              h.changedBy.username ||
-              h.changedBy.email ||
-              "—"
-            }`
-          : ""
-      }`,
-    })),
-    ...actions.map((a) => ({
-      time: a.doneAt || a.updatedAt || a.createdAt,
-      status: a.status,
-      title: `Solution action: ${a.solution?.title || `#${a.solutionId}`}`,
-      note: `${arStatus(a.status)} ${
-        a.technician
-          ? `· By ${a.technician.fullName || a.technician.username || "—"}`
-          : ""
-      } ${a.note ? `· Note: ${a.note}` : ""}`,
-    })),
-    d.updatedAt && {
-      time: d.updatedAt,
-      status: "muted",
-      title: "Inspection updated",
-      note: `Updated at ${fmtFull(d.updatedAt)}`,
-    },
-  ]
-    .filter(Boolean)
-    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+  const technician = getTechObj(inspection);
+  const images = getImages(inspection);
+  const issues = Array.isArray(inspection.inspectionIssues)
+    ? inspection.inspectionIssues
+    : [];
 
   return (
     <div
@@ -1700,578 +1770,206 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
         <div className="modal-head">
           <div>
             <span className="modal-eyebrow">
-              Inspection #{d.id} · {fmtFull(d.inspectedAt || d.createdAt)}
+              Inspection #{safe(inspection.id)} ·{" "}
+              {fmtDateTime(inspection.inspectedAt || inspection.createdAt)}
             </span>
 
             <div className="modal-title">
-              {device.deviceName || device.deviceCode || "Device"} —{" "}
-              {arStatus(d.inspectionStatus)}
+              {getDeviceDisplayName(device)} — {arStatus(inspection.inspectionStatus)}
             </div>
 
             <div className="modal-sub">
-              Technician:{" "}
-              {technician.fullName ||
-                technician.username ||
-                technician.email ||
-                `#${d.technicianId || "—"}`}
+              Technician: {getTechName(inspection)}
+              <br />
+              Location: {getLocationDisplay(location)}
             </div>
 
             <div className="modal-tags">
-              <span className={`tag ${statusClass(d.inspectionStatus)}`}>
-                {arStatus(d.inspectionStatus)}
+              <span className={`tag ${statusClass(inspection.inspectionStatus)}`}>
+                {arStatus(inspection.inspectionStatus)}
               </span>
-
-              <span className={`tag ${scan.scanned ? "good" : "warn"}`}>
-                {scan.scanned ? "تم Scan" : "لم يتم Scan"}
-              </span>
-
+              <span className="tag good">تم فحصه</span>
               <span className={images.length > 0 ? "tag good" : "tag info"}>
                 {images.length} image
               </span>
-
               <span className="tag purple">{issues.length} issue</span>
-
-              <span className="tag good">
-                Done {doneActions}/{actions.length}
-              </span>
             </div>
           </div>
 
-          <button className="modal-close" onClick={onClose}>
+          <button className="modal-close" type="button" onClick={onClose}>
             ×
           </button>
         </div>
 
         <div className="modal-body">
-          {loading ? (
-            <div className="state-card">
-              <div>
-                <div className="spinner" />
-                جاري تحميل كل تفاصيل الفحص...
-              </div>
+          <div className="section">
+            <div className="section-title">Inspection main information</div>
+            <div className="info-grid">
+              <InfoBox label="Inspection ID" value={inspection.id} />
+              <InfoBox label="Status" value={arStatus(inspection.inspectionStatus)} />
+              <InfoBox label="Issue Reason" value={inspection.issueReason} />
+              <InfoBox label="Notes" value={inspection.notes} />
+              <InfoBox label="Inspected At" value={fmtDateTime(inspection.inspectedAt)} />
+              <InfoBox label="Created At" value={fmtDateTime(inspection.createdAt)} />
+              <InfoBox label="Location Text" value={inspection.locationText} />
+              <InfoBox
+                label="GPS"
+                value={
+                  inspection.latitude && inspection.longitude
+                    ? `${inspection.latitude}, ${inspection.longitude}`
+                    : "—"
+                }
+              />
             </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">Technician information</div>
+            <div className="info-grid">
+              <InfoBox label="Technician ID" value={technician.id || inspection.technicianId} />
+              <InfoBox label="Full Name" value={technician.fullName || technician.name} />
+              <InfoBox label="Username" value={technician.username} />
+              <InfoBox label="Email" value={technician.email} />
+              <InfoBox label="Phone" value={technician.phone} />
+              <InfoBox label="Job Title" value={technician.jobTitle} />
+            </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">Device information</div>
+            <div className="info-grid">
+              <InfoBox label="Device ID" value={getDeviceId(device) || inspection.deviceId} />
+              <InfoBox label="Device Code" value={device.deviceCode || device.code} />
+              <InfoBox label="Device Name" value={device.deviceName || device.name} />
+              <InfoBox label="Barcode" value={device.barcode} />
+              <InfoBox label="Serial Number" value={device.serialNumber} />
+              <InfoBox label="Device Type" value={deviceType.name} />
+              <InfoBox label="IP Address" value={device.ipAddress} />
+              <InfoBox label="Current Status" value={arStatus(device.currentStatus)} />
+            </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">Location information</div>
+            <div className="info-grid">
+              <InfoBox label="Location ID" value={getLocationId(location) || device.locationId} />
+              <InfoBox label="Cluster" value={location.cluster} />
+              <InfoBox label="Building" value={location.building} />
+              <InfoBox label="Zone" value={location.zone} />
+              <InfoBox label="Lane" value={location.lane} />
+              <InfoBox label="Direction" value={location.direction} />
+              <InfoBox label="Type" value={location.type} />
+              <InfoBox label="Excel ID" value={location.excelId} />
+            </div>
+          </div>
+
+          <div className="section">
+            <div className="section-title">Uploaded inspection images ({images.length})</div>
+            {images.length === 0 ? (
+              <div className="empty">لا توجد صور مرفوعة لهذا الفحص.</div>
+            ) : (
+              <div className="image-grid">
+                {images.map((img, index) => (
+                  <InspectionImage
+                    key={img?.id || getImagePath(img) || index}
+                    img={img}
+                    index={index}
+                    inspectionId={inspection.id}
+                    apiBase={apiBase}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryDetailsModal({ modal, apiBase = "", onClose }) {
+  if (!modal) return null;
+
+  const rows = Array.isArray(modal.rows) ? modal.rows : [];
+  const columns = Array.isArray(modal.columns) ? modal.columns : [];
+
+  function exportModalCsv() {
+    const header = columns.map((c) => c.label);
+    const body = rows.map((row, index) =>
+      columns.map((c) => {
+        const value =
+          typeof c.value === "function" ? c.value(row, index) : row?.[c.key];
+
+        if (value && typeof value === "object") return JSON.stringify(value);
+        return value;
+      })
+    );
+
+    exportCsv(`${modal.filename || "summary-details"}.csv`, [header, ...body]);
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <span className="modal-eyebrow">SmartIT detailed report</span>
+            <div className="modal-title">{modal.title}</div>
+            <div className="modal-sub">
+              {modal.description}
+              <br />
+              Total records: {rows.length}
+            </div>
+            <div className="modal-tags">
+              <span className="tag info">{rows.length} record</span>
+              <span className="tag purple">Source: backend</span>
+            </div>
+          </div>
+          <button className="modal-close" type="button" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body">
+          <div className="modal-actions-row">
+            <div className="section-title" style={{ margin: 0 }}>
+              كل البيانات الخاصة بالبوكس
+            </div>
+            <button className="smart-btn small" type="button" onClick={exportModalCsv}>
+              Export CSV
+            </button>
+          </div>
+
+          {rows.length === 0 ? (
+            <div className="empty">لا توجد بيانات.</div>
           ) : (
-            <>
-              {error && <div className="insp-error">{error}</div>}
-
-              <div className="section">
-                <div className="section-title">Full summary</div>
-                <div className="summary-row">
-                  <SummaryCard label="Scan" value={scan.scanned ? "Yes" : "No"} />
-                  <SummaryCard label="Images" value={images.length} />
-                  <SummaryCard label="Issues" value={issues.length} />
-                  <SummaryCard
-                    label="Actions"
-                    value={`${doneActions}/${actions.length}`}
-                  />
-                  <SummaryCard label="QR Attempts" value={scan.qrAttempts} />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Scan / Security information</div>
-
-                <div className="info-grid">
-                  <InfoBox
-                    label="Scan Status"
-                    value={scan.scanned ? "تم عمل Scan" : "لم يتم عمل Scan"}
-                  />
-                  <InfoBox label="Scan Method" value={getScanMethodText(d)} />
-                  <InfoBox label="Scan Code Type" value={getScanCodeTypeText(d)} />
-                  <InfoBox label="Masked Code" value={scan.scanCodeValueMasked} />
-                  <InfoBox label="QR Attempts" value={scan.qrAttempts} />
-                  <InfoBox
-                    label="Manual Fallback"
-                    value={
-                      scan.manualFallbackUsed
-                        ? "تم استخدام البحث اليدوي"
-                        : "لم يتم استخدام البحث اليدوي"
-                    }
-                  />
-                  <InfoBox
-                    label="Verified"
-                    value={scan.scanned ? "Verified" : "Not Verified"}
-                  />
-                  <InfoBox
-                    label="Security Note"
-                    value={
-                      scan.inferred && scan.scanned
-                        ? "تم اعتبار الفحص Verified لأنه مربوط بجهاز"
-                        : scan.scanned
-                        ? "تم التحقق من الجهاز"
-                        : "لم يتم تسجيل Scan"
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Inspection main information</div>
-
-                <div className="info-grid">
-                  <InfoBox label="Inspection ID" value={d.id} />
-                  <InfoBox
-                    label="Inspection Status"
-                    value={arStatus(d.inspectionStatus)}
-                  />
-                  <InfoBox label="Original Status" value={d.inspectionStatus} />
-                  <InfoBox label="Issue Reason" value={d.issueReason} />
-                  <InfoBox label="Notes" value={d.notes} />
-                  <InfoBox label="Inspected At" value={fmtFull(d.inspectedAt)} />
-                  <InfoBox label="Created At" value={fmtFull(d.createdAt)} />
-                  <InfoBox label="Updated At" value={fmtFull(d.updatedAt)} />
-                  <InfoBox label="Location Text" value={d.locationText} />
-                  <InfoBox label="Latitude" value={d.latitude} />
-                  <InfoBox label="Longitude" value={d.longitude} />
-                  <InfoBox
-                    label="GPS"
-                    value={
-                      d.latitude && d.longitude
-                        ? `${d.latitude}, ${d.longitude}`
-                        : "—"
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Device status before / after</div>
-
-                <div className="info-grid">
-                  <InfoBox label="Before" value={arStatus(statusBefore)} />
-                  <InfoBox label="After" value={arStatus(statusAfter)} />
-                  <InfoBox
-                    label="Device Current Status"
-                    value={arStatus(device.currentStatus)}
-                  />
-                  <InfoBox
-                    label="Last Inspection At"
-                    value={fmtFull(device.lastInspectionAt)}
-                  />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Technician information</div>
-
-                <div className="info-grid">
-                  <InfoBox
-                    label="Technician ID"
-                    value={technician.id || d.technicianId}
-                  />
-                  <InfoBox label="Full Name" value={technician.fullName} />
-                  <InfoBox label="Username" value={technician.username} />
-                  <InfoBox label="Email" value={technician.email} />
-                  <InfoBox label="Phone" value={technician.phone} />
-                  <InfoBox label="Job Title" value={technician.jobTitle} />
-                  <InfoBox label="Role" value={technician.role?.name} />
-                  <InfoBox label="Actions Done" value={doneActions} />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Device information</div>
-
-                <div className="info-grid">
-                  <InfoBox label="Device ID" value={device.id || d.deviceId} />
-                  <InfoBox label="Device Code" value={device.deviceCode} />
-                  <InfoBox label="Device Name" value={device.deviceName} />
-                  <InfoBox label="Barcode" value={device.barcode} />
-                  <InfoBox label="Serial Number" value={device.serialNumber} />
-                  <InfoBox label="Manufacturer" value={device.manufacturer} />
-                  <InfoBox label="Model Number" value={device.modelNumber} />
-                  <InfoBox label="Device Type" value={deviceType.name} />
-                  <InfoBox label="Device Type ID" value={device.deviceTypeId} />
-                  <InfoBox label="IP Address" value={device.ipAddress} />
-                  <InfoBox label="Firmware" value={device.firmware} />
-                  <InfoBox label="Excel Status" value={device.excelStatus} />
-                  <InfoBox label="Excel Date" value={device.excelDate} />
-                  <InfoBox label="Install Date" value={fmtFull(device.installDate)} />
-                  <InfoBox label="Notes" value={device.notes} />
-                  <InfoBox label="Created At" value={fmtFull(device.createdAt)} />
-                  <InfoBox label="Updated At" value={fmtFull(device.updatedAt)} />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Location information</div>
-
-                <div className="info-grid">
-                  <InfoBox
-                    label="Location ID"
-                    value={location.id || device.locationId}
-                  />
-                  <InfoBox label="Cluster" value={location.cluster} />
-                  <InfoBox label="Building" value={location.building} />
-                  <InfoBox label="Zone" value={location.zone} />
-                  <InfoBox label="Lane" value={location.lane} />
-                  <InfoBox label="Direction" value={location.direction} />
-                  <InfoBox label="Type" value={location.type} />
-                  <InfoBox label="Excel ID" value={location.excelId} />
-                  <InfoBox label="Created At" value={fmtFull(location.createdAt)} />
-                  <InfoBox label="Updated At" value={fmtFull(location.updatedAt)} />
-                </div>
-              </div>
-
-              <div className="section">
-                <div className="section-title">Task information</div>
-
-                {!task || !task.id ? (
-                  <div className="empty">لا يوجد Task مربوط بهذا الفحص.</div>
-                ) : (
-                  <div className="info-grid">
-                    <InfoBox label="Task ID" value={task.id || d.taskId} />
-                    <InfoBox label="Task Status" value={arStatus(task.status)} />
-                    <InfoBox
-                      label="Scheduled Date"
-                      value={fmtFull(task.scheduledDate)}
-                    />
-                    <InfoBox label="Frequency" value={task.frequency} />
-                    <InfoBox label="Task Notes" value={task.notes} />
-                    <InfoBox label="Created At" value={fmtFull(task.createdAt)} />
-                    <InfoBox label="Updated At" value={fmtFull(task.updatedAt)} />
-                  </div>
-                )}
-              </div>
-
-              <div className="section">
-                <div className="section-title">
-                  Uploaded inspection images ({images.length})
-                </div>
-
-                {images.length === 0 ? (
-                  <div className="empty">لا توجد صور مرفوعة لهذا الفحص.</div>
-                ) : (
-                  <div className="image-grid">
-                    {images.map((img, index) => (
-                      <InspectionImage
-                        key={img?.id || getImagePath(img) || index}
-                        img={img}
-                        index={index}
-                        inspectionId={d.id}
-                        apiBase={apiBase}
-                      />
+            <div className="summary-modal-table-wrap">
+              <table className="summary-modal-table">
+                <thead>
+                  <tr>
+                    {columns.map((col) => (
+                      <th key={col.key}>{col.label}</th>
                     ))}
-                  </div>
-                )}
-              </div>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row, index) => (
+                    <tr key={row?.id || row?.inspectionId || row?.deviceId || index}>
+                      {columns.map((col) => {
+                        const value =
+                          typeof col.value === "function"
+                            ? col.value(row, index)
+                            : row?.[col.key];
 
-              <div className="section">
-                <div className="section-title">
-                  Issues and solution steps — Done {doneActions}/{actions.length}
-                </div>
-
-                {issues.length === 0 ? (
-                  <div className="empty">لا توجد مشاكل مسجلة على هذا الفحص.</div>
-                ) : (
-                  issues.map((item, itemIndex) => {
-                    const issue = item.issue || item;
-                    const solutions = issue.solutions || [];
-                    const issueActions = item.actions || [];
-
-                    return (
-                      <div className="issue-card" key={item.id || itemIndex}>
-                        <div className="issue-head">
-                          <div>
-                            <div className="issue-title">
-                              {issue.title || issue.issueTitle || "Issue"}
-                            </div>
-
-                            <div className="issue-meta">
-                              Inspection Issue ID: {safe(item.id)} · Issue ID:{" "}
-                              {safe(issue.id || item.issueId)} · Code:{" "}
-                              {safe(issue.issueCode)} · Category:{" "}
-                              {safe(issue.category?.name)} · Severity:{" "}
-                              {safe(issue.severity)}
-                            </div>
-
-                            <div className="issue-meta">
-                              Status: {arStatus(item.status)} · Reported By:{" "}
-                              {safe(
-                                item.reportedBy?.fullName ||
-                                  item.reportedBy?.username ||
-                                  item.reportedById
-                              )}
-                            </div>
-
-                            {issue.description && (
-                              <div className="issue-meta">
-                                Description: {issue.description}
-                              </div>
-                            )}
-
-                            {item.notes && (
-                              <div className="issue-meta">Notes: {item.notes}</div>
-                            )}
-
-                            {item.resolvedAt && (
-                              <div className="issue-meta">
-                                Resolved At: {fmtFull(item.resolvedAt)}
-                              </div>
-                            )}
-
-                            {item.unresolvedReason && (
-                              <div className="issue-meta">
-                                Unresolved Reason: {item.unresolvedReason}
-                              </div>
-                            )}
-                          </div>
-
-                          <span className={`tag ${statusClass(item.status)}`}>
-                            {arStatus(item.status)}
-                          </span>
-                        </div>
-
-                        {solutions.length === 0 && issueActions.length === 0 ? (
-                          <div className="empty">
-                            لا توجد خطوات حل لهذه المشكلة.
-                          </div>
-                        ) : (
-                          <div className="solution-list">
-                            {solutions.map((sol, solIndex) => {
-                              const action =
-                                actionBySolutionId.get(String(sol.id)) ||
-                                issueActions.find(
-                                  (a) =>
-                                    String(a.solutionId) === String(sol.id) ||
-                                    String(a.solution?.id) === String(sol.id)
-                                );
-
-                              const st = action?.status || "PENDING";
-
-                              return (
-                                <div
-                                  className="solution-row"
-                                  key={sol.id || solIndex}
-                                >
-                                  <div className="step-num">
-                                    {sol.stepOrder || solIndex + 1}
-                                  </div>
-
-                                  <div>
-                                    <div className="solution-title">
-                                      {sol.title || "Solution step"}
-                                    </div>
-
-                                    {sol.solutionCode && (
-                                      <div className="solution-desc">
-                                        Solution Code: {sol.solutionCode}
-                                      </div>
-                                    )}
-
-                                    {sol.description && (
-                                      <div className="solution-desc">
-                                        {sol.description}
-                                      </div>
-                                    )}
-
-                                    <div className="solution-desc">
-                                      Required: {sol.isRequired ? "Yes" : "No"} ·
-                                      Step Status: {arStatus(sol.status)}
-                                    </div>
-
-                                    {action && (
-                                      <>
-                                        <div className="solution-desc">
-                                          Action ID: {safe(action.id)} ·
-                                          Technician:{" "}
-                                          {safe(
-                                            action.technician?.fullName ||
-                                              action.technician?.username ||
-                                              action.technicianId
-                                          )}
-                                        </div>
-
-                                        {action.note && (
-                                          <div className="solution-desc">
-                                            Technician note: {action.note}
-                                          </div>
-                                        )}
-
-                                        <div className="done-time">
-                                          Created: {fmtFull(action.createdAt)} ·
-                                          Updated: {fmtFull(action.updatedAt)}
-                                        </div>
-
-                                        {action.doneAt && (
-                                          <div className="done-time">
-                                            Done at: {fmtFull(action.doneAt)}
-                                          </div>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-
-                                  <span className={`tag ${statusClass(st)}`}>
-                                    {arStatus(st)}
-                                  </span>
-                                </div>
-                              );
-                            })}
-
-                            {solutions.length === 0 &&
-                              issueActions.map((action, actionIndex) => (
-                                <div
-                                  className="solution-row"
-                                  key={action.id || actionIndex}
-                                >
-                                  <div className="step-num">{actionIndex + 1}</div>
-
-                                  <div>
-                                    <div className="solution-title">
-                                      {action.solution?.title ||
-                                        `Solution #${action.solutionId}`}
-                                    </div>
-
-                                    {action.solution?.description && (
-                                      <div className="solution-desc">
-                                        {action.solution.description}
-                                      </div>
-                                    )}
-
-                                    {action.note && (
-                                      <div className="solution-desc">
-                                        Technician note: {action.note}
-                                      </div>
-                                    )}
-
-                                    <div className="done-time">
-                                      Done at: {fmtFull(action.doneAt)}
-                                    </div>
-                                  </div>
-
-                                  <span
-                                    className={`tag ${statusClass(action.status)}`}
-                                  >
-                                    {arStatus(action.status)}
-                                  </span>
-                                </div>
-                              ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-
-              <div className="section">
-                <div className="section-title">All solution actions</div>
-
-                {actions.length === 0 ? (
-                  <div className="empty">
-                    لا توجد خطوات منفذة مسجلة لهذا الفحص.
-                  </div>
-                ) : (
-                  <div className="solution-list">
-                    {actions.map((action, index) => (
-                      <div className="solution-row" key={action.id || index}>
-                        <div className="step-num">{index + 1}</div>
-
-                        <div>
-                          <div className="solution-title">
-                            {action.solution?.title ||
-                              action.inspectionIssue?.issue?.title ||
-                              `Action #${action.id}`}
-                          </div>
-
-                          <div className="solution-desc">
-                            Action ID: {safe(action.id)} · Solution ID:{" "}
-                            {safe(action.solutionId)} · Inspection Issue ID:{" "}
-                            {safe(action.inspectionIssueId)}
-                          </div>
-
-                          <div className="solution-desc">
-                            Technician:{" "}
-                            {safe(
-                              action.technician?.fullName ||
-                                action.technician?.username ||
-                                action.technicianId
-                            )}
-                          </div>
-
-                          {action.note && (
-                            <div className="solution-desc">Note: {action.note}</div>
-                          )}
-
-                          <div className="done-time">
-                            Created: {fmtFull(action.createdAt)} · Updated:{" "}
-                            {fmtFull(action.updatedAt)} · Done:{" "}
-                            {fmtFull(action.doneAt)}
-                          </div>
-                        </div>
-
-                        <span className={`tag ${statusClass(action.status)}`}>
-                          {arStatus(action.status)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="section">
-                <div className="section-title">Device status history</div>
-
-                {history.length === 0 ? (
-                  <div className="empty">لا يوجد تاريخ تغيير حالة للجهاز.</div>
-                ) : (
-                  <div className="timeline">
-                    {history.map((h, index) => (
-                      <div className="tl-item" key={h.id || index}>
-                        <div className="tl-left">
-                          <div className={`tl-dot ${statusClass(h.newStatus)}`} />
-                          {index < history.length - 1 && <div className="tl-line" />}
-                        </div>
-
-                        <div className="tl-right">
-                          <div className="tl-time">{fmtFull(h.changedAt)}</div>
-                          <div className="tl-title">
-                            {arStatus(h.oldStatus)} → {arStatus(h.newStatus)}
-                          </div>
-                          <div className="tl-note">
-                            History ID: {safe(h.id)} · Changed By:{" "}
-                            {safe(
-                              h.changedBy?.fullName ||
-                                h.changedBy?.username ||
-                                h.changedById
-                            )}{" "}
-                            · Note: {safe(h.note)}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="section">
-                <div className="section-title">Full timeline</div>
-
-                {timelineItems.length === 0 ? (
-                  <div className="empty">لا يوجد Timeline لهذا الفحص.</div>
-                ) : (
-                  <div className="timeline">
-                    {timelineItems.map((item, index) => (
-                      <div className="tl-item" key={index}>
-                        <div className="tl-left">
-                          <div className={`tl-dot ${statusClass(item.status)}`} />
-                          {index < timelineItems.length - 1 && (
-                            <div className="tl-line" />
-                          )}
-                        </div>
-
-                        <div className="tl-right">
-                          <div className="tl-time">{fmtFull(item.time)}</div>
-                          <div className="tl-title">{item.title}</div>
-                          <div className="tl-note">{item.note}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
+                        return (
+                          <td key={col.key}>
+                            {col.render ? col.render(row, index, apiBase) : safe(value)}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
@@ -2280,116 +1978,348 @@ function InspectionDetailsModal({ inspection, apiBase = "", onClose }) {
 }
 
 /* =========================
+   TABLE COLUMNS
+========================= */
+
+function makeLocationColumns() {
+  return [
+    { key: "id", label: "Location ID", value: (s) => getLocationId(s.location) },
+    { key: "cluster", label: "Cluster", value: (s) => s.location?.cluster },
+    { key: "building", label: "Building", value: (s) => s.location?.building },
+    { key: "zone", label: "Zone", value: (s) => s.location?.zone },
+    { key: "lane", label: "Lane", value: (s) => s.location?.lane },
+    { key: "direction", label: "Direction", value: (s) => s.location?.direction },
+    { key: "total", label: "Total Devices", value: (s) => s.counts?.totalDevices ?? s.devices?.length ?? 0 },
+    { key: "inspected", label: "Inspected", value: (s) => s.counts?.inspectedDevices ?? s.inspectedDevices?.length ?? 0 },
+    { key: "missing", label: "Not Inspected", value: (s) => s.counts?.notInspectedDevices ?? s.uninspectedDevices?.length ?? 0 },
+    { key: "last", label: "Last Inspection", value: (s) => fmtDateTime(s.lastInspectionAt) },
+    { key: "status", label: "Scan Status", render: (s) => <span className={`tag ${statusClass(s.scanStatus)}`}>{arStatus(s.scanStatus)}</span> },
+  ];
+}
+
+function makeDeviceColumns() {
+  return [
+    { key: "id", label: "Device ID", value: (d) => getDeviceId(d) },
+    {
+      key: "scan",
+      label: "Scan",
+      render: (d) => (
+        <span className={`tag ${d.isInspected || d.scanStatus === "SCANNED" || d.latestInspection ? "good" : "warn"}`}>
+          {d.isInspected || d.scanStatus === "SCANNED" || d.latestInspection ? "تم فحصه" : "لم يتم فحصه"}
+        </span>
+      ),
+    },
+    { key: "code", label: "Code", value: (d) => d.deviceCode || d.code },
+    { key: "name", label: "Name", value: (d) => getDeviceDisplayName(d) },
+    { key: "serial", label: "Serial", value: (d) => d.serialNumber },
+    { key: "barcode", label: "Barcode", value: (d) => d.barcode },
+    { key: "ip", label: "IP", value: (d) => d.ipAddress },
+    { key: "type", label: "Type", value: (d) => d.deviceType?.name },
+    { key: "current", label: "Current Status", value: (d) => arStatus(d.currentStatus) },
+    { key: "location", label: "Location", value: (d) => getLocationDisplay(getDeviceLocation(d)) },
+    { key: "last", label: "Last Inspection", value: (d) => fmtDateTime(d.latestInspection?.inspectedAt || d.latestInspection?.createdAt || d.lastInspectionAt) },
+    { key: "tech", label: "Technician", value: (d) => d.latestInspection ? getTechName(d.latestInspection) : "—" },
+    { key: "reason", label: "Reason", value: (d) => d.reason || "No inspection record found for this device" },
+  ];
+}
+
+function makeInspectionColumns() {
+  return [
+    { key: "id", label: "Inspection ID", value: (i) => i.id },
+    { key: "status", label: "Status", render: (i) => <span className={`tag ${statusClass(i.inspectionStatus)}`}>{arStatus(i.inspectionStatus)}</span> },
+    { key: "device", label: "Device", value: (i) => getDeviceDisplayName(i.device || {}) },
+    { key: "code", label: "Device Code", value: (i) => i.device?.deviceCode },
+    { key: "serial", label: "Serial", value: (i) => i.device?.serialNumber },
+    { key: "technician", label: "Technician", value: (i) => getTechName(i) },
+    { key: "location", label: "Location", value: (i) => getLocationDisplay(getDeviceLocation(i.device || {})) },
+    { key: "images", label: "Images", value: (i) => getImages(i).length },
+    { key: "issues", label: "Issues", value: (i) => i.issuesCount || i.inspectionIssues?.length || 0 },
+    { key: "date", label: "Date", value: (i) => fmtDateTime(i.inspectedAt || i.createdAt) },
+    { key: "notes", label: "Notes", value: (i) => i.notes },
+  ];
+}
+
+/* =========================
    MAIN PAGE
 ========================= */
 
 export function InspectionsPage({
   inspections: propInspections,
+  devices: propDevices,
   technicians = [],
-  locations = [],
+  locations: propLocations,
   apiBase = "",
 }) {
   injectStyles();
 
-  const [inspections, setInspections] = useState(
-    Array.isArray(propInspections) ? propInspections : []
-  );
+  const base = getApiBase(apiBase);
 
-  const [loading, setLoading] = useState(!Array.isArray(propInspections));
+  const [reportData, setReportData] = useState(null);
+  const [loadedPath, setLoadedPath] = useState("");
+  const [inspectionsPath, setInspectionsPath] = useState("");
+  const [allBackendInspections, setAllBackendInspections] = useState([]);
+
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [viewMode, setViewMode] = useState("GRID");
+
+  const [activeTab, setActiveTab] = useState("INSPECTIONS");
+  const [viewMode, setViewMode] = useState("LIST");
 
   const [selectedInspection, setSelectedInspection] = useState(null);
+  const [selectedSummaryModal, setSelectedSummaryModal] = useState(null);
+  const [selectedLocationId, setSelectedLocationId] = useState("");
 
   const [search, setSearch] = useState("");
+  const [technicianName, setTechnicianName] = useState("");
   const [status, setStatus] = useState("");
   const [techId, setTechId] = useState("");
   const [cluster, setCluster] = useState("");
   const [building, setBuilding] = useState("");
-  const [monthlyOnly, setMonthlyOnly] = useState(false);
-  const [scanOnly, setScanOnly] = useState(false);
-  const [manualFallbackOnly, setManualFallbackOnly] = useState(false);
+  const [notInspectedOnly, setNotInspectedOnly] = useState(false);
+  const [showOnlyFaults, setShowOnlyFaults] = useState(false);
 
-  const base = getApiBase(apiBase);
-
-  const loadInspections = useCallback(async () => {
+  const loadAllData = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const token =
-        localStorage.getItem("token") ||
-        localStorage.getItem("accessToken") ||
-        localStorage.getItem("authToken");
+      const reportResult = await apiGetReportSummary(base);
+      setReportData(reportResult.data);
+      setLoadedPath(reportResult.path);
 
-      const res = await fetch(`${base}/inspections`, {
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
+      const inspectionsResult = await apiGetAllInspections(base);
+      const rawExtraInspections = extractArray(inspectionsResult.data, [
+        "inspections",
+        "latestInspections",
+        "data",
+        "items",
+      ]);
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const data = await res.json();
-
-      const list = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.data)
-        ? data.data
-        : Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data?.result)
-        ? data.result
-        : [];
-
-      setInspections(list);
+      setAllBackendInspections(rawExtraInspections.map((i) => normalizeInspection(i)));
+      setInspectionsPath(inspectionsResult.path || "from report latestInspections");
     } catch (err) {
       console.error(err);
-      setError("تعذر تحميل التفتيشات من الباك إند.");
+      setReportData(null);
+      setLoadedPath("");
+      setAllBackendInspections([]);
+      setInspectionsPath("");
+      setError(
+        "فشل تحميل التقرير من الباك إند. تأكدي أن /reports/devices-scan-report يعمل على Railway."
+      );
     } finally {
       setLoading(false);
     }
   }, [base]);
 
   useEffect(() => {
-    if (Array.isArray(propInspections)) {
-      setInspections(propInspections);
-      setLoading(false);
-      return;
-    }
+    loadAllData();
+  }, [loadAllData]);
 
-    loadInspections();
-  }, [propInspections, loadInspections]);
+  const locationSummaries = useMemo(() => {
+    if (!reportData || !Array.isArray(reportData.locations)) return [];
+
+    return reportData.locations.map((item) => {
+      const location = item.location || {};
+
+      const devicesList = Array.isArray(item.devices)
+        ? item.devices.map((device) => ({
+            ...device,
+            location,
+            locationId: location.id || device.locationId,
+          }))
+        : [];
+
+      const inspectedDevicesList = Array.isArray(item.inspectedDevices)
+        ? item.inspectedDevices.map((device) => ({
+            ...device,
+            location,
+            locationId: location.id || device.locationId,
+            isInspected: true,
+            scanStatus: "SCANNED",
+          }))
+        : [];
+
+      const uninspectedDevicesList = Array.isArray(item.notInspectedDevices)
+        ? item.notInspectedDevices.map((device) => ({
+            ...device,
+            location,
+            locationId: location.id || device.locationId,
+            isInspected: false,
+            scanStatus: "NOT_SCANNED",
+            reason: device.reason || "No inspection record found for this device",
+          }))
+        : [];
+
+      const latestInspectionsList = Array.isArray(item.latestInspections)
+        ? item.latestInspections.map((inspection) =>
+            normalizeInspection(
+              {
+                ...inspection,
+                device: inspection.device
+                  ? {
+                      ...inspection.device,
+                      location: inspection.device.location || location,
+                      locationId:
+                        inspection.device.locationId ||
+                        inspection.device.location?.id ||
+                        location.id,
+                    }
+                  : null,
+              },
+              location
+            )
+          )
+        : [];
+
+      const lastInspection = item.lastInspection
+        ? normalizeInspection(
+            {
+              ...item.lastInspection,
+              device: item.lastInspection.device
+                ? {
+                    ...item.lastInspection.device,
+                    location: item.lastInspection.device.location || location,
+                  }
+                : item.lastInspection.device,
+            },
+            location
+          )
+        : null;
+
+      return {
+        location,
+        devices: devicesList,
+        inspectedDevices: inspectedDevicesList,
+        uninspectedDevices: uninspectedDevicesList,
+        inspections: latestInspectionsList,
+        counts: item.counts || {
+          totalDevices: devicesList.length,
+          inspectedDevices: inspectedDevicesList.length,
+          notInspectedDevices: uninspectedDevicesList.length,
+          latestInspections: latestInspectionsList.length,
+        },
+        lastInspectionAt: item.lastInspectionAt || lastInspection?.inspectedAt || null,
+        lastInspection,
+        scanStatus: item.scanStatus || "—",
+      };
+    });
+  }, [reportData]);
+
+  const allDevices = useMemo(() => {
+    return locationSummaries.flatMap((summary) => summary.devices || []);
+  }, [locationSummaries]);
+
+  const allUninspectedDevices = useMemo(() => {
+    return locationSummaries.flatMap((summary) => summary.uninspectedDevices || []);
+  }, [locationSummaries]);
+
+  const allReportInspections = useMemo(() => {
+    return locationSummaries.flatMap((summary) => summary.inspections || []);
+  }, [locationSummaries]);
+
+  const allInspections = useMemo(() => {
+    const map = new Map();
+
+    allReportInspections.forEach((i) => {
+      if (i?.id) map.set(String(i.id), i);
+    });
+
+    allBackendInspections.forEach((i) => {
+      if (i?.id) {
+        map.set(String(i.id), {
+          ...i,
+          device: {
+            ...(i.device || {}),
+            location: i.device?.location || i.location || {},
+          },
+        });
+      }
+    });
+
+    const merged = Array.from(map.values());
+
+    return merged.sort((a, b) => {
+      const da = new Date(a.inspectedAt || a.createdAt || 0).getTime();
+      const db = new Date(b.inspectedAt || b.createdAt || 0).getTime();
+      return db - da;
+    });
+  }, [allReportInspections, allBackendInspections]);
+
+  const latestInspectionByDeviceId = useMemo(() => {
+    const map = new Map();
+
+    allInspections.forEach((inspection) => {
+      const deviceId = inspection?.deviceId || inspection?.device?.id;
+      if (!deviceId) return;
+
+      const old = map.get(String(deviceId));
+      const oldDate = new Date(old?.inspectedAt || old?.createdAt || 0).getTime();
+      const newDate = new Date(inspection?.inspectedAt || inspection?.createdAt || 0).getTime();
+
+      if (!old || newDate >= oldDate) {
+        map.set(String(deviceId), inspection);
+      }
+    });
+
+    return map;
+  }, [allInspections]);
+
+  const enrichedDevices = useMemo(() => {
+    return allDevices.map((device) => {
+      const deviceId = getDeviceId(device);
+      const latestInspection = deviceId
+        ? latestInspectionByDeviceId.get(String(deviceId))
+        : null;
+
+      return {
+        ...device,
+        latestInspection,
+        isInspected: Boolean(latestInspection) || device.isInspected === true,
+        scanStatus: Boolean(latestInspection) || device.scanStatus === "SCANNED" ? "SCANNED" : "NOT_SCANNED",
+      };
+    });
+  }, [allDevices, latestInspectionByDeviceId]);
+
+  const trulyUninspectedDevices = useMemo(() => {
+    const byId = new Map();
+
+    allUninspectedDevices.forEach((device) => {
+      const id = getDeviceId(device);
+      if (id) byId.set(String(id), device);
+    });
+
+    enrichedDevices.forEach((device) => {
+      const id = getDeviceId(device);
+      if (!id) return;
+
+      if (!latestInspectionByDeviceId.has(String(id))) {
+        byId.set(String(id), {
+          ...device,
+          isInspected: false,
+          scanStatus: "NOT_SCANNED",
+          reason: "No inspection record found for this device",
+        });
+      }
+    });
+
+    return Array.from(byId.values());
+  }, [allUninspectedDevices, enrichedDevices, latestInspectionByDeviceId]);
 
   const clusters = useMemo(() => {
-    const fromInspections = [
-      ...new Set(
-        inspections.map((i) => i.device?.location?.cluster).filter(Boolean)
-      ),
+    return [
+      ...new Set(locationSummaries.map((s) => s.location?.cluster).filter(Boolean)),
     ].sort();
-
-    if (fromInspections.length) return fromInspections;
-
-    return [...new Set(locations.map((l) => l.cluster).filter(Boolean))].sort();
-  }, [inspections, locations]);
+  }, [locationSummaries]);
 
   const buildings = useMemo(() => {
-    const fromInspections = [
-      ...new Set(
-        inspections.map((i) => i.device?.location?.building).filter(Boolean)
-      ),
+    return [
+      ...new Set(locationSummaries.map((s) => s.location?.building).filter(Boolean)),
     ].sort();
+  }, [locationSummaries]);
 
-    if (fromInspections.length) return fromInspections;
-
-    return [...new Set(locations.map((l) => l.building).filter(Boolean))].sort();
-  }, [inspections, locations]);
-
-  const statuses = useMemo(
-    () => [...new Set(inspections.map((i) => i.inspectionStatus).filter(Boolean))],
-    [inspections]
-  );
+  const statuses = useMemo(() => {
+    return [...new Set(allInspections.map((i) => i.inspectionStatus).filter(Boolean))].sort();
+  }, [allInspections]);
 
   const techOptions = useMemo(() => {
     const map = new Map();
@@ -2398,106 +2328,55 @@ export function InspectionsPage({
       if (t?.id) map.set(String(t.id), t);
     });
 
-    inspections.forEach((i) => {
-      const t = i.technician;
-      const id = i.technicianId || t?.id;
+    allInspections.forEach((i) => {
+      const id = getTechId(i);
+      const t = getTechObj(i);
+
       if (id && !map.has(String(id))) {
         map.set(String(id), {
           id,
-          fullName: t?.fullName,
-          username: t?.username,
-          email: t?.email,
+          fullName: t.fullName || t.name || i.technicianName,
+          username: t.username,
+          email: t.email,
         });
       }
     });
 
     return Array.from(map.values());
-  }, [technicians, inspections]);
+  }, [technicians, allInspections]);
 
-  const stats = useMemo(() => {
-    const total = inspections.length;
-    const ok = inspections.filter((i) => i.inspectionStatus === "OK").length;
-    const notOk = inspections.filter((i) => i.inspectionStatus === "NOT_OK").length;
-    const partial = inspections.filter((i) => i.inspectionStatus === "PARTIAL").length;
-    const notReachable = inspections.filter(
-      (i) => i.inspectionStatus === "NOT_REACHABLE"
-    ).length;
+  const activeTechLabel = useMemo(() => {
+    if (technicianName) return technicianName;
 
-    const imagesCount = inspections.reduce(
-      (sum, i) => sum + getImages(i).length,
-      0
-    );
+    if (techId) {
+      const found = techOptions.find((t) => String(t.id) === String(techId));
+      return found?.fullName || found?.username || found?.email || `#${techId}`;
+    }
 
-    const issuesCount = inspections.reduce(
-      (sum, i) => sum + getIssues(i).length,
-      0
-    );
+    return "";
+  }, [technicianName, techId, techOptions]);
 
-    const actionsCount = inspections.reduce(
-      (sum, i) => sum + getActions(i).length,
-      0
-    );
+  const filteredInspections = useMemo(() => {
+    const q = normalizeText(search);
+    const techQ = normalizeText(technicianName);
 
-    const doneActions = inspections.reduce(
-      (sum, i) => sum + getActions(i).filter((a) => a.status === "DONE").length,
-      0
-    );
-
-    const scannedCount = inspections.filter((i) => getScanInfo(i).scanned).length;
-    const notScannedCount = total - scannedCount;
-
-    const manualFallbackCount = inspections.filter(
-      (i) => getScanInfo(i).manualFallbackUsed
-    ).length;
-
-    return {
-      total,
-      ok,
-      notOk,
-      partial,
-      notReachable,
-      imagesCount,
-      issuesCount,
-      actionsCount,
-      doneActions,
-      scannedCount,
-      notScannedCount,
-      manualFallbackCount,
-    };
-  }, [inspections]);
-
-  const filtered = useMemo(() => {
-    const now = new Date();
-    const q = search.trim().toLowerCase();
-
-    return inspections.filter((ins) => {
+    return allInspections.filter((ins) => {
       const device = ins.device || {};
-      const loc = device.location || {};
-      const tech = ins.technician || {};
-      const scan = getScanInfo(ins);
+      const loc = getDeviceLocation(device);
+      const tech = getTechObj(ins);
+      const currentTechId = getTechId(ins);
+      const techName = getTechName(ins);
 
       if (status && ins.inspectionStatus !== status) return false;
 
-      if (techId) {
-        const currentTechId = ins.technicianId || tech.id;
-        if (String(currentTechId) !== String(techId)) return false;
-      }
+      if (techId && String(currentTechId) !== String(techId)) return false;
+
+      if (techQ && !includesNormalized(techName, techQ)) return false;
 
       if (cluster && loc.cluster !== cluster) return false;
       if (building && loc.building !== building) return false;
-      if (scanOnly && !scan.scanned) return false;
-      if (manualFallbackOnly && !scan.manualFallbackUsed) return false;
 
-      if (monthlyOnly) {
-        const date = new Date(ins.inspectedAt || ins.createdAt);
-
-        if (
-          date.getMonth() !== now.getMonth() ||
-          date.getFullYear() !== now.getFullYear()
-        ) {
-          return false;
-        }
-      }
+      if (showOnlyFaults && ins.inspectionStatus === "OK") return false;
 
       if (q) {
         const text = [
@@ -2505,15 +2384,10 @@ export function InspectionsPage({
           ins.inspectionStatus,
           ins.issueReason,
           ins.notes,
-          getStatusBefore(ins),
-          getStatusAfter(ins),
-          scan.scanned ? "scanned تم scan" : "not scanned لم يتم scan",
-          scan.scanMethod,
-          scan.scanCodeType,
-          scan.scanCodeValueMasked,
           device.id,
           device.deviceCode,
           device.deviceName,
+          device.name,
           device.serialNumber,
           device.barcode,
           device.ipAddress,
@@ -2525,68 +2399,526 @@ export function InspectionsPage({
           loc.direction,
           loc.excelId,
           tech.fullName,
+          tech.name,
           tech.username,
           tech.email,
-          getImages(ins).map(getImagePath).join(" "),
+          techName,
         ]
           .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+          .join(" ");
 
-        if (!text.includes(q)) return false;
+        if (!includesNormalized(text, q)) return false;
       }
 
       return true;
     });
   }, [
-    inspections,
+    allInspections,
     search,
+    technicianName,
     status,
     techId,
     cluster,
     building,
-    monthlyOnly,
-    scanOnly,
-    manualFallbackOnly,
+    showOnlyFaults,
   ]);
+
+  const filteredLocationSummaries = useMemo(() => {
+    const q = normalizeText(search);
+
+    return locationSummaries.filter((summary) => {
+      const loc = summary.location || {};
+      const missing = summary.uninspectedDevices || [];
+
+      if (cluster && loc.cluster !== cluster) return false;
+      if (building && loc.building !== building) return false;
+      if (notInspectedOnly && missing.length === 0) return false;
+
+      if (q) {
+        const text = [
+          getLocationId(loc),
+          loc.cluster,
+          loc.building,
+          loc.zone,
+          loc.lane,
+          loc.direction,
+          loc.type,
+          loc.excelId,
+          ...summary.devices.flatMap((d) => [
+            getDeviceId(d),
+            d.deviceCode,
+            d.deviceName,
+            d.name,
+            d.serialNumber,
+            d.barcode,
+            d.ipAddress,
+            d.deviceType?.name,
+          ]),
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        if (!includesNormalized(text, q)) return false;
+      }
+
+      return true;
+    });
+  }, [locationSummaries, search, cluster, building, notInspectedOnly]);
+
+  const filteredUninspectedDevices = useMemo(() => {
+    const q = normalizeText(search);
+
+    return trulyUninspectedDevices.filter((device) => {
+      const loc = getDeviceLocation(device);
+
+      if (cluster && loc.cluster !== cluster) return false;
+      if (building && loc.building !== building) return false;
+
+      if (q) {
+        const text = [
+          getDeviceId(device),
+          device.deviceCode,
+          device.deviceName,
+          device.name,
+          device.serialNumber,
+          device.barcode,
+          device.ipAddress,
+          device.currentStatus,
+          device.deviceType?.name,
+          loc.cluster,
+          loc.building,
+          loc.zone,
+          loc.lane,
+          loc.direction,
+          loc.type,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        if (!includesNormalized(text, q)) return false;
+      }
+
+      return true;
+    });
+  }, [trulyUninspectedDevices, search, cluster, building]);
+
+  const filteredStatsData = useMemo(() => {
+    const filteredLocations = filteredLocationSummaries || [];
+
+    const filteredDevices = filteredLocations.flatMap((summary) => {
+      return Array.isArray(summary.devices) ? summary.devices : [];
+    });
+
+    const filteredDeviceIds = new Set(
+      filteredDevices.map((d) => String(getDeviceId(d))).filter(Boolean)
+    );
+
+    const filteredNotInspectedDevices = filteredUninspectedDevices.filter((d) => {
+      const id = getDeviceId(d);
+      return !id || filteredDeviceIds.has(String(id));
+    });
+
+    const filteredInspectedDevices = filteredDevices.filter((device) => {
+      const id = getDeviceId(device);
+      return id && latestInspectionByDeviceId.has(String(id));
+    });
+
+    const selectedInspections = filteredInspections;
+
+    const okInspections = selectedInspections.filter(
+      (inspection) => inspection.inspectionStatus === "OK"
+    );
+
+    const faultInspections = selectedInspections.filter(
+      (inspection) => inspection.inspectionStatus === "NOT_OK"
+    );
+
+    const partialInspections = selectedInspections.filter(
+      (inspection) => inspection.inspectionStatus === "PARTIAL"
+    );
+
+    const notReachableInspections = selectedInspections.filter(
+      (inspection) => inspection.inspectionStatus === "NOT_REACHABLE"
+    );
+
+    const inspectionsWithImages = selectedInspections.filter(
+      (inspection) => getImages(inspection).length > 0
+    );
+
+    const inspectionsWithIssues = selectedInspections.filter((inspection) => {
+      if (Array.isArray(inspection.inspectionIssues)) {
+        return inspection.inspectionIssues.length > 0;
+      }
+      return Number(inspection.issuesCount || 0) > 0;
+    });
+
+    const imagesCount = selectedInspections.reduce((sum, inspection) => {
+      return sum + getImages(inspection).length;
+    }, 0);
+
+    const issuesCount = selectedInspections.reduce((sum, inspection) => {
+      if (Array.isArray(inspection.inspectionIssues)) {
+        return sum + inspection.inspectionIssues.length;
+      }
+      return sum + Number(inspection.issuesCount || 0);
+    }, 0);
+
+    const locationsWithMissing = filteredLocations.filter((summary) => {
+      return Array.isArray(summary.uninspectedDevices)
+        ? summary.uninspectedDevices.length > 0
+        : Number(summary.counts?.notInspectedDevices || 0) > 0;
+    });
+
+    return {
+      locations: filteredLocations,
+      devices: filteredDevices,
+      inspectedDevices: filteredInspectedDevices,
+      notInspectedDevices: filteredNotInspectedDevices,
+      locationsMissing: locationsWithMissing,
+      latestInspections: selectedInspections,
+      okInspections,
+      faultInspections,
+      partialInspections,
+      notReachableInspections,
+      inspectionsWithImages,
+      inspectionsWithIssues,
+      imagesCount,
+      issuesCount,
+    };
+  }, [
+    filteredLocationSummaries,
+    filteredUninspectedDevices,
+    filteredInspections,
+    latestInspectionByDeviceId,
+  ]);
+
+  const stats = useMemo(() => {
+    return {
+      totalLocations: filteredStatsData.locations.length,
+      totalDevices: filteredStatsData.devices.length,
+      inspectedDevices: filteredStatsData.inspectedDevices.length,
+      uninspectedDevices: filteredStatsData.notInspectedDevices.length,
+      locationsWithMissing: filteredStatsData.locationsMissing.length,
+      totalInspections: filteredStatsData.latestInspections.length,
+      ok: filteredStatsData.okInspections.length,
+      notOk: filteredStatsData.faultInspections.length,
+      partial: filteredStatsData.partialInspections.length,
+      notReachable: filteredStatsData.notReachableInspections.length,
+      imagesCount: filteredStatsData.imagesCount,
+      issuesCount: filteredStatsData.issuesCount,
+      scannedCount: filteredStatsData.inspectedDevices.length,
+      notScannedCount: filteredStatsData.notInspectedDevices.length,
+    };
+  }, [filteredStatsData]);
+
+  const selectedLocationSummary = useMemo(() => {
+    if (selectedLocationId) {
+      const found = filteredLocationSummaries.find(
+        (x) => String(getLocationId(x.location)) === String(selectedLocationId)
+      );
+      if (found) return found;
+    }
+
+    return filteredLocationSummaries[0] || null;
+  }, [filteredLocationSummaries, selectedLocationId]);
+
+  useEffect(() => {
+    if (!selectedLocationId && filteredLocationSummaries[0]) {
+      setSelectedLocationId(String(getLocationId(filteredLocationSummaries[0].location)));
+    }
+  }, [filteredLocationSummaries, selectedLocationId]);
 
   function resetFilters() {
     setSearch("");
+    setTechnicianName("");
     setStatus("");
     setTechId("");
     setCluster("");
     setBuilding("");
-    setMonthlyOnly(false);
-    setScanOnly(false);
-    setManualFallbackOnly(false);
+    setNotInspectedOnly(false);
+    setShowOnlyFaults(false);
   }
 
-  if (loading) {
-    return <LoadingScreen />;
+  function filterTehami() {
+    setTechnicianName("تهامي");
+    setTechId("");
+    setActiveTab("INSPECTIONS");
+    setViewMode("LIST");
   }
+
+  function exportUninspectedDevices() {
+    const rows = [
+      [
+        "Device ID",
+        "Device Code",
+        "Device Name",
+        "Serial Number",
+        "Barcode",
+        "IP Address",
+        "Current Status",
+        "Device Type",
+        "Location ID",
+        "Cluster",
+        "Building",
+        "Zone",
+        "Lane",
+        "Direction",
+        "Reason",
+      ],
+      ...filteredUninspectedDevices.map((device) => {
+        const loc = getDeviceLocation(device);
+        return [
+          getDeviceId(device),
+          device.deviceCode || device.code,
+          device.deviceName || device.name,
+          device.serialNumber,
+          device.barcode,
+          device.ipAddress,
+          device.currentStatus,
+          device.deviceType?.name,
+          getLocationId(loc) || device.locationId,
+          loc.cluster,
+          loc.building,
+          loc.zone,
+          loc.lane,
+          loc.direction,
+          device.reason || "No inspection record found for this device",
+        ];
+      }),
+    ];
+
+    exportCsv("not-inspected-devices.csv", rows);
+  }
+
+  function exportLocationsSummary() {
+    const rows = [
+      [
+        "Location ID",
+        "Cluster",
+        "Building",
+        "Zone",
+        "Lane",
+        "Direction",
+        "Total Devices",
+        "Inspected Devices",
+        "Not Inspected Devices",
+        "Latest Inspections",
+        "Last Inspection At",
+        "Scan Status",
+      ],
+      ...filteredLocationSummaries.map((summary) => {
+        const loc = summary.location;
+        return [
+          getLocationId(loc),
+          loc.cluster,
+          loc.building,
+          loc.zone,
+          loc.lane,
+          loc.direction,
+          summary.counts?.totalDevices ?? summary.devices.length,
+          summary.counts?.inspectedDevices ?? summary.inspectedDevices.length,
+          summary.counts?.notInspectedDevices ?? summary.uninspectedDevices.length,
+          summary.counts?.latestInspections ?? summary.inspections.length,
+          summary.lastInspectionAt,
+          summary.scanStatus,
+        ];
+      }),
+    ];
+
+    exportCsv("locations-scan-summary.csv", rows);
+  }
+
+  function exportInspections() {
+    const rows = [
+      [
+        "Inspection ID",
+        "Device Code",
+        "Device Name",
+        "Inspection Status",
+        "Technician",
+        "Location",
+        "Images",
+        "Issues",
+        "Inspected At",
+      ],
+      ...filteredInspections.map((inspection) => {
+        const device = inspection.device || {};
+        const loc = getDeviceLocation(device);
+
+        return [
+          inspection.id,
+          device.deviceCode,
+          device.deviceName || device.name,
+          inspection.inspectionStatus,
+          getTechName(inspection),
+          getLocationDisplay(loc),
+          getImages(inspection).length,
+          inspection.issuesCount || inspection.inspectionIssues?.length || 0,
+          inspection.inspectedAt || inspection.createdAt,
+        ];
+      }),
+    ];
+
+    exportCsv("inspections.csv", rows);
+  }
+
+  function openSummaryBox(type) {
+    const baseModal = {
+      filename: type,
+      description:
+        activeTechLabel
+          ? `الداتا هنا مفلترة على الفني: ${activeTechLabel}`
+          : "الداتا هنا محسوبة من نتيجة الفلاتر الحالية فقط.",
+    };
+
+    if (type === "locations") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "كل اللوكيشنز",
+        rows: filteredStatsData.locations,
+        columns: makeLocationColumns(),
+      });
+      return;
+    }
+
+    if (type === "devices") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "كل الأجهزة المسجلة",
+        rows: filteredStatsData.devices,
+        columns: makeDeviceColumns(),
+      });
+      return;
+    }
+
+    if (type === "inspectedDevices") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "الأجهزة التي تم فحصها",
+        rows: filteredStatsData.inspectedDevices,
+        columns: makeDeviceColumns(),
+      });
+      return;
+    }
+
+    if (type === "notInspectedDevices") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "الأجهزة التي لم يتم فحصها",
+        rows: filteredStatsData.notInspectedDevices,
+        columns: makeDeviceColumns(),
+      });
+      return;
+    }
+
+    if (type === "locationsMissing") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "اللوكيشنز التي بها أجهزة لم يتم فحصها",
+        rows: filteredStatsData.locationsMissing,
+        columns: makeLocationColumns(),
+      });
+      return;
+    }
+
+    if (type === "allInspections") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: activeTechLabel ? `كل تفتيشات ${activeTechLabel}` : "كل التفتيشات",
+        rows: filteredStatsData.latestInspections,
+        columns: makeInspectionColumns(),
+      });
+      return;
+    }
+
+    if (type === "ok") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "التفتيشات السليمة OK",
+        rows: filteredStatsData.okInspections,
+        columns: makeInspectionColumns(),
+      });
+      return;
+    }
+
+    if (type === "faults") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "التفتيشات التي بها عطل كامل",
+        rows: filteredStatsData.faultInspections,
+        columns: makeInspectionColumns(),
+      });
+      return;
+    }
+
+    if (type === "partial") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "التفتيشات ذات العطل الجزئي",
+        rows: filteredStatsData.partialInspections,
+        columns: makeInspectionColumns(),
+      });
+      return;
+    }
+
+    if (type === "notReachable") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "التفتيشات غير المتاحة",
+        rows: filteredStatsData.notReachableInspections,
+        columns: makeInspectionColumns(),
+      });
+      return;
+    }
+
+    if (type === "images") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "التفتيشات التي تحتوي على صور",
+        rows: filteredStatsData.inspectionsWithImages,
+        columns: makeInspectionColumns(),
+      });
+      return;
+    }
+
+    if (type === "issues") {
+      setSelectedSummaryModal({
+        ...baseModal,
+        title: "التفتيشات التي تحتوي على مشاكل",
+        rows: filteredStatsData.inspectionsWithIssues,
+        columns: makeInspectionColumns(),
+      });
+    }
+  }
+
+  if (loading) return <LoadingScreen />;
+
+  const notInspectedCountIsCorrect =
+    Number(stats.uninspectedDevices) === Number(EXPECTED_NOT_INSPECTED_COUNT);
 
   return (
-    <div className="inspections-page">
-      <div className="inspections-shell">
-        <section className="insp-hero">
-          <div className="insp-hero-inner">
-            <div className="insp-title-wrap">
-              <div className="insp-logo">🔍</div>
+    <div className="smart-inspections-page">
+      <div className="smart-shell">
+        <section className="smart-hero">
+          <div className="smart-hero-inner">
+            <div className="smart-title-wrap">
+              <div className="smart-logo">📍</div>
 
               <div>
-                <div className="insp-eyebrow">SmartIT Inspect</div>
-                <h1 className="insp-title">Inspections Dashboard</h1>
-                <div className="insp-subtitle">
-                  كل التفتيشات + حالة الـ Scan + الصور + الفني + الجهاز + الموقع.
-                  الصفحة دلوقتي فيها Scroll كامل، Grid/List، والصور تظهر في الكروت
-                  والتفاصيل.
+                <div className="smart-eyebrow">SmartIT Reports</div>
+                <h1 className="smart-title">
+                  True Inspections Report
+                </h1>
+                <div className="smart-subtitle">
+                  تقرير مباشر من الباك إند. اكتبي اسم الفني مثل تهامي وسيظهر كل تفتيشاته وعددها وكل التفاصيل.
                 </div>
               </div>
             </div>
 
-            <div className="insp-actions">
-              <div className="view-toggle">
+            <div className="smart-actions">
+              <div className="smart-toggle">
                 <button
+                  type="button"
                   className={viewMode === "GRID" ? "active" : ""}
                   onClick={() => setViewMode("GRID")}
                 >
@@ -2594,6 +2926,7 @@ export function InspectionsPage({
                 </button>
 
                 <button
+                  type="button"
                   className={viewMode === "LIST" ? "active" : ""}
                   onClick={() => setViewMode("LIST")}
                 >
@@ -2601,85 +2934,96 @@ export function InspectionsPage({
                 </button>
               </div>
 
-              <button className="insp-btn glass" onClick={loadInspections}>
+              <button className="smart-btn glass" type="button" onClick={loadAllData}>
                 ↻ Refresh Data
               </button>
 
-              <button className="insp-btn primary" onClick={resetFilters}>
+              <button className="smart-btn glass" type="button" onClick={filterTehami}>
+                تفتيشات تهامي
+              </button>
+
+              <button className="smart-btn primary" type="button" onClick={resetFilters}>
                 Clear Filters
               </button>
             </div>
           </div>
         </section>
 
-        {error && <div className="insp-error">⚠ {error}</div>}
+        {error && <div className="error-box">⚠ {error}</div>}
+
+        <div className="success-box">
+          ✅ Loaded report from: {loadedPath || "—"}
+          <br />
+          ✅ Loaded inspections from: {inspectionsPath || "—"}
+          <br />
+          Rule: الجهاز يعتبر لم يتم فحصه عندما لا يوجد له أي Inspection record في قاعدة البيانات.
+        </div>
+
+        {!notInspectedCountIsCorrect && (
+          <div className="warning-box">
+            ⚠ تنبيه مهم: العدد المتوقع للأجهزة التي لم يتم فحصها هو{" "}
+            <strong>{EXPECTED_NOT_INSPECTED_COUNT}</strong>، لكن الداتا الحالية الراجعة من الباك إند بعد الفلاتر =
+            {" "}
+            <strong>{stats.uninspectedDevices}</strong>.
+            <br />
+            لو الفلتر فاضي ومفروض يظهر 170، يبقى لازم Endpoint{" "}
+            <strong>/reports/devices-scan-report</strong> يرجع كل أجهزة notInspectedDevices.
+          </div>
+        )}
+
+        {activeTechLabel && (
+          <div className="warning-box">
+            🔎 أنتِ الآن تعرضي تفتيشات الفني: <strong>{activeTechLabel}</strong>
+            <br />
+            عدد التفتيشات المطابقة: <strong>{filteredInspections.length}</strong>
+          </div>
+        )}
 
         <section className="stats-grid">
-          <StatCard
-            label="Total"
-            value={stats.total}
-            sub="all records"
-            color="#4f46e5"
-          />
-          <StatCard
-            label="Scanned"
-            value={stats.scannedCount}
-            sub="تم Scan"
-            color="#16a34a"
-          />
-          <StatCard
-            label="Not scanned"
-            value={stats.notScannedCount}
-            sub="لم يتم Scan"
-            color="#f59e0b"
-          />
-          <StatCard
-            label="Images"
-            value={stats.imagesCount}
-            sub="uploaded photos"
-            color="#0ea5e9"
-          />
-          <StatCard label="OK" value={stats.ok} sub="سليم" color="#22c55e" />
-          <StatCard
-            label="Faults"
-            value={stats.notOk}
-            sub="عطل كامل"
-            color="#ef4444"
-          />
-          <StatCard
-            label="Partial"
-            value={stats.partial}
-            sub="عطل جزئي"
-            color="#f59e0b"
-          />
-          <StatCard
-            label="Not reachable"
-            value={stats.notReachable}
-            sub="غير متاح"
-            color="#64748b"
-          />
-          <StatCard
-            label="Issues"
-            value={stats.issuesCount}
-            sub="reported issues"
-            color="#a855f7"
-          />
-          <StatCard
-            label="Done actions"
-            value={`${stats.doneActions}/${stats.actionsCount}`}
-            sub="solution actions"
-            color="#10b981"
-          />
-          <StatCard
-            label="Manual fallback"
-            value={stats.manualFallbackCount}
-            sub="after QR attempts"
-            color="#f97316"
-          />
+          <StatCard label="Locations" value={stats.totalLocations} sub="all locations" color="#4f46e5" onClick={() => openSummaryBox("locations")} />
+          <StatCard label="Devices" value={stats.totalDevices} sub="all devices" color="#0ea5e9" onClick={() => openSummaryBox("devices")} />
+          <StatCard label="Inspected devices" value={stats.inspectedDevices} sub="devices with inspection" color="#16a34a" onClick={() => openSummaryBox("inspectedDevices")} />
+          <StatCard label="Not inspected" value={stats.uninspectedDevices} sub={`expected ${EXPECTED_NOT_INSPECTED_COUNT}`} color="#f59e0b" onClick={() => openSummaryBox("notInspectedDevices")} />
+          <StatCard label="Locations missing" value={stats.locationsWithMissing} sub="have missing devices" color="#ef4444" onClick={() => openSummaryBox("locationsMissing")} />
+          <StatCard label={activeTechLabel ? `Inspections: ${activeTechLabel}` : "All inspections"} value={stats.totalInspections} sub="filtered inspections" color="#7c3aed" onClick={() => openSummaryBox("allInspections")} />
+          <StatCard label="OK" value={stats.ok} sub="سليم" color="#22c55e" onClick={() => openSummaryBox("ok")} />
+          <StatCard label="Faults" value={stats.notOk} sub="عطل كامل" color="#ef4444" onClick={() => openSummaryBox("faults")} />
+          <StatCard label="Partial" value={stats.partial} sub="عطل جزئي" color="#f59e0b" onClick={() => openSummaryBox("partial")} />
+          <StatCard label="Not reachable" value={stats.notReachable} sub="غير متاح" color="#f97316" onClick={() => openSummaryBox("notReachable")} />
+          <StatCard label="Images" value={stats.imagesCount} sub="uploaded photos" color="#06b6d4" onClick={() => openSummaryBox("images")} />
+          <StatCard label="Issues" value={stats.issuesCount} sub="reported issues" color="#7c3aed" onClick={() => openSummaryBox("issues")} />
         </section>
 
-        <section className="filter-panel">
-          <div className="filter-title">Inspection filters</div>
+        <section className="panel">
+          <div className="tabs">
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "INSPECTIONS" ? "active" : ""}`}
+              onClick={() => setActiveTab("INSPECTIONS")}
+            >
+              كل التفتيشات / الفني
+            </button>
+
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "UNINSPECTED" ? "active" : ""}`}
+              onClick={() => setActiveTab("UNINSPECTED")}
+            >
+              Devices Not Inspected
+            </button>
+
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "LOCATIONS" ? "active" : ""}`}
+              onClick={() => setActiveTab("LOCATIONS")}
+            >
+              Locations & Missing Devices
+            </button>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-title">Filters</div>
 
           <div className="filters-grid">
             <div className="filter-field">
@@ -2687,8 +3031,22 @@ export function InspectionsPage({
               <input
                 type="text"
                 value={search}
-                placeholder="device / serial / technician / scan / issue..."
+                placeholder="location / device / serial / technician..."
                 onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="filter-field">
+              <label>Technician name</label>
+              <input
+                type="text"
+                value={technicianName}
+                placeholder="مثال: تهامي"
+                onChange={(e) => {
+                  setTechnicianName(e.target.value);
+                  setTechId("");
+                  setActiveTab("INSPECTIONS");
+                }}
               />
             </div>
 
@@ -2706,7 +3064,14 @@ export function InspectionsPage({
 
             <div className="filter-field">
               <label>Technician</label>
-              <select value={techId} onChange={(e) => setTechId(e.target.value)}>
+              <select
+                value={techId}
+                onChange={(e) => {
+                  setTechId(e.target.value);
+                  setTechnicianName("");
+                  setActiveTab("INSPECTIONS");
+                }}
+              >
                 <option value="">All technicians</option>
                 {techOptions.map((t) => (
                   <option key={t.id} value={String(t.id)}>
@@ -2730,10 +3095,7 @@ export function InspectionsPage({
 
             <div className="filter-field">
               <label>Building</label>
-              <select
-                value={building}
-                onChange={(e) => setBuilding(e.target.value)}
-              >
+              <select value={building} onChange={(e) => setBuilding(e.target.value)}>
                 <option value="">All buildings</option>
                 {buildings.map((b) => (
                   <option key={b} value={b}>
@@ -2746,183 +3108,232 @@ export function InspectionsPage({
             <label className="check-pill">
               <input
                 type="checkbox"
-                checked={monthlyOnly}
-                onChange={(e) => setMonthlyOnly(e.target.checked)}
+                checked={notInspectedOnly}
+                onChange={(e) => setNotInspectedOnly(e.target.checked)}
               />
-              Current month
+              Missing only
             </label>
 
             <label className="check-pill">
               <input
                 type="checkbox"
-                checked={scanOnly}
-                onChange={(e) => setScanOnly(e.target.checked)}
+                checked={showOnlyFaults}
+                onChange={(e) => setShowOnlyFaults(e.target.checked)}
               />
-              Scanned only
-            </label>
-
-            <label className="check-pill">
-              <input
-                type="checkbox"
-                checked={manualFallbackOnly}
-                onChange={(e) => setManualFallbackOnly(e.target.checked)}
-              />
-              Manual fallback
+              Faults only
             </label>
           </div>
         </section>
 
         <section className="content-area">
-          {filtered.length === 0 ? (
-            <div className="state-card">لا توجد بيانات مطابقة للفلاتر.</div>
-          ) : viewMode === "GRID" ? (
-            <div className="grid-view">
-              {filtered.map((row) => (
-                <InspectionCard
-                  key={row.id}
-                  inspection={row}
-                  apiBase={base}
-                  onOpen={setSelectedInspection}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="table-card">
-              <div className="table-scroll">
-                <table className="insp-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Images</th>
-                      <th>Scan</th>
-                      <th>Status</th>
-                      <th>Device</th>
-                      <th>Technician</th>
-                      <th>Location</th>
-                      <th>Issues</th>
-                      <th>Actions</th>
-                      <th>Inspected At</th>
-                    </tr>
-                  </thead>
+          {activeTab === "INSPECTIONS" && (
+            <>
+              {filteredInspections.length === 0 ? (
+                <div className="state-card">
+                  لا توجد تفتيشات مطابقة للفلاتر.
+                  <br />
+                  لو كتبتي تهامي ولم يظهر شيء، يبقى اسم الفني في الداتا مختلف أو Endpoint التفتيشات لا يرجع كل التفتيشات.
+                </div>
+              ) : viewMode === "GRID" ? (
+                <div className="grid-view">
+                  {filteredInspections.map((row) => (
+                    <InspectionCard
+                      key={row.id}
+                      inspection={row}
+                      apiBase={base}
+                      onOpen={setSelectedInspection}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="table-card">
+                  <div className="panel-title" style={{ padding: 16, margin: 0 }}>
+                    {activeTechLabel
+                      ? `كل تفتيشات ${activeTechLabel} (${filteredInspections.length})`
+                      : `كل التفتيشات (${filteredInspections.length})`}
+                    <button className="smart-btn small" type="button" onClick={exportInspections}>
+                      Export inspections CSV
+                    </button>
+                  </div>
 
-                  <tbody>
-                    {filtered.map((row) => {
-                      const device = row.device || {};
-                      const loc = device.location || {};
-                      const tech = row.technician || {};
-                      const scan = getScanInfo(row);
-                      const images = getImages(row);
-                      const issues = getIssues(row);
-                      const actions = getActions(row);
-                      const doneActions = actions.filter(
-                        (a) => a.status === "DONE"
-                      );
-
-                      return (
-                        <tr
-                          key={row.id}
-                          onClick={() => setSelectedInspection(row)}
-                        >
-                          <td>#{row.id}</td>
-
-                          <td>
-                            <TableThumbs inspection={row} apiBase={base} />
-                          </td>
-
-                          <td>
-                            <div
-                              style={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                              }}
-                            >
-                              <span
-                                className={`tag ${
-                                  scan.scanned ? "good" : "warn"
-                                }`}
-                              >
-                                {scan.scanned ? "تم Scan" : "لم يتم Scan"}
-                              </span>
-
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  color: "#64748b",
-                                  fontWeight: 800,
-                                }}
-                              >
-                                {getScanMethodText(row)} · QR: {scan.qrAttempts}
-                              </span>
-                            </div>
-                          </td>
-
-                          <td>
-                            <span
-                              className={`tag ${statusClass(
-                                row.inspectionStatus
-                              )}`}
-                            >
-                              {arStatus(row.inspectionStatus)}
-                            </span>
-                          </td>
-
-                          <td>
-                            <div style={{ fontWeight: 950 }}>
-                              {device.deviceName || device.deviceCode || "—"}
-                            </div>
-                            <div style={{ color: "#64748b", fontSize: 11 }}>
-                              Code: {safe(device.deviceCode)} · SN:{" "}
-                              {safe(device.serialNumber)}
-                            </div>
-                          </td>
-
-                          <td>
-                            {tech.fullName ||
-                              tech.username ||
-                              tech.email ||
-                              `#${row.technicianId || "—"}`}
-                          </td>
-
-                          <td>
-                            <div>{safe(loc.building)}</div>
-                            <div style={{ color: "#64748b", fontSize: 11 }}>
-                              {safe(loc.cluster)} · {safe(loc.zone)} ·{" "}
-                              {safe(loc.lane)}
-                            </div>
-                          </td>
-
-                          <td>
-                            <span
-                              className={`tag ${
-                                issues.length ? "warn" : "muted"
-                              }`}
-                            >
-                              {issues.length} issue
-                            </span>
-                          </td>
-
-                          <td>
-                            <span
-                              className={`tag ${
-                                doneActions.length ? "good" : "muted"
-                              }`}
-                            >
-                              {doneActions.length}/{actions.length}
-                            </span>
-                          </td>
-
-                          <td>{fmtDate(row.inspectedAt || row.createdAt)}</td>
+                  <div className="table-scroll">
+                    <table className="smart-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>Images</th>
+                          <th>Status</th>
+                          <th>Device</th>
+                          <th>Technician</th>
+                          <th>Location</th>
+                          <th>Issues</th>
+                          <th>Inspected At</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+
+                      <tbody>
+                        {filteredInspections.map((row) => {
+                          const device = row.device || {};
+                          const loc = getDeviceLocation(device);
+                          const issuesCount =
+                            row.issuesCount || row.inspectionIssues?.length || 0;
+
+                          return (
+                            <tr
+                              key={row.id}
+                              className="clickable-row"
+                              onClick={() => setSelectedInspection(row)}
+                            >
+                              <td>#{row.id}</td>
+                              <td>
+                                <TableThumbs inspection={row} apiBase={base} />
+                              </td>
+                              <td>
+                                <span className={`tag ${statusClass(row.inspectionStatus)}`}>
+                                  {arStatus(row.inspectionStatus)}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ fontWeight: 950 }}>
+                                  {getDeviceDisplayName(device)}
+                                </div>
+                                <div style={{ color: "#64748b", fontSize: 11 }}>
+                                  Code: {safe(device.deviceCode || device.code)} · SN:{" "}
+                                  {safe(device.serialNumber)}
+                                </div>
+                              </td>
+                              <td>{getTechName(row)}</td>
+                              <td>
+                                <div>{safe(loc.building)}</div>
+                                <div style={{ color: "#64748b", fontSize: 11 }}>
+                                  {safe(loc.cluster)} · {safe(loc.zone)} · {safe(loc.lane)}
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`tag ${issuesCount ? "warn" : "muted"}`}>
+                                  {issuesCount} issue
+                                </span>
+                              </td>
+                              <td>{fmtDateTime(row.inspectedAt || row.createdAt)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === "UNINSPECTED" && (
+            <div className="panel">
+              <div className="panel-title">
+                Devices Not Inspected ({filteredUninspectedDevices.length})
+                <button
+                  className="smart-btn danger small"
+                  type="button"
+                  onClick={exportUninspectedDevices}
+                >
+                  Export missing CSV
+                </button>
               </div>
+
+              {filteredUninspectedDevices.length === 0 ? (
+                <div className="empty">كل الأجهزة الظاهرة في الفلاتر لها فحص مسجل.</div>
+              ) : (
+                <div className="device-list">
+                  {filteredUninspectedDevices.map((device, index) => (
+                    <DeviceCard
+                      key={getDeviceId(device) || index}
+                      device={device}
+                      latestInspection={null}
+                      onOpenInspection={setSelectedInspection}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "LOCATIONS" && (
+            <div className="panel">
+              <div className="panel-title">
+                Locations Summary ({filteredLocationSummaries.length})
+                <button className="smart-btn small" type="button" onClick={exportLocationsSummary}>
+                  Export locations CSV
+                </button>
+              </div>
+
+              {viewMode === "GRID" ? (
+                filteredLocationSummaries.length === 0 ? (
+                  <div className="empty">لا توجد لوكيشنز مطابقة للفلاتر.</div>
+                ) : (
+                  <div className="location-grid">
+                    {filteredLocationSummaries.map((summary) => (
+                      <LocationCard
+                        key={getLocationId(summary.location)}
+                        locationSummary={summary}
+                        onOpen={(item) => {
+                          setSelectedLocationId(String(getLocationId(item.location)));
+                          setViewMode("LIST");
+                        }}
+                      />
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="split-layout">
+                  <div className="panel">
+                    <div className="panel-title">Locations</div>
+
+                    <div className="side-list">
+                      {filteredLocationSummaries.map((summary) => {
+                        const id = String(getLocationId(summary.location));
+                        const activeId = String(
+                          selectedLocationSummary &&
+                            getLocationId(selectedLocationSummary.location)
+                        );
+
+                        return (
+                          <div
+                            key={id}
+                            className={`location-row ${activeId === id ? "active" : ""}`}
+                            onClick={() => setSelectedLocationId(id)}
+                          >
+                            <div className="location-row-title">
+                              {getLocationDisplay(summary.location)}
+                            </div>
+                            <div className="location-row-meta">
+                              Devices: {summary.counts?.totalDevices ?? summary.devices.length} ·
+                              Inspected: {summary.counts?.inspectedDevices ?? summary.inspectedDevices.length} ·
+                              Missing: {summary.counts?.notInspectedDevices ?? summary.uninspectedDevices.length}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <LocationDetails
+                    summary={selectedLocationSummary}
+                    latestInspectionByDeviceId={latestInspectionByDeviceId}
+                    onOpenInspection={setSelectedInspection}
+                  />
+                </div>
+              )}
             </div>
           )}
         </section>
       </div>
+
+      {selectedSummaryModal && (
+        <SummaryDetailsModal
+          modal={selectedSummaryModal}
+          apiBase={base}
+          onClose={() => setSelectedSummaryModal(null)}
+        />
+      )}
 
       {selectedInspection && (
         <InspectionDetailsModal
@@ -2931,6 +3342,158 @@ export function InspectionsPage({
           onClose={() => setSelectedInspection(null)}
         />
       )}
+    </div>
+  );
+}
+
+/* =========================
+   LOCATION DETAILS
+========================= */
+
+function LocationDetails({ summary, latestInspectionByDeviceId, onOpenInspection }) {
+  if (!summary) {
+    return (
+      <div className="location-details">
+        <div className="state-card">اختاري لوكيشن لعرض الأجهزة والتفتيشات.</div>
+      </div>
+    );
+  }
+
+  const {
+    location,
+    devices,
+    inspections,
+    inspectedDevices,
+    uninspectedDevices,
+    counts,
+    lastInspectionAt,
+    scanStatus,
+  } = summary;
+
+  return (
+    <div className="location-details">
+      <div className="location-header">
+        <div className="location-header-title">{getLocationDisplay(location)}</div>
+
+        <div className="location-header-sub">
+          Cluster: {safe(location.cluster)} · Building: {safe(location.building)} ·
+          Zone: {safe(location.zone)} · Lane: {safe(location.lane)} · Direction:{" "}
+          {safe(location.direction)}
+          <br />
+          Last inspection: {fmtDateTime(lastInspectionAt)} · Status: {arStatus(scanStatus)}
+        </div>
+
+        <div className="mini-stats">
+          <MiniStat label="Devices" value={counts?.totalDevices ?? devices.length} />
+          <MiniStat label="Inspected" value={counts?.inspectedDevices ?? inspectedDevices.length} />
+          <MiniStat label="Not inspected" value={counts?.notInspectedDevices ?? uninspectedDevices.length} />
+          <MiniStat label="Latest inspections" value={counts?.latestInspections ?? inspections.length} />
+          <MiniStat label="Missing list" value={uninspectedDevices.length} />
+        </div>
+      </div>
+
+      <div className="section">
+        <div className="section-title">
+          الأجهزة التي لم يتم فحصها في هذا اللوكيشن ({uninspectedDevices.length})
+        </div>
+
+        {uninspectedDevices.length === 0 ? (
+          <div className="empty">ممتاز. لا توجد أجهزة بدون فحص في هذا اللوكيشن.</div>
+        ) : (
+          <div className="device-list">
+            {uninspectedDevices.map((device, index) => (
+              <DeviceCard
+                key={getDeviceId(device) || index}
+                device={device}
+                latestInspection={null}
+                onOpenInspection={onOpenInspection}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="section">
+        <div className="section-title">كل الأجهزة المرتبطة بهذا اللوكيشن ({devices.length})</div>
+
+        {devices.length === 0 ? (
+          <div className="empty">لا توجد أجهزة مربوطة بهذا اللوكيشن في الداتا الحالية.</div>
+        ) : (
+          <div className="device-list">
+            {devices.map((device, index) => {
+              const deviceId = getDeviceId(device);
+              const latestInspection = deviceId
+                ? latestInspectionByDeviceId.get(String(deviceId))
+                : device.latestInspection || null;
+
+              return (
+                <DeviceCard
+                  key={deviceId || index}
+                  device={device}
+                  latestInspection={latestInspection}
+                  onOpenInspection={onOpenInspection}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="section">
+        <div className="section-title">آخر التفتيشات في هذا اللوكيشن ({inspections.length})</div>
+
+        {inspections.length === 0 ? (
+          <div className="empty">لا توجد تفتيشات مسجلة لهذا اللوكيشن.</div>
+        ) : (
+          <div className="table-card">
+            <div className="table-scroll" style={{ maxHeight: 450, minHeight: 0 }}>
+              <table className="smart-table" style={{ minWidth: 980 }}>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Device</th>
+                    <th>Status</th>
+                    <th>Technician</th>
+                    <th>Images</th>
+                    <th>Issues</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {inspections.map((inspection) => {
+                    const device = inspection.device || {};
+                    const issuesCount =
+                      inspection.issuesCount ||
+                      inspection.inspectionIssues?.length ||
+                      0;
+
+                    return (
+                      <tr
+                        key={inspection.id}
+                        className="clickable-row"
+                        onClick={() => onOpenInspection(inspection)}
+                      >
+                        <td>#{inspection.id}</td>
+                        <td>{getDeviceDisplayName(device)}</td>
+                        <td>
+                          <span className={`tag ${statusClass(inspection.inspectionStatus)}`}>
+                            {arStatus(inspection.inspectionStatus)}
+                          </span>
+                        </td>
+                        <td>{getTechName(inspection)}</td>
+                        <td>{getImages(inspection).length}</td>
+                        <td>{issuesCount}</td>
+                        <td>{fmtDateTime(inspection.inspectedAt || inspection.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

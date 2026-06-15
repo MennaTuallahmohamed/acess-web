@@ -4,6 +4,7 @@ import { AuthPanel } from "./components/AuthPanel";
 import { DashboardLayout } from "./components/DashboardLayout";
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { DevicesPage } from "./pages/DevicesPage";
+import { GatesPage } from "./pages/GatesPage";
 import { HomePage } from "./pages/HomePage";
 import { InspectionsPage } from "./pages/InspectionsPage";
 import { LocationsPage } from "./pages/LocationsPage";
@@ -37,6 +38,7 @@ const TABS = [
   "tasks",
   "technicians",
   "devices",
+  "gates",
   "inspections",
   "troubleshooting",
   "analytics",
@@ -394,6 +396,8 @@ function App() {
               onOpenHistory={handleOpenHistory}
             />
           ) : null}
+
+          {tab === "gates" ? <GatesPage /> : null}
 
           {tab === "inspections" ? (
             <InspectionsPage

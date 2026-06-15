@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import smartitLogo from "../../assets/smartit-logo-transparent.png";
 
 /* ═══════════════════════════════════════════
    CSS
@@ -11,22 +12,46 @@ const LOCATIONS_CSS = `
 }
 
 .loc-root {
-  --blue: #378ADD;
-  --green: #1D9E75;
-  --amber: #BA7517;
-  --red: #C0392B;
-  --purple: #7F77DD;
+  --primary: #4f46e5;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --primary-light: #818cf8;
   --surface: #ffffff;
   --surface2: #f7f8fa;
   --border: rgba(0,0,0,0.07);
-  --text: #16181d;
-  --muted: #6b7585;
-  --faint: #9aa0ad;
+  --text: #0f172a;
+  --muted: #475569;
+  --faint: #94a3b8;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #f4f6f9;
+  background: #f1f5f9;
   color: var(--text);
   padding: 28px 24px;
   min-height: 100vh;
+}
+
+.loc-brand-box {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12) 0%, rgba(79, 70, 229, 0.05) 100%);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 20px;
+  padding: 24px 32px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.loc-brand-logo {
+  width: 120px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.loc-brand-logo img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 /* top bar */
@@ -90,9 +115,9 @@ const LOCATIONS_CSS = `
 }
 
 .loc-alert--info {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.2);
 }
 
 /* summary */
@@ -141,8 +166,8 @@ const LOCATIONS_CSS = `
 .loc-filter-card {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94)),
-    radial-gradient(circle at top left, rgba(55,138,221,0.15), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(127,119,221,0.10), transparent 32%);
+    radial-gradient(circle at top left, rgba(79, 70, 229, 0.15), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(129, 140, 248, 0.10), transparent 32%);
   border: 1px solid rgba(226,232,240,0.95);
   border-radius: 26px;
   padding: 18px;
@@ -171,8 +196,8 @@ const LOCATIONS_CSS = `
   width: 38px;
   height: 38px;
   border-radius: 15px;
-  background: #ebf4ff;
-  color: #378add;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
   display: grid;
   place-items: center;
   font-size: 18px;
@@ -196,9 +221,9 @@ const LOCATIONS_CSS = `
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #ebf4ff;
-  color: #1d4ed8;
-  border: 1px solid rgba(55,138,221,0.16);
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border: 1px solid rgba(79, 70, 229, 0.16);
   border-radius: 999px;
   padding: 7px 12px;
   font-size: 12px;
@@ -209,7 +234,7 @@ const LOCATIONS_CSS = `
 .loc-filter-result-dot {
   width: 7px;
   height: 7px;
-  background: #378add;
+  background: #4f46e5;
   border-radius: 50%;
 }
 
@@ -268,7 +293,7 @@ const LOCATIONS_CSS = `
 
 .loc-filter-input:focus,
 .loc-filter-select:focus {
-  border-color: #378add;
+  border-color: #4f46e5;
   background-color: #ffffff;
   box-shadow: 0 0 0 4px rgba(55,138,221,0.13);
 }
@@ -347,8 +372,8 @@ const LOCATIONS_CSS = `
 }
 
 .loc-filter-btn-ok:hover {
-  background: #378add;
-  box-shadow: 0 10px 20px rgba(55,138,221,0.24);
+  background: #4f46e5;
+  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.24);
 }
 
 .loc-filter-btn:active {
@@ -606,8 +631,8 @@ const LOCATIONS_CSS = `
 }
 
 .loc-detail-close:hover {
-  background: #FDECEA;
-  color: #C0392B;
+  background: #fdecea;
+  color: #ef4444;
 }
 
 .loc-detail-name {
@@ -678,13 +703,13 @@ const LOCATIONS_CSS = `
 }
 
 .badge--under {
-  background: #EBF4FF;
-  color: #1e5fa8;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
 }
 
 .badge--oos {
   background: #f1f3f5;
-  color: #6b7585;
+  color: #475569;
 }
 
 .loc-empty,
@@ -700,7 +725,7 @@ const LOCATIONS_CSS = `
   height: 28px;
   border-radius: 50%;
   border: 3px solid #dbeafe;
-  border-top-color: #378ADD;
+  border-top-color: #4f46e5;
   margin: 0 auto 12px;
   animation: spin .8s linear infinite;
 }
@@ -812,7 +837,7 @@ function pickBaseUrl(propBaseUrl) {
     fromProp ||
     fromEnv ||
     fromLocal ||
-    "https://acess-backend-production.up.railway.app";
+    "https://acess-backend-production-8856.up.railway.app";
 
   return raw.replace(/\/+$/, "");
 }
@@ -1578,22 +1603,22 @@ export function ViewerLocationsPage({
     {
       label: t("Locations", "المواقع"),
       val: locationRows.length,
-      color: "#378ADD",
+      color: "#4f46e5",
     },
     {
       label: "OK",
       val: okLocations,
-      color: "#1D9E75",
+      color: "#10b981",
     },
     {
       label: "Not OK",
       val: notOkLocations,
-      color: "#C0392B",
+      color: "#ef4444",
     },
     {
       label: t("Inspections", "الفحوصات"),
       val: totalInspections,
-      color: "#BA7517",
+      color: "#f59e0b",
     },
   ];
 
@@ -1618,6 +1643,12 @@ export function ViewerLocationsPage({
       <style>{LOCATIONS_CSS}</style>
 
       <div className="loc-root" dir={lang === "ar" ? "rtl" : "ltr"}>
+        <div className="loc-brand-box">
+          <div className="loc-brand-logo">
+            <img src={smartitLogo} alt="SmartIT" />
+          </div>
+        </div>
+
         <div className="loc-topbar">
           <div>
             <div className="loc-topbar__title">
@@ -1937,7 +1968,7 @@ export function ViewerLocationsPage({
                   ? 100
                   : 0;
 
-                const accentColor = isNotOk ? "#C0392B" : "#1D9E75";
+                const accentColor = isNotOk ? "#ef4444" : "#10b981";
 
                 return (
                   <div

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import smartitLogo from "../../assets/smartit-logo-transparent.png";
 
 /* ═══════════════════════════════════════════
    CSS
@@ -11,22 +12,46 @@ const INSPECTIONS_CSS = `
 }
 
 .insp-root {
-  --blue: #378ADD;
-  --green: #1D9E75;
-  --amber: #BA7517;
-  --red: #C0392B;
-  --slate: #7B8A9A;
+  --primary: #4f46e5;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --slate: #64748b;
   --surface: #ffffff;
   --surface2: #f7f8fa;
   --border: rgba(0,0,0,0.07);
-  --text: #16181d;
-  --muted: #6b7585;
-  --faint: #9aa0ad;
+  --text: #0f172a;
+  --muted: #475569;
+  --faint: #94a3b8;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #f4f6f9;
+  background: #f1f5f9;
   color: var(--text);
   padding: 28px 24px;
   min-height: 100vh;
+}
+
+.insp-brand-box {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12) 0%, rgba(79, 70, 229, 0.05) 100%);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 20px;
+  padding: 24px 32px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.insp-brand-logo {
+  width: 120px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.insp-brand-logo img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 /* Top bar */
@@ -90,16 +115,16 @@ const INSPECTIONS_CSS = `
 }
 
 .insp-alert--info {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.2);
 }
 
 /* Filter - Premium */
 .insp-filter-card {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94)),
-    radial-gradient(circle at top left, rgba(55,138,221,0.15), transparent 34%);
+    radial-gradient(circle at top left, rgba(79, 70, 229, 0.15), transparent 34%);
   border: 1px solid rgba(226, 232, 240, 0.95);
   border-radius: 26px;
   padding: 18px;
@@ -128,8 +153,8 @@ const INSPECTIONS_CSS = `
   width: 36px;
   height: 36px;
   border-radius: 13px;
-  background: #ebf4ff;
-  color: #378add;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
   display: grid;
   place-items: center;
   font-size: 18px;
@@ -151,9 +176,9 @@ const INSPECTIONS_CSS = `
 .insp-filter-result {
   font-size: 12px;
   font-weight: 800;
-  color: #378add;
-  background: #ebf4ff;
-  border: 1px solid rgba(55,138,221,0.16);
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.16);
   border-radius: 999px;
   padding: 7px 12px;
 }
@@ -213,9 +238,9 @@ const INSPECTIONS_CSS = `
 
 .insp-filter-input:focus,
 .insp-filter-select:focus {
-  border-color: #378add;
+  border-color: #4f46e5;
   background-color: #ffffff;
-  box-shadow: 0 0 0 4px rgba(55, 138, 221, 0.13);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.13);
 }
 
 .insp-filter-select {
@@ -292,8 +317,8 @@ const INSPECTIONS_CSS = `
 }
 
 .insp-filter-btn-ok:hover {
-  background: #378add;
-  box-shadow: 0 10px 20px rgba(55, 138, 221, 0.24);
+  background: #4f46e5;
+  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.24);
 }
 
 .insp-filter-btn:active {
@@ -512,7 +537,7 @@ const INSPECTIONS_CSS = `
 
 .badge--oos {
   background: #f1f3f5;
-  color: #6b7585;
+  color: #475569;
 }
 
 /* Timeline */
@@ -607,7 +632,7 @@ const INSPECTIONS_CSS = `
   height: 28px;
   border-radius: 50%;
   border: 3px solid #dbeafe;
-  border-top-color: #378ADD;
+  border-top-color: #4f46e5;
   margin: 0 auto 12px;
   animation: spin .8s linear infinite;
 }
@@ -694,18 +719,18 @@ const BADGE_MAP_AR = {
 };
 
 const DOT_COLORS = {
-  OK: "#1D9E75",
-  NOT_OK: "#C0392B",
-  PARTIAL: "#BA7517",
-  NOT_REACHABLE: "#7B8A9A",
+  OK: "#10b981",
+  NOT_OK: "#ef4444",
+  PARTIAL: "#f59e0b",
+  NOT_REACHABLE: "#64748b",
 };
 
 const TILE_COLORS = {
-  total: "#378ADD",
-  ok: "#1D9E75",
-  notOk: "#C0392B",
-  partial: "#BA7517",
-  unreachable: "#7B8A9A",
+  total: "#4f46e5",
+  ok: "#10b981",
+  notOk: "#ef4444",
+  partial: "#f59e0b",
+  unreachable: "#64748b",
 };
 
 const DEFAULT_FILTERS = {
@@ -779,7 +804,7 @@ function pickBaseUrl(propBaseUrl) {
     fromProp ||
     fromEnv ||
     fromLocal ||
-    "https://acess-backend-production.up.railway.app";
+    "https://acess-backend-production-8856.up.railway.app";
 
   return raw.replace(/\/+$/, "");
 }
@@ -1229,6 +1254,12 @@ export function ViewerInspectionsPage({
       <style>{INSPECTIONS_CSS}</style>
 
       <div className="insp-root" dir={lang === "ar" ? "rtl" : "ltr"}>
+        <div className="insp-brand-box">
+          <div className="insp-brand-logo">
+            <img src={smartitLogo} alt="SmartIT" />
+          </div>
+        </div>
+
         <div className="insp-topbar">
           <div>
             <div className="insp-topbar__title">
@@ -1596,7 +1627,7 @@ export function ViewerInspectionsPage({
                         className="insp-tl-dot"
                         style={{
                           background:
-                            DOT_COLORS[ins.inspectionStatus] || "#378ADD",
+                            DOT_COLORS[ins.inspectionStatus] || "#4f46e5",
                         }}
                       />
 

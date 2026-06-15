@@ -2,33 +2,68 @@ import React, { useEffect, useMemo, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
 
-/*
-  ملاحظة:
-  استخدمت IDs الحالية الموجودة عندك في الداتابيز:
-  2   -> Reader
-  4   -> Morpho md
-  140 -> Argus 60
+const ASSET_TYPES = [
+  {
+    value: "DEVICE",
+    label: "Device",
+    arabic: "جهاز",
+    hint: "مشاكل الأجهزة حسب نوع الجهاز",
+  },
+  {
+    value: "GATE",
+    label: "Gate",
+    arabic: "بوابة",
+    hint: "مشاكل البوابات فقط",
+  },
+  {
+    value: "SOFTWARE",
+    label: "Software",
+    arabic: "سوفت وير",
+    hint: "مشاكل النظام أو البرنامج",
+  },
+];
 
-  لو اتغيرت IDs عندك بعدين، عدليها هنا فقط.
-*/
 const DEVICE_TYPE_OPTIONS = [
-  { id: 1, name: "Access Control", categoryName: "Access Control" },
-  { id: 2, name: "Reader", categoryName: "Access Control" },
-  { id: 3, name: "Controller", categoryName: "Access Control" },
-  { id: 4, name: "Morpho md", categoryName: "Access Control" },
-  { id: 140, name: "Argus 60", categoryName: "Gates" },
+  { id: 1, name: "Access Control", categoryName: "Access Control", assetType: "DEVICE" },
+  { id: 2, name: "Reader", categoryName: "Access Control", assetType: "DEVICE" },
+  { id: 3, name: "Controller", categoryName: "Access Control", assetType: "DEVICE" },
+  { id: 4, name: "Morpho md", categoryName: "Access Control", assetType: "DEVICE" },
+  { id: 140, name: "Argus 60", categoryName: "Gates", assetType: "GATE" },
+];
+
+const SOFTWARE_MODULE_OPTIONS = [
+  { id: "ACCESS_APP", name: "Access App", assetType: "SOFTWARE" },
+  { id: "SYNC_SERVICE", name: "Sync Service", assetType: "SOFTWARE" },
+  { id: "DASHBOARD", name: "Dashboard", assetType: "SOFTWARE" },
 ];
 
 const emptyForm = {
+  assetType: "DEVICE",
   issueCode: "",
   categoryId: "",
   deviceTypeId: "",
+  softwareModule: "",
   issueTitle: "",
   issueDescription: "",
   severity: "HIGH",
   status: "ACTIVE",
-  steps: [{ id: null, text: "", isRequired: true, status: "ACTIVE", solutionCode: "" }],
+  steps: [
+    {
+      id: null,
+      text: "",
+      isRequired: true,
+      status: "ACTIVE",
+      solutionCode: "",
+    },
+  ],
 };
+
+function normalizeAssetType(value) {
+  const v = String(value || "DEVICE").toUpperCase();
+  if (v === "GATE") return "GATE";
+  if (v === "SOFTWARE") return "SOFTWARE";
+  return "DEVICE";
+}
 
 function toUiSeverity(value) {
   return String(value || "MEDIUM").toUpperCase();
@@ -48,6 +83,44 @@ function severityLabel(value) {
 
 function statusLabel(value) {
   return toUiStatus(value) === "ACTIVE" ? "Active" : "Inactive";
+}
+
+function assetTypeLabel(value) {
+  const asset = ASSET_TYPES.find((item) => item.value === normalizeAssetType(value));
+  return asset?.label || "Device";
+}
+
+function assetTypeArabic(value) {
+  const asset = ASSET_TYPES.find((item) => item.value === normalizeAssetType(value));
+  return asset?.arabic || "جهاز";
+}
+
+function getIssueAssetType(issue) {
+  return normalizeAssetType(
+    issue?.assetType ||
+      issue?.category?.assetType ||
+      issue?.deviceType?.assetType ||
+      "DEVICE"
+  );
+}
+
+function categoryMatchesAsset(category, assetType) {
+  const value = String(category?.assetType || "").toUpperCase();
+  if (!value || value === "ALL" || value === "NULL") return true;
+  return value === normalizeAssetType(assetType);
+}
+
+function unwrapList(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.issues)) return data.issues;
+  if (Array.isArray(data?.categories)) return data.categories;
+  return [];
+}
+
+function unwrapItem(data) {
+  if (data?.data) return data.data;
+  return data;
 }
 
 async function apiRequest(path, options = {}) {
@@ -84,9 +157,19 @@ export default function TroubleshootingManagement() {
   const [categories, setCategories] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
 
+  const [assetTypeFilter, setAssetTypeFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [deviceTypeFilter, setDeviceTypeFilter] = useState("all");
   const [search, setSearch] = useState("");
+
+  const [scanCode, setScanCode] = useState("");
+  const [scanAssetType, setScanAssetType] = useState("DEVICE");
+  const [scanDeviceTypeId, setScanDeviceTypeId] = useState("2");
+  const [scanSoftwareModule, setScanSoftwareModule] = useState("ACCESS_APP");
+  const [scanResult, setScanResult] = useState(null);
+
+  const [selectedIssueIds, setSelectedIssueIds] = useState([]);
+  const [payloadPreview, setPayloadPreview] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -95,6 +178,54 @@ export default function TroubleshootingManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIssue, setEditingIssue] = useState(null);
   const [form, setForm] = useState(emptyForm);
+
+  const categoryMap = useMemo(() => {
+    return new Map(categories.map((c) => [String(c.id), c]));
+  }, [categories]);
+
+  const getDeviceOptionsForAsset = (assetType, categoryId = "all") => {
+    const normalized = normalizeAssetType(assetType);
+
+    if (normalized === "SOFTWARE") return [];
+
+    const byAsset = DEVICE_TYPE_OPTIONS.filter((item) => item.assetType === normalized);
+
+    if (categoryId === "all" || !categoryId) {
+      return byAsset;
+    }
+
+    const selectedCategory = categoryMap.get(String(categoryId));
+    const byCategory = byAsset.filter(
+      (item) => item.categoryName === selectedCategory?.name
+    );
+
+    return byCategory.length ? byCategory : byAsset;
+  };
+
+  const visibleCategoriesForFilter = useMemo(() => {
+    if (assetTypeFilter === "all") return categories;
+    return categories.filter((category) =>
+      categoryMatchesAsset(category, assetTypeFilter)
+    );
+  }, [categories, assetTypeFilter]);
+
+  const visibleCategoriesForForm = useMemo(() => {
+    return categories.filter((category) =>
+      categoryMatchesAsset(category, form.assetType)
+    );
+  }, [categories, form.assetType]);
+
+  const filterDeviceOptions = useMemo(() => {
+    if (assetTypeFilter === "all") {
+      return DEVICE_TYPE_OPTIONS;
+    }
+
+    return getDeviceOptionsForAsset(assetTypeFilter, categoryFilter);
+  }, [assetTypeFilter, categoryFilter, categoryMap]);
+
+  const formDeviceOptions = useMemo(() => {
+    return getDeviceOptionsForAsset(form.assetType, form.categoryId);
+  }, [form.assetType, form.categoryId, categoryMap]);
 
   const loadData = async () => {
     try {
@@ -106,12 +237,13 @@ export default function TroubleshootingManagement() {
         apiRequest("/issues/categories"),
       ]);
 
-      setIssues(Array.isArray(issuesData) ? issuesData : []);
-      setCategories(Array.isArray(categoriesData) ? categoriesData : []);
+      const nextIssues = unwrapList(issuesData);
+      const nextCategories = unwrapList(categoriesData);
 
-      const firstId =
-        (Array.isArray(issuesData) && issuesData[0]?.id) || null;
+      setIssues(nextIssues);
+      setCategories(nextCategories);
 
+      const firstId = nextIssues[0]?.id || null;
       setSelectedId((prev) => prev ?? firstId);
     } catch (error) {
       setPageError(error.message || "Failed to load troubleshooting data.");
@@ -124,36 +256,33 @@ export default function TroubleshootingManagement() {
     loadData();
   }, []);
 
-  const categoryMap = useMemo(() => {
-    return new Map(categories.map((c) => [String(c.id), c]));
-  }, [categories]);
-
-  const filterDeviceOptions = useMemo(() => {
-    if (categoryFilter === "all") return DEVICE_TYPE_OPTIONS;
-    const selectedCategory = categoryMap.get(String(categoryFilter));
-    if (!selectedCategory) return [];
-    return DEVICE_TYPE_OPTIONS.filter(
-      (item) => item.categoryName === selectedCategory.name
-    );
-  }, [categoryFilter, categoryMap]);
-
-  const formDeviceOptions = useMemo(() => {
-    const selectedCategory = categoryMap.get(String(form.categoryId));
-    if (!selectedCategory) return [];
-    return DEVICE_TYPE_OPTIONS.filter(
-      (item) => item.categoryName === selectedCategory.name
-    );
-  }, [form.categoryId, categoryMap]);
-
-  const filteredIssues = useMemo(() => {
+  const smartFilteredIssues = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     return issues.filter((issue) => {
+      const issueAssetType = getIssueAssetType(issue);
+
+      const matchesAssetType =
+        assetTypeFilter === "all" || issueAssetType === assetTypeFilter;
+
+      const matchesScan =
+        !scanResult ||
+        issueAssetType === scanResult.assetType;
+
+      const matchesScanDeviceType =
+        !scanResult ||
+        scanResult.assetType !== "DEVICE" ||
+        !scanResult.deviceTypeId ||
+        !issue.deviceTypeId ||
+        String(issue.deviceTypeId) === String(scanResult.deviceTypeId);
+
       const matchesCategory =
-        categoryFilter === "all" || String(issue.categoryId) === String(categoryFilter);
+        categoryFilter === "all" ||
+        String(issue.categoryId) === String(categoryFilter);
 
       const matchesDeviceType =
-        deviceTypeFilter === "all" || String(issue.deviceTypeId) === String(deviceTypeFilter);
+        deviceTypeFilter === "all" ||
+        String(issue.deviceTypeId) === String(deviceTypeFilter);
 
       const matchesSearch =
         !q ||
@@ -161,64 +290,171 @@ export default function TroubleshootingManagement() {
         String(issue.title || "").toLowerCase().includes(q) ||
         String(issue.description || "").toLowerCase().includes(q) ||
         String(issue.category?.name || "").toLowerCase().includes(q) ||
-        String(issue.deviceType?.name || "").toLowerCase().includes(q);
+        String(issue.deviceType?.name || "").toLowerCase().includes(q) ||
+        String(issue.assetType || "").toLowerCase().includes(q);
 
-      return matchesCategory && matchesDeviceType && matchesSearch;
+      return (
+        matchesAssetType &&
+        matchesScan &&
+        matchesScanDeviceType &&
+        matchesCategory &&
+        matchesDeviceType &&
+        matchesSearch
+      );
     });
-  }, [issues, categoryFilter, deviceTypeFilter, search]);
+  }, [
+    issues,
+    assetTypeFilter,
+    categoryFilter,
+    deviceTypeFilter,
+    search,
+    scanResult,
+  ]);
 
   const selectedIssue =
-    filteredIssues.find((item) => item.id === selectedId) ||
+    smartFilteredIssues.find((item) => item.id === selectedId) ||
     issues.find((item) => item.id === selectedId) ||
-    filteredIssues[0] ||
+    smartFilteredIssues[0] ||
     null;
 
   useEffect(() => {
-    if (!selectedIssue && filteredIssues[0]) {
-      setSelectedId(filteredIssues[0].id);
+    if (!selectedIssue && smartFilteredIssues[0]) {
+      setSelectedId(smartFilteredIssues[0].id);
     }
-  }, [selectedIssue, filteredIssues]);
+  }, [selectedIssue, smartFilteredIssues]);
 
   const stats = useMemo(() => {
-    const categoriesCount = new Set(issues.map((i) => i.categoryId)).size;
-    const deviceTypesCount = new Set(issues.map((i) => i.deviceTypeId)).size;
+    const deviceIssues = issues.filter((i) => getIssueAssetType(i) === "DEVICE").length;
+    const gateIssues = issues.filter((i) => getIssueAssetType(i) === "GATE").length;
+    const softwareIssues = issues.filter(
+      (i) => getIssueAssetType(i) === "SOFTWARE"
+    ).length;
+
     const activeIssuesCount = issues.filter(
       (i) => toUiStatus(i.status) === "ACTIVE"
     ).length;
+
+    const criticalIssuesCount = issues.filter(
+      (i) => toUiSeverity(i.severity) === "CRITICAL"
+    ).length;
+
     const totalStepsCount = issues.reduce(
-      (acc, cur) => acc + (Array.isArray(cur.solutions) ? cur.solutions.length : 0),
+      (acc, cur) =>
+        acc + (Array.isArray(cur.solutions) ? cur.solutions.length : 0),
       0
     );
 
     return {
-      categoriesCount,
-      deviceTypesCount,
+      deviceIssues,
+      gateIssues,
+      softwareIssues,
       activeIssuesCount,
+      criticalIssuesCount,
       totalStepsCount,
     };
   }, [issues]);
 
+  const setAssetFilter = (value) => {
+    setAssetTypeFilter(value);
+    setCategoryFilter("all");
+    setDeviceTypeFilter("all");
+  };
+
+  const handleFrontendScan = () => {
+    const assetType = normalizeAssetType(scanAssetType);
+    const code = scanCode.trim() || `DEMO-${assetType}-${Date.now()}`;
+
+    const deviceType =
+      assetType === "DEVICE"
+        ? DEVICE_TYPE_OPTIONS.find((item) => String(item.id) === String(scanDeviceTypeId))
+        : assetType === "GATE"
+          ? DEVICE_TYPE_OPTIONS.find((item) => item.assetType === "GATE")
+          : null;
+
+    const softwareModule =
+      assetType === "SOFTWARE"
+        ? SOFTWARE_MODULE_OPTIONS.find((item) => item.id === scanSoftwareModule)
+        : null;
+
+    const result = {
+      code,
+      assetType,
+      deviceTypeId: assetType === "DEVICE" ? deviceType?.id || null : null,
+      deviceTypeName: assetType === "DEVICE" ? deviceType?.name || "" : "",
+      gateTypeName: assetType === "GATE" ? deviceType?.name || "Gate" : "",
+      softwareModule: assetType === "SOFTWARE" ? softwareModule?.id || "" : "",
+      softwareModuleName: assetType === "SOFTWARE" ? softwareModule?.name || "" : "",
+      scannedAt: new Date().toISOString(),
+      status: "OK",
+    };
+
+    setScanResult(result);
+    setAssetFilter(assetType);
+    setSelectedIssueIds([]);
+    setPayloadPreview("");
+  };
+
+  const clearScan = () => {
+    setScanResult(null);
+    setScanCode("");
+    setSelectedIssueIds([]);
+    setPayloadPreview("");
+    setAssetFilter("all");
+  };
+
+  const toggleIssueSelection = (issueId) => {
+    setSelectedIssueIds((prev) => {
+      if (prev.includes(issueId)) {
+        return prev.filter((id) => id !== issueId);
+      }
+      return [...prev, issueId];
+    });
+  };
+
+  const buildInspectionPayload = () => {
+    const payload = {
+      assetType: scanResult?.assetType || assetTypeFilter,
+      scanCode: scanResult?.code || null,
+      deviceTypeId: scanResult?.deviceTypeId || null,
+      softwareModule: scanResult?.softwareModule || null,
+      inspectionStatus: selectedIssueIds.length ? "NOT_OK" : "OK",
+      issueIds: selectedIssueIds,
+      notes: "",
+      createdFrom: "frontend-preview",
+      createdAt: new Date().toISOString(),
+    };
+
+    setPayloadPreview(JSON.stringify(payload, null, 2));
+  };
+
   const openAddModal = () => {
-    const firstCategoryId = categories[0]?.id || "";
-    const firstCategory = categories[0]?.name || "";
+    const defaultAssetType = assetTypeFilter === "all" ? "DEVICE" : assetTypeFilter;
+    const firstCategory = categories.find((category) =>
+      categoryMatchesAsset(category, defaultAssetType)
+    );
     const firstDeviceType =
-      DEVICE_TYPE_OPTIONS.find((item) => item.categoryName === firstCategory)?.id || "";
+      getDeviceOptionsForAsset(defaultAssetType, firstCategory?.id)[0]?.id || "";
 
     setEditingIssue(null);
     setForm({
       ...emptyForm,
-      categoryId: firstCategoryId,
-      deviceTypeId: firstDeviceType,
+      assetType: defaultAssetType,
+      categoryId: firstCategory?.id || "",
+      deviceTypeId: defaultAssetType === "DEVICE" ? firstDeviceType : "",
     });
     setIsModalOpen(true);
   };
 
   const openEditModal = (issue) => {
+    const issueAssetType = getIssueAssetType(issue);
+
     setEditingIssue(issue);
     setForm({
+      assetType: issueAssetType,
       issueCode: issue.issueCode || "",
       categoryId: issue.categoryId || "",
       deviceTypeId: issue.deviceTypeId || "",
+      softwareModule: issue.softwareModule || "",
       issueTitle: issue.title || "",
       issueDescription: issue.description || "",
       severity: toUiSeverity(issue.severity),
@@ -235,7 +471,15 @@ export default function TroubleshootingManagement() {
                 status: toUiStatus(step.status),
                 solutionCode: step.solutionCode || "",
               }))
-          : [{ id: null, text: "", isRequired: true, status: "ACTIVE", solutionCode: "" }],
+          : [
+              {
+                id: null,
+                text: "",
+                isRequired: true,
+                status: "ACTIVE",
+                solutionCode: "",
+              },
+            ],
     });
     setIsModalOpen(true);
   };
@@ -250,13 +494,25 @@ export default function TroubleshootingManagement() {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
 
+      if (key === "assetType") {
+        const nextAssetType = normalizeAssetType(value);
+        const firstCategory = categories.find((category) =>
+          categoryMatchesAsset(category, nextAssetType)
+        );
+        const firstDeviceType =
+          getDeviceOptionsForAsset(nextAssetType, firstCategory?.id)[0]?.id || "";
+
+        next.assetType = nextAssetType;
+        next.categoryId = firstCategory?.id || "";
+        next.deviceTypeId = nextAssetType === "DEVICE" ? firstDeviceType : "";
+        next.softwareModule =
+          nextAssetType === "SOFTWARE" ? SOFTWARE_MODULE_OPTIONS[0]?.id || "" : "";
+      }
+
       if (key === "categoryId") {
-        const selectedCategory = categoryMap.get(String(value));
         const matchingDeviceType =
-          DEVICE_TYPE_OPTIONS.find(
-            (item) => item.categoryName === selectedCategory?.name
-          )?.id || "";
-        next.deviceTypeId = matchingDeviceType;
+          getDeviceOptionsForAsset(prev.assetType, value)[0]?.id || "";
+        next.deviceTypeId = prev.assetType === "DEVICE" ? matchingDeviceType : "";
       }
 
       return next;
@@ -276,7 +532,13 @@ export default function TroubleshootingManagement() {
       ...prev,
       steps: [
         ...prev.steps,
-        { id: null, text: "", isRequired: true, status: "ACTIVE", solutionCode: "" },
+        {
+          id: null,
+          text: "",
+          isRequired: true,
+          status: "ACTIVE",
+          solutionCode: "",
+        },
       ],
     }));
   };
@@ -284,6 +546,7 @@ export default function TroubleshootingManagement() {
   const removeStep = (index) => {
     setForm((prev) => {
       if (prev.steps.length === 1) return prev;
+
       return {
         ...prev,
         steps: prev.steps.filter((_, i) => i !== index),
@@ -316,18 +579,24 @@ export default function TroubleshootingManagement() {
         throw new Error("Category is required.");
       }
 
-      if (!form.deviceTypeId) {
-        throw new Error("Device type is required.");
+      if (form.assetType === "DEVICE" && !form.deviceTypeId) {
+        throw new Error("Device type is required for device issues.");
       }
 
       const issuePayload = {
+        assetType: normalizeAssetType(form.assetType),
         issueCode: form.issueCode.trim(),
         title: form.issueTitle.trim(),
         description: form.issueDescription.trim(),
         severity: toUiSeverity(form.severity),
         status: toUiStatus(form.status),
         categoryId: Number(form.categoryId),
-        deviceTypeId: Number(form.deviceTypeId),
+        deviceTypeId:
+          form.assetType === "DEVICE" && form.deviceTypeId
+            ? Number(form.deviceTypeId)
+            : null,
+        softwareModule:
+          form.assetType === "SOFTWARE" ? form.softwareModule || null : null,
       };
 
       let issueId = editingIssue?.id;
@@ -338,11 +607,12 @@ export default function TroubleshootingManagement() {
           body: JSON.stringify(issuePayload),
         });
       } else {
-        const createdIssue = await apiRequest("/issues", {
+        const createdIssueResponse = await apiRequest("/issues", {
           method: "POST",
           body: JSON.stringify(issuePayload),
         });
-        issueId = createdIssue.id;
+        const createdIssue = unwrapItem(createdIssueResponse);
+        issueId = createdIssue?.id;
       }
 
       if (!issueId) {
@@ -373,10 +643,11 @@ export default function TroubleshootingManagement() {
             body: JSON.stringify(payload),
           });
         } else {
-          const createdStep = await apiRequest("/issues/solutions", {
+          const createdStepResponse = await apiRequest("/issues/solutions", {
             method: "POST",
             body: JSON.stringify(payload),
           });
+          const createdStep = unwrapItem(createdStepResponse);
           if (createdStep?.id) keptIds.add(createdStep.id);
         }
       }
@@ -413,6 +684,8 @@ export default function TroubleshootingManagement() {
       if (selectedId === id) {
         setSelectedId(null);
       }
+
+      setSelectedIssueIds((prev) => prev.filter((item) => item !== id));
     } catch (error) {
       setPageError(error.message || "Failed to delete issue.");
     } finally {
@@ -422,14 +695,21 @@ export default function TroubleshootingManagement() {
 
   const getSeverityClass = (severity) => {
     const value = toUiSeverity(severity);
-    if (value === "CRITICAL") return "severity critical";
-    if (value === "HIGH") return "severity high";
-    if (value === "LOW") return "severity low";
-    return "severity medium";
+    if (value === "CRITICAL") return "tag severity critical";
+    if (value === "HIGH") return "tag severity high";
+    if (value === "LOW") return "tag severity low";
+    return "tag severity medium";
   };
 
   const getStatusClass = (status) =>
-    toUiStatus(status) === "ACTIVE" ? "status active" : "status inactive";
+    toUiStatus(status) === "ACTIVE" ? "tag status active" : "tag status inactive";
+
+  const getAssetClass = (assetType) => {
+    const value = normalizeAssetType(assetType);
+    if (value === "GATE") return "tag asset gate";
+    if (value === "SOFTWARE") return "tag asset software";
+    return "tag asset device";
+  };
 
   return (
     <div className="trouble-page">
@@ -448,7 +728,7 @@ export default function TroubleshootingManagement() {
         }
 
         .trouble-shell {
-          max-width: 1480px;
+          max-width: 1500px;
           margin: 0 auto;
           display: flex;
           flex-direction: column;
@@ -460,39 +740,50 @@ export default function TroubleshootingManagement() {
           justify-content: space-between;
           align-items: center;
           gap: 16px;
-          background: rgba(255,255,255,0.92);
+          background: rgba(255,255,255,0.94);
           border: 1px solid rgba(148,163,184,0.18);
-          border-radius: 24px;
+          border-radius: 26px;
           padding: 24px;
           box-shadow: 0 15px 40px rgba(15,23,42,0.08);
         }
 
         .hero-left h1 {
           margin: 0;
-          font-size: 30px;
-          font-weight: 800;
-          letter-spacing: -0.04em;
+          font-size: 31px;
+          font-weight: 900;
+          letter-spacing: -0.05em;
         }
 
         .hero-left p {
           margin: 10px 0 0;
           color: #475569;
           font-size: 14px;
-          line-height: 1.7;
-          max-width: 760px;
+          line-height: 1.8;
+          max-width: 820px;
         }
 
-        .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+        .hero-actions {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
 
         .btn {
           border: none;
           outline: none;
           cursor: pointer;
           padding: 12px 18px;
-          border-radius: 14px;
-          font-weight: 700;
+          border-radius: 15px;
+          font-weight: 800;
           font-size: 14px;
           transition: 0.2s ease;
+          white-space: nowrap;
+        }
+
+        .btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
         }
 
         .btn-primary {
@@ -501,15 +792,20 @@ export default function TroubleshootingManagement() {
           box-shadow: 0 10px 24px rgba(37,99,235,0.25);
         }
 
-        .btn-primary:hover { transform: translateY(-1px); opacity: 0.96; }
+        .btn-primary:hover:not(:disabled) {
+          transform: translateY(-1px);
+          opacity: 0.96;
+        }
 
         .btn-light {
           background: #fff;
           color: #0f172a;
-          border: 1px solid rgba(148,163,184,0.22);
+          border: 1px solid rgba(148,163,184,0.28);
         }
 
-        .btn-light:hover { background: #f8fafc; }
+        .btn-light:hover:not(:disabled) {
+          background: #f8fafc;
+        }
 
         .btn-danger {
           background: #fef2f2;
@@ -517,45 +813,109 @@ export default function TroubleshootingManagement() {
           border: 1px solid #fecaca;
         }
 
-        .stats-grid {
+        .tabs-row {
           display: grid;
           grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 16px;
+          gap: 12px;
+        }
+
+        .asset-tab {
+          border: 1px solid rgba(148,163,184,0.18);
+          border-radius: 20px;
+          background: rgba(255,255,255,0.92);
+          padding: 17px;
+          text-align: left;
+          cursor: pointer;
+          transition: 0.2s ease;
+          box-shadow: 0 10px 26px rgba(15,23,42,0.05);
+        }
+
+        .asset-tab:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 14px 30px rgba(15,23,42,0.08);
+        }
+
+        .asset-tab.active {
+          border-color: #4f46e5;
+          background: linear-gradient(180deg, #ffffff, #f6f8ff);
+          box-shadow: 0 14px 34px rgba(79,70,229,0.16);
+        }
+
+        .asset-tab-title {
+          font-weight: 900;
+          font-size: 15px;
+          color: #0f172a;
+        }
+
+        .asset-tab-sub {
+          margin-top: 5px;
+          color: #64748b;
+          font-size: 12px;
+          line-height: 1.5;
+        }
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          gap: 14px;
         }
 
         .stat-card {
-          background: rgba(255,255,255,0.92);
-          border: 1px solid rgba(148,163,184,0.16);
-          border-radius: 22px;
-          padding: 20px;
-          box-shadow: 0 12px 30px rgba(15,23,42,0.06);
-        }
-
-        .stat-label {
-          color: #64748b;
-          font-size: 13px;
-          font-weight: 700;
-          margin-bottom: 10px;
-        }
-
-        .stat-value {
-          font-size: 28px;
-          font-weight: 800;
-          letter-spacing: -0.04em;
-        }
-
-        .filters-card {
-          background: rgba(255,255,255,0.92);
+          background: rgba(255,255,255,0.94);
           border: 1px solid rgba(148,163,184,0.16);
           border-radius: 22px;
           padding: 18px;
           box-shadow: 0 12px 30px rgba(15,23,42,0.06);
         }
 
-        .filters-row {
+        .stat-label {
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 800;
+          margin-bottom: 10px;
+        }
+
+        .stat-value {
+          font-size: 27px;
+          font-weight: 900;
+          letter-spacing: -0.05em;
+        }
+
+        .scan-card,
+        .filters-card,
+        .preview-card {
+          background: rgba(255,255,255,0.94);
+          border: 1px solid rgba(148,163,184,0.16);
+          border-radius: 24px;
+          padding: 18px;
+          box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+        }
+
+        .scan-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 16px;
+          margin-bottom: 16px;
+        }
+
+        .scan-head h3 {
+          margin: 0;
+          font-size: 18px;
+          font-weight: 900;
+        }
+
+        .scan-head p {
+          margin: 6px 0 0;
+          color: #64748b;
+          font-size: 13px;
+          line-height: 1.7;
+        }
+
+        .scan-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr 1.2fr auto;
-          gap: 14px;
+          grid-template-columns: 1.2fr 0.75fr 0.9fr auto auto;
+          gap: 12px;
           align-items: end;
         }
 
@@ -567,7 +927,7 @@ export default function TroubleshootingManagement() {
 
         .field label {
           font-size: 13px;
-          font-weight: 700;
+          font-weight: 800;
           color: #334155;
         }
 
@@ -597,6 +957,44 @@ export default function TroubleshootingManagement() {
           box-shadow: 0 0 0 4px rgba(79,70,229,0.10);
         }
 
+        .field-hint {
+          font-size: 11px;
+          color: #94a3b8;
+        }
+
+        .scan-result {
+          margin-top: 16px;
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 14px;
+          align-items: center;
+          background:
+            linear-gradient(135deg, rgba(79,70,229,0.08), rgba(37,99,235,0.06)),
+            #fff;
+          border: 1px solid rgba(79,70,229,0.14);
+          border-radius: 20px;
+          padding: 16px;
+        }
+
+        .scan-result-title {
+          font-weight: 900;
+          font-size: 16px;
+        }
+
+        .scan-result-sub {
+          margin-top: 6px;
+          color: #475569;
+          font-size: 13px;
+          line-height: 1.7;
+        }
+
+        .filters-row {
+          display: grid;
+          grid-template-columns: 0.8fr 1fr 1fr 1.4fr auto;
+          gap: 14px;
+          align-items: end;
+        }
+
         .error-box {
           background: #fff1f2;
           color: #be123c;
@@ -604,7 +1002,7 @@ export default function TroubleshootingManagement() {
           border-radius: 16px;
           padding: 14px 16px;
           font-size: 14px;
-          font-weight: 600;
+          font-weight: 700;
         }
 
         .content-grid {
@@ -616,7 +1014,7 @@ export default function TroubleshootingManagement() {
 
         .issues-panel,
         .details-panel {
-          background: rgba(255,255,255,0.94);
+          background: rgba(255,255,255,0.96);
           border: 1px solid rgba(148,163,184,0.16);
           border-radius: 24px;
           box-shadow: 0 12px 30px rgba(15,23,42,0.06);
@@ -636,7 +1034,7 @@ export default function TroubleshootingManagement() {
         .panel-head h3 {
           margin: 0;
           font-size: 18px;
-          font-weight: 800;
+          font-weight: 900;
         }
 
         .panel-sub {
@@ -646,7 +1044,7 @@ export default function TroubleshootingManagement() {
         }
 
         .issues-list {
-          max-height: 760px;
+          max-height: 790px;
           overflow: auto;
           padding: 14px;
           display: flex;
@@ -656,7 +1054,7 @@ export default function TroubleshootingManagement() {
 
         .issue-card {
           border: 1px solid rgba(203,213,225,0.85);
-          border-radius: 18px;
+          border-radius: 19px;
           padding: 16px;
           cursor: pointer;
           transition: 0.2s ease;
@@ -674,6 +1072,11 @@ export default function TroubleshootingManagement() {
           background: linear-gradient(180deg, #ffffff, #f7f9ff);
         }
 
+        .issue-card.picked {
+          border-color: #059669;
+          background: linear-gradient(180deg, #ffffff, #f0fdf4);
+        }
+
         .issue-top {
           display: flex;
           justify-content: space-between;
@@ -684,7 +1087,7 @@ export default function TroubleshootingManagement() {
         .issue-title {
           margin: 0;
           font-size: 16px;
-          font-weight: 800;
+          font-weight: 900;
           color: #0f172a;
         }
 
@@ -692,14 +1095,14 @@ export default function TroubleshootingManagement() {
           display: inline-flex;
           align-items: center;
           padding: 4px 10px;
-          border-radius: 8px;
+          border-radius: 9px;
           font-size: 11px;
-          font-weight: 700;
+          font-weight: 900;
           background: #eef2ff;
           color: #4338ca;
           border: 1px solid #c7d2fe;
           white-space: nowrap;
-          margin-bottom: 6px;
+          margin-bottom: 7px;
         }
 
         .issue-meta {
@@ -716,7 +1119,7 @@ export default function TroubleshootingManagement() {
           padding: 7px 10px;
           border-radius: 999px;
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 800;
           border: 1px solid transparent;
         }
 
@@ -726,13 +1129,59 @@ export default function TroubleshootingManagement() {
           border-color: #e2e8f0;
         }
 
-        .severity.high { background: rgba(239,68,68,0.10); color: #b91c1c; border-color: rgba(239,68,68,0.20); }
-        .severity.medium { background: rgba(245,158,11,0.12); color: #b45309; border-color: rgba(245,158,11,0.22); }
-        .severity.low { background: rgba(16,185,129,0.10); color: #047857; border-color: rgba(16,185,129,0.18); }
-        .severity.critical { background: rgba(127,29,29,0.14); color: #991b1b; border-color: rgba(127,29,29,0.24); }
+        .asset.device {
+          background: rgba(59,130,246,0.10);
+          color: #1d4ed8;
+          border-color: rgba(59,130,246,0.20);
+        }
 
-        .status.active { background: rgba(59,130,246,0.10); color: #1d4ed8; border-color: rgba(59,130,246,0.22); }
-        .status.inactive { background: rgba(100,116,139,0.10); color: #475569; border-color: rgba(100,116,139,0.18); }
+        .asset.gate {
+          background: rgba(124,58,237,0.10);
+          color: #6d28d9;
+          border-color: rgba(124,58,237,0.22);
+        }
+
+        .asset.software {
+          background: rgba(20,184,166,0.10);
+          color: #0f766e;
+          border-color: rgba(20,184,166,0.22);
+        }
+
+        .severity.high {
+          background: rgba(239,68,68,0.10);
+          color: #b91c1c;
+          border-color: rgba(239,68,68,0.20);
+        }
+
+        .severity.medium {
+          background: rgba(245,158,11,0.12);
+          color: #b45309;
+          border-color: rgba(245,158,11,0.22);
+        }
+
+        .severity.low {
+          background: rgba(16,185,129,0.10);
+          color: #047857;
+          border-color: rgba(16,185,129,0.18);
+        }
+
+        .severity.critical {
+          background: rgba(127,29,29,0.14);
+          color: #991b1b;
+          border-color: rgba(127,29,29,0.24);
+        }
+
+        .status.active {
+          background: rgba(59,130,246,0.10);
+          color: #1d4ed8;
+          border-color: rgba(59,130,246,0.22);
+        }
+
+        .status.inactive {
+          background: rgba(100,116,139,0.10);
+          color: #475569;
+          border-color: rgba(100,116,139,0.18);
+        }
 
         .issue-desc {
           margin: 12px 0 0;
@@ -754,13 +1203,32 @@ export default function TroubleshootingManagement() {
           border-radius: 12px;
           padding: 8px 12px;
           font-size: 12px;
-          font-weight: 700;
+          font-weight: 800;
         }
 
-        .mini-btn.edit { background: #eef2ff; color: #4338ca; }
-        .mini-btn.delete { background: #fef2f2; color: #b91c1c; }
+        .mini-btn.edit {
+          background: #eef2ff;
+          color: #4338ca;
+        }
 
-        .details-body { padding: 22px; }
+        .mini-btn.delete {
+          background: #fef2f2;
+          color: #b91c1c;
+        }
+
+        .mini-btn.pick {
+          background: #ecfdf5;
+          color: #047857;
+        }
+
+        .mini-btn.unpick {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .details-body {
+          padding: 22px;
+        }
 
         .details-empty {
           padding: 50px 24px;
@@ -779,8 +1247,8 @@ export default function TroubleshootingManagement() {
         .detail-title {
           margin: 0;
           font-size: 24px;
-          font-weight: 800;
-          letter-spacing: -0.03em;
+          font-weight: 900;
+          letter-spacing: -0.04em;
         }
 
         .detail-desc {
@@ -793,7 +1261,7 @@ export default function TroubleshootingManagement() {
         .section-title {
           margin: 0 0 14px;
           font-size: 16px;
-          font-weight: 800;
+          font-weight: 900;
           color: #0f172a;
         }
 
@@ -823,7 +1291,7 @@ export default function TroubleshootingManagement() {
           justify-content: center;
           background: linear-gradient(135deg, #4f46e5, #2563eb);
           color: #fff;
-          font-weight: 800;
+          font-weight: 900;
           font-size: 13px;
           box-shadow: 0 8px 16px rgba(37,99,235,0.22);
         }
@@ -840,6 +1308,45 @@ export default function TroubleshootingManagement() {
           color: #64748b;
         }
 
+        .inspection-box {
+          margin-top: 22px;
+          border: 1px solid rgba(148,163,184,0.24);
+          background: #f8fafc;
+          border-radius: 20px;
+          padding: 16px;
+        }
+
+        .selected-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin: 12px 0;
+        }
+
+        .selected-item {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: center;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 10px 12px;
+          font-size: 13px;
+          font-weight: 800;
+        }
+
+        .payload-preview {
+          margin-top: 14px;
+          background: #0f172a;
+          color: #e2e8f0;
+          border-radius: 16px;
+          padding: 14px;
+          overflow: auto;
+          font-size: 12px;
+          line-height: 1.6;
+        }
+
         .modal-backdrop {
           position: fixed;
           inset: 0;
@@ -854,7 +1361,7 @@ export default function TroubleshootingManagement() {
 
         .modal-card {
           width: 100%;
-          max-width: 940px;
+          max-width: 980px;
           max-height: 92vh;
           overflow: auto;
           background: #fff;
@@ -875,7 +1382,7 @@ export default function TroubleshootingManagement() {
         .modal-head h2 {
           margin: 0;
           font-size: 22px;
-          font-weight: 800;
+          font-weight: 900;
         }
 
         .modal-body {
@@ -885,7 +1392,9 @@ export default function TroubleshootingManagement() {
           gap: 16px;
         }
 
-        .full-span { grid-column: 1 / -1; }
+        .full-span {
+          grid-column: 1 / -1;
+        }
 
         .steps-editor {
           display: flex;
@@ -909,7 +1418,7 @@ export default function TroubleshootingManagement() {
           justify-content: center;
           background: #eef2ff;
           color: #4338ca;
-          font-weight: 800;
+          font-weight: 900;
           border: 1px solid #c7d2fe;
         }
 
@@ -920,7 +1429,7 @@ export default function TroubleshootingManagement() {
           width: 48px;
           height: 44px;
           font-size: 18px;
-          font-weight: 800;
+          font-weight: 900;
           background: #fef2f2;
           color: #b91c1c;
         }
@@ -931,7 +1440,7 @@ export default function TroubleshootingManagement() {
           color: #334155;
           border-radius: 14px;
           padding: 12px;
-          font-weight: 700;
+          font-weight: 800;
           cursor: pointer;
         }
 
@@ -948,44 +1457,78 @@ export default function TroubleshootingManagement() {
           color: #64748b;
         }
 
-        .field-hint {
-          font-size: 11px;
-          color: #94a3b8;
-          margin-top: 4px;
-        }
-
         @media (max-width: 1280px) {
+          .stats-grid {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+          }
+
+          .scan-grid {
+            grid-template-columns: 1fr 1fr;
+          }
+
+          .filters-row {
+            grid-template-columns: 1fr 1fr;
+          }
+
           .step-editor-row {
             grid-template-columns: 42px 1fr;
           }
         }
 
-        @media (max-width: 1200px) {
-          .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .content-grid { grid-template-columns: 1fr; }
+        @media (max-width: 1100px) {
+          .content-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .tabs-row {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
         }
 
-        @media (max-width: 900px) {
-          .hero { flex-direction: column; align-items: stretch; }
-          .filters-row { grid-template-columns: 1fr; }
-          .modal-body { grid-template-columns: 1fr; }
-        }
+        @media (max-width: 780px) {
+          .trouble-page {
+            padding: 14px;
+          }
 
-        @media (max-width: 640px) {
-          .trouble-page { padding: 14px; }
-          .stats-grid { grid-template-columns: 1fr; }
-          .detail-title-row { flex-direction: column; }
+          .hero {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .hero-actions {
+            justify-content: stretch;
+          }
+
+          .hero-actions .btn {
+            width: 100%;
+          }
+
+          .stats-grid,
+          .tabs-row,
+          .scan-grid,
+          .filters-row,
+          .modal-body {
+            grid-template-columns: 1fr;
+          }
+
+          .scan-result {
+            grid-template-columns: 1fr;
+          }
+
+          .detail-title-row {
+            flex-direction: column;
+          }
         }
       `}</style>
 
       <div className="trouble-shell">
         <div className="hero">
           <div className="hero-left">
-            <h1>Troubleshooting Management</h1>
+            <h1>Smart Troubleshooting Management</h1>
             <p>
-              Live admin management for issues and troubleshooting steps, fully connected
-              to the backend API. Create, update, delete, filter, and inspect issue flows
-              by category and device type.
+              إدارة مشاكل الأجهزة والبوابات والسوفت وير من نفس الشاشة. الفني يعمل
+              scan أو يختار النوع، والواجهة تعرض له المشاكل المناسبة فقط مع خطوات
+              الحل.
             </p>
           </div>
 
@@ -1001,27 +1544,194 @@ export default function TroubleshootingManagement() {
 
         {pageError ? <div className="error-box">{pageError}</div> : null}
 
+        <div className="tabs-row">
+          <button
+            className={`asset-tab ${assetTypeFilter === "all" ? "active" : ""}`}
+            onClick={() => setAssetFilter("all")}
+          >
+            <div className="asset-tab-title">All Issues</div>
+            <div className="asset-tab-sub">كل المشاكل بدون تقييد</div>
+          </button>
+
+          {ASSET_TYPES.map((asset) => (
+            <button
+              key={asset.value}
+              className={`asset-tab ${assetTypeFilter === asset.value ? "active" : ""}`}
+              onClick={() => setAssetFilter(asset.value)}
+            >
+              <div className="asset-tab-title">
+                {asset.label} / {asset.arabic}
+              </div>
+              <div className="asset-tab-sub">{asset.hint}</div>
+            </button>
+          ))}
+        </div>
+
         <div className="stats-grid">
           <div className="stat-card">
-            <div className="stat-label">Total Categories</div>
-            <div className="stat-value">{stats.categoriesCount}</div>
+            <div className="stat-label">Device Issues</div>
+            <div className="stat-value">{stats.deviceIssues}</div>
           </div>
+
           <div className="stat-card">
-            <div className="stat-label">Device Types</div>
-            <div className="stat-value">{stats.deviceTypesCount}</div>
+            <div className="stat-label">Gate Issues</div>
+            <div className="stat-value">{stats.gateIssues}</div>
           </div>
+
+          <div className="stat-card">
+            <div className="stat-label">Software Issues</div>
+            <div className="stat-value">{stats.softwareIssues}</div>
+          </div>
+
           <div className="stat-card">
             <div className="stat-label">Active Issues</div>
             <div className="stat-value">{stats.activeIssuesCount}</div>
           </div>
+
           <div className="stat-card">
-            <div className="stat-label">Troubleshooting Steps</div>
+            <div className="stat-label">Critical</div>
+            <div className="stat-value">{stats.criticalIssuesCount}</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-label">Steps</div>
             <div className="stat-value">{stats.totalStepsCount}</div>
           </div>
         </div>
 
+        <div className="scan-card">
+          <div className="scan-head">
+            <div>
+              <h3>Technician Scan Preview</h3>
+              <p>
+                ده Frontend simulation مؤقت. لما الباك يجهز هنبدل الجزء ده بنداء
+                scan حقيقي، لكن نفس الفكرة: نتيجة الـ scan تحدد نوع المشاكل.
+              </p>
+            </div>
+
+            {scanResult ? (
+              <button className="btn btn-light" onClick={clearScan}>
+                Clear Scan
+              </button>
+            ) : null}
+          </div>
+
+          <div className="scan-grid">
+            <div className="field">
+              <label>Scan Code</label>
+              <input
+                value={scanCode}
+                onChange={(e) => setScanCode(e.target.value)}
+                placeholder="اكتبي أو اعملي paste للكود"
+              />
+            </div>
+
+            <div className="field">
+              <label>Scan Type</label>
+              <select
+                value={scanAssetType}
+                onChange={(e) => setScanAssetType(e.target.value)}
+              >
+                {ASSET_TYPES.map((asset) => (
+                  <option key={asset.value} value={asset.value}>
+                    {asset.label} / {asset.arabic}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {scanAssetType === "DEVICE" ? (
+              <div className="field">
+                <label>Device Type</label>
+                <select
+                  value={scanDeviceTypeId}
+                  onChange={(e) => setScanDeviceTypeId(e.target.value)}
+                >
+                  {DEVICE_TYPE_OPTIONS.filter((item) => item.assetType === "DEVICE").map(
+                    (device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.name}
+                      </option>
+                    )
+                  )}
+                </select>
+              </div>
+            ) : scanAssetType === "SOFTWARE" ? (
+              <div className="field">
+                <label>Software Module</label>
+                <select
+                  value={scanSoftwareModule}
+                  onChange={(e) => setScanSoftwareModule(e.target.value)}
+                >
+                  {SOFTWARE_MODULE_OPTIONS.map((module) => (
+                    <option key={module.id} value={module.id}>
+                      {module.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="field">
+                <label>Gate Type</label>
+                <input value="Gate / Argus 60" readOnly />
+              </div>
+            )}
+
+            <button className="btn btn-primary" onClick={handleFrontendScan}>
+              Run Scan
+            </button>
+
+            <button className="btn btn-light" onClick={clearScan}>
+              Reset
+            </button>
+          </div>
+
+          {scanResult ? (
+            <div className="scan-result">
+              <div>
+                <div className="scan-result-title">
+                  Scan Result: {assetTypeArabic(scanResult.assetType)}
+                </div>
+                <div className="scan-result-sub">
+                  Code: <b>{scanResult.code}</b>
+                  {scanResult.assetType === "DEVICE"
+                    ? ` • Device Type: ${scanResult.deviceTypeName}`
+                    : ""}
+                  {scanResult.assetType === "GATE"
+                    ? ` • Gate Type: ${scanResult.gateTypeName}`
+                    : ""}
+                  {scanResult.assetType === "SOFTWARE"
+                    ? ` • Module: ${scanResult.softwareModuleName}`
+                    : ""}
+                  {" • "}
+                  Matching issues: <b>{smartFilteredIssues.length}</b>
+                </div>
+              </div>
+
+              <span className={getAssetClass(scanResult.assetType)}>
+                {assetTypeLabel(scanResult.assetType)}
+              </span>
+            </div>
+          ) : null}
+        </div>
+
         <div className="filters-card">
           <div className="filters-row">
+            <div className="field">
+              <label>Asset Type</label>
+              <select
+                value={assetTypeFilter}
+                onChange={(e) => setAssetFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                {ASSET_TYPES.map((asset) => (
+                  <option key={asset.value} value={asset.value}>
+                    {asset.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="field">
               <label>Category</label>
               <select
@@ -1032,7 +1742,7 @@ export default function TroubleshootingManagement() {
                 }}
               >
                 <option value="all">All</option>
-                {categories.map((category) => (
+                {visibleCategoriesForFilter.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
                   </option>
@@ -1041,7 +1751,7 @@ export default function TroubleshootingManagement() {
             </div>
 
             <div className="field">
-              <label>Device Type</label>
+              <label>Device / Gate Type</label>
               <select
                 value={deviceTypeFilter}
                 onChange={(e) => setDeviceTypeFilter(e.target.value)}
@@ -1059,7 +1769,7 @@ export default function TroubleshootingManagement() {
               <label>Search</label>
               <input
                 type="text"
-                placeholder="Search by issue code, title, description..."
+                placeholder="Search by code, title, category, type..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -1077,7 +1787,9 @@ export default function TroubleshootingManagement() {
               <div>
                 <h3>Issues Library</h3>
                 <div className="panel-sub">
-                  {loading ? "Loading..." : `${filteredIssues.length} issues found`}
+                  {loading
+                    ? "Loading..."
+                    : `${smartFilteredIssues.length} issues found`}
                 </div>
               </div>
             </div>
@@ -1085,50 +1797,85 @@ export default function TroubleshootingManagement() {
             <div className="issues-list">
               {loading ? (
                 <div className="empty-list">Loading issues...</div>
-              ) : filteredIssues.length === 0 ? (
-                <div className="empty-list">No issues found for the selected filters.</div>
+              ) : smartFilteredIssues.length === 0 ? (
+                <div className="empty-list">
+                  No issues found for the selected filters.
+                </div>
               ) : (
-                filteredIssues.map((issue) => (
-                  <div
-                    key={issue.id}
-                    className={`issue-card ${selectedIssue?.id === issue.id ? "selected" : ""}`}
-                    onClick={() => setSelectedId(issue.id)}
-                  >
-                    <div className="issue-code-badge">{issue.issueCode}</div>
+                smartFilteredIssues.map((issue) => {
+                  const issueAssetType = getIssueAssetType(issue);
+                  const isPicked = selectedIssueIds.includes(issue.id);
 
-                    <div className="issue-top">
-                      <h4 className="issue-title">{issue.title}</h4>
-                      <span className={getStatusClass(issue.status)}>
-                        {statusLabel(issue.status)}
-                      </span>
+                  return (
+                    <div
+                      key={issue.id}
+                      className={`issue-card ${
+                        selectedIssue?.id === issue.id ? "selected" : ""
+                      } ${isPicked ? "picked" : ""}`}
+                      onClick={() => setSelectedId(issue.id)}
+                    >
+                      <div className="issue-code-badge">{issue.issueCode}</div>
+
+                      <div className="issue-top">
+                        <h4 className="issue-title">{issue.title}</h4>
+                        <span className={getStatusClass(issue.status)}>
+                          {statusLabel(issue.status)}
+                        </span>
+                      </div>
+
+                      <div className="issue-meta">
+                        <span className={getAssetClass(issueAssetType)}>
+                          {assetTypeLabel(issueAssetType)}
+                        </span>
+                        <span className="tag gray">
+                          {issue.category?.name || "No Category"}
+                        </span>
+                        <span className="tag gray">
+                          {issueAssetType === "DEVICE"
+                            ? issue.deviceType?.name || "Generic Device"
+                            : issueAssetType === "GATE"
+                              ? issue.deviceType?.name || "All Gates"
+                              : issue.softwareModule || "Software"}
+                        </span>
+                        <span className={getSeverityClass(issue.severity)}>
+                          {severityLabel(issue.severity)}
+                        </span>
+                        <span className="tag gray">
+                          {Array.isArray(issue.solutions)
+                            ? `${issue.solutions.length} steps`
+                            : "0 steps"}
+                        </span>
+                      </div>
+
+                      <p className="issue-desc">
+                        {issue.description || "No description."}
+                      </p>
+
+                      <div className="issue-actions" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className={isPicked ? "mini-btn unpick" : "mini-btn pick"}
+                          onClick={() => toggleIssueSelection(issue.id)}
+                        >
+                          {isPicked ? "Selected" : "Select for Technician"}
+                        </button>
+
+                        <button
+                          className="mini-btn edit"
+                          onClick={() => openEditModal(issue)}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          className="mini-btn delete"
+                          onClick={() => handleDeleteIssue(issue.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="issue-meta">
-                      <span className="tag gray">{issue.category?.name}</span>
-                      <span className="tag gray">{issue.deviceType?.name}</span>
-                      <span className={getSeverityClass(issue.severity)}>
-                        {severityLabel(issue.severity)}
-                      </span>
-                    </div>
-
-                    <p className="issue-desc">{issue.description || "No description."}</p>
-
-                    <div className="issue-actions" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="mini-btn edit"
-                        onClick={() => openEditModal(issue)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="mini-btn delete"
-                        onClick={() => handleDeleteIssue(issue.id)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -1137,7 +1884,9 @@ export default function TroubleshootingManagement() {
             <div className="panel-head">
               <div>
                 <h3>Issue Details</h3>
-                <div className="panel-sub">Live data from backend</div>
+                <div className="panel-sub">
+                  Smart preview by asset type and scan result
+                </div>
               </div>
             </div>
 
@@ -1152,9 +1901,17 @@ export default function TroubleshootingManagement() {
                 <div className="detail-title-row">
                   <div>
                     <h2 className="detail-title">{selectedIssue.title}</h2>
+
                     <div className="issue-meta">
-                      <span className="tag gray">{selectedIssue.category?.name}</span>
-                      <span className="tag gray">{selectedIssue.deviceType?.name}</span>
+                      <span className={getAssetClass(getIssueAssetType(selectedIssue))}>
+                        {assetTypeLabel(getIssueAssetType(selectedIssue))}
+                      </span>
+                      <span className="tag gray">
+                        {selectedIssue.category?.name || "No Category"}
+                      </span>
+                      <span className="tag gray">
+                        {selectedIssue.deviceType?.name || "Generic"}
+                      </span>
                       <span className={getSeverityClass(selectedIssue.severity)}>
                         {severityLabel(selectedIssue.severity)}
                       </span>
@@ -1164,12 +1921,17 @@ export default function TroubleshootingManagement() {
                     </div>
                   </div>
 
-                  <button className="btn btn-light" onClick={() => openEditModal(selectedIssue)}>
+                  <button
+                    className="btn btn-light"
+                    onClick={() => openEditModal(selectedIssue)}
+                  >
                     Edit Issue
                   </button>
                 </div>
 
-                <p className="detail-desc">{selectedIssue.description || "No description."}</p>
+                <p className="detail-desc">
+                  {selectedIssue.description || "No description."}
+                </p>
 
                 <h4 className="section-title">Troubleshooting Steps</h4>
 
@@ -1179,7 +1941,7 @@ export default function TroubleshootingManagement() {
                       .slice()
                       .sort((a, b) => a.stepOrder - b.stepOrder)
                       .map((step, index) => (
-                        <div className="step-item" key={step.id}>
+                        <div className="step-item" key={step.id || index}>
                           <div className="step-index">{index + 1}</div>
                           <div>
                             <div className="step-text">{step.title}</div>
@@ -1195,6 +1957,56 @@ export default function TroubleshootingManagement() {
                 ) : (
                   <div className="empty-list">No troubleshooting steps yet.</div>
                 )}
+
+                <div className="inspection-box">
+                  <h4 className="section-title">Technician Selected Problems</h4>
+
+                  {selectedIssueIds.length === 0 ? (
+                    <div className="panel-sub">
+                      اختاري مشكلة أو أكتر من الليست عشان يتبني payload التفتيش.
+                    </div>
+                  ) : (
+                    <div className="selected-list">
+                      {selectedIssueIds.map((id) => {
+                        const issue = issues.find((item) => item.id === id);
+
+                        return (
+                          <div key={id} className="selected-item">
+                            <span>
+                              {issue?.issueCode || id} — {issue?.title || "Issue"}
+                            </span>
+                            <button
+                              className="mini-btn delete"
+                              onClick={() => toggleIssueSelection(id)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="issue-actions">
+                    <button className="btn btn-primary" onClick={buildInspectionPayload}>
+                      Build Inspection Payload
+                    </button>
+
+                    <button
+                      className="btn btn-light"
+                      onClick={() => {
+                        setSelectedIssueIds([]);
+                        setPayloadPreview("");
+                      }}
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+
+                  {payloadPreview ? (
+                    <pre className="payload-preview">{payloadPreview}</pre>
+                  ) : null}
+                </div>
               </div>
             )}
           </div>
@@ -1213,12 +2025,26 @@ export default function TroubleshootingManagement() {
 
             <div className="modal-body">
               <div className="field">
+                <label>Asset Type</label>
+                <select
+                  value={form.assetType}
+                  onChange={(e) => updateForm("assetType", e.target.value)}
+                >
+                  {ASSET_TYPES.map((asset) => (
+                    <option key={asset.value} value={asset.value}>
+                      {asset.label} / {asset.arabic}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
                 <label>Issue ID</label>
                 <input
                   type="text"
                   value={form.issueCode}
                   onChange={(e) => updateForm("issueCode", e.target.value)}
-                  placeholder="e.g. SWP18"
+                  placeholder="e.g. DEV-001 / GATE-001 / SW-001"
                 />
               </div>
 
@@ -1229,7 +2055,7 @@ export default function TroubleshootingManagement() {
                   onChange={(e) => updateForm("categoryId", e.target.value)}
                 >
                   <option value="">Select category</option>
-                  {categories.map((category) => (
+                  {visibleCategoriesForForm.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
                     </option>
@@ -1237,20 +2063,53 @@ export default function TroubleshootingManagement() {
                 </select>
               </div>
 
-              <div className="field">
-                <label>Device Type</label>
-                <select
-                  value={form.deviceTypeId}
-                  onChange={(e) => updateForm("deviceTypeId", e.target.value)}
-                >
-                  <option value="">Select device type</option>
-                  {formDeviceOptions.map((device) => (
-                    <option key={device.id} value={device.id}>
-                      {device.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {form.assetType === "DEVICE" ? (
+                <div className="field">
+                  <label>Device Type</label>
+                  <select
+                    value={form.deviceTypeId}
+                    onChange={(e) => updateForm("deviceTypeId", e.target.value)}
+                  >
+                    <option value="">Select device type</option>
+                    {formDeviceOptions.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : form.assetType === "GATE" ? (
+                <div className="field">
+                  <label>Gate Type</label>
+                  <select
+                    value={form.deviceTypeId}
+                    onChange={(e) => updateForm("deviceTypeId", e.target.value)}
+                  >
+                    <option value="">All Gates</option>
+                    {formDeviceOptions.map((device) => (
+                      <option key={device.id} value={device.id}>
+                        {device.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="field-hint">اختياري للبوابات.</div>
+                </div>
+              ) : (
+                <div className="field">
+                  <label>Software Module</label>
+                  <select
+                    value={form.softwareModule}
+                    onChange={(e) => updateForm("softwareModule", e.target.value)}
+                  >
+                    <option value="">General Software</option>
+                    {SOFTWARE_MODULE_OPTIONS.map((module) => (
+                      <option key={module.id} value={module.id}>
+                        {module.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="field">
                 <label>Severity</label>
@@ -1265,25 +2124,6 @@ export default function TroubleshootingManagement() {
                 </select>
               </div>
 
-              <div className="field full-span">
-                <label>Issue Title</label>
-                <input
-                  type="text"
-                  value={form.issueTitle}
-                  onChange={(e) => updateForm("issueTitle", e.target.value)}
-                  placeholder="Example: Gate not opening"
-                />
-              </div>
-
-              <div className="field full-span">
-                <label>Issue Description</label>
-                <textarea
-                  value={form.issueDescription}
-                  onChange={(e) => updateForm("issueDescription", e.target.value)}
-                  placeholder="Write issue description..."
-                />
-              </div>
-
               <div className="field">
                 <label>Status</label>
                 <select
@@ -1296,7 +2136,27 @@ export default function TroubleshootingManagement() {
               </div>
 
               <div className="field full-span">
+                <label>Issue Title</label>
+                <input
+                  type="text"
+                  value={form.issueTitle}
+                  onChange={(e) => updateForm("issueTitle", e.target.value)}
+                  placeholder="Example: Gate not opening / Reader not responding"
+                />
+              </div>
+
+              <div className="field full-span">
+                <label>Issue Description</label>
+                <textarea
+                  value={form.issueDescription}
+                  onChange={(e) => updateForm("issueDescription", e.target.value)}
+                  placeholder="Write issue description..."
+                />
+              </div>
+
+              <div className="field full-span">
                 <label>Troubleshooting Steps</label>
+
                 <div className="steps-editor">
                   {form.steps.map((step, index) => (
                     <div className="step-editor-row" key={`${step.id || "new"}-${index}`}>
@@ -1306,13 +2166,17 @@ export default function TroubleshootingManagement() {
                         type="text"
                         placeholder={`Step ${index + 1}`}
                         value={step.text}
-                        onChange={(e) => updateStep(index, { text: e.target.value })}
+                        onChange={(e) =>
+                          updateStep(index, { text: e.target.value })
+                        }
                       />
 
                       <select
                         value={step.isRequired ? "true" : "false"}
                         onChange={(e) =>
-                          updateStep(index, { isRequired: e.target.value === "true" })
+                          updateStep(index, {
+                            isRequired: e.target.value === "true",
+                          })
                         }
                       >
                         <option value="true">Required</option>
@@ -1321,7 +2185,9 @@ export default function TroubleshootingManagement() {
 
                       <select
                         value={step.status}
-                        onChange={(e) => updateStep(index, { status: e.target.value })}
+                        onChange={(e) =>
+                          updateStep(index, { status: e.target.value })
+                        }
                       >
                         <option value="ACTIVE">Active</option>
                         <option value="INACTIVE">Inactive</option>
@@ -1349,8 +2215,13 @@ export default function TroubleshootingManagement() {
               <button className="btn btn-light" onClick={closeModal}>
                 Cancel
               </button>
+
               <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving..." : editingIssue ? "Save Changes" : "Create Issue"}
+                {saving
+                  ? "Saving..."
+                  : editingIssue
+                    ? "Save Changes"
+                    : "Create Issue"}
               </button>
             </div>
           </div>

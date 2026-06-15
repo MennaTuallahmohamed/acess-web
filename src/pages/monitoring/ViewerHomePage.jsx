@@ -1,32 +1,57 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import smartitLogo from "../../assets/smartit-logo-transparent.png";
 
 /* ─── CSS ──────────────────────────────────────────────────────────────────── */
 const HOME_CSS = `
 .vh *, .vh *::before, .vh *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 .vh {
-  --blue:    #378ADD;
-  --green:   #1D9E75;
-  --amber:   #BA7517;
-  --purple:  #7F77DD;
-  --blue-bg:   rgba(55,138,221,0.08);
-  --green-bg:  rgba(29,158,117,0.08);
-  --amber-bg:  rgba(186,117,23,0.08);
-  --purple-bg: rgba(127,119,221,0.08);
+  --primary: #4f46e5;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --primary-light: #818cf8;
+  --primary-bg: rgba(79, 70, 229, 0.08);
+  --success-bg: rgba(16, 185, 129, 0.08);
+  --warning-bg: rgba(245, 158, 11, 0.08);
+  --danger-bg: rgba(239, 68, 68, 0.08);
   --surface:  #ffffff;
   --surface2: #f7f8fa;
   --border:   rgba(0,0,0,0.07);
-  --text:     #16181d;
-  --muted:    #6b7585;
-  --faint:    #9aa0ad;
+  --text:     #0f172a;
+  --muted:    #475569;
+  --faint:    #94a3b8;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #f4f6f9;
+  background: #f1f5f9;
   color: var(--text);
   padding: 28px 24px;
   min-height: 100vh;
 }
 
-/* ── top actions ── */
+.vh__brand-box {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12) 0%, rgba(79, 70, 229, 0.05) 100%);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 20px;
+  padding: 24px 32px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.vh__brand-logo {
+  width: 120px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.vh__brand-logo img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 .vh__header-actions {
   display: flex;
   justify-content: space-between;
@@ -35,16 +60,19 @@ const HOME_CSS = `
   flex-wrap: wrap;
   margin-bottom: 14px;
 }
+
 .vh__page-title {
   font-size: 22px;
   font-weight: 700;
   color: var(--text);
 }
+
 .vh__page-sub {
   font-size: 12px;
   color: var(--faint);
   margin-top: 4px;
 }
+
 .vh__action-btn {
   height: 38px;
   padding: 0 16px;
@@ -56,12 +84,12 @@ const HOME_CSS = `
   font-weight: 600;
   cursor: pointer;
 }
+
 .vh__action-btn:disabled {
   opacity: .65;
   cursor: not-allowed;
 }
 
-/* ── alerts ── */
 .vh__alert {
   margin-bottom: 14px;
   border-radius: 12px;
@@ -69,18 +97,19 @@ const HOME_CSS = `
   font-size: 13px;
   border: 1px solid transparent;
 }
+
 .vh__alert--error {
   background: #fff1f2;
   color: #9f1239;
   border-color: #fecdd3;
 }
+
 .vh__alert--info {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.2);
 }
 
-/* ── Top bar ── */
 .vh__topbar {
   display: flex;
   align-items: flex-start;
@@ -89,17 +118,20 @@ const HOME_CSS = `
   gap: 14px;
   margin-bottom: 26px;
 }
+
 .vh__greeting {
   font-size: 13px;
   color: var(--muted);
   margin-bottom: 4px;
 }
+
 .vh__title {
   font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.015em;
   color: var(--text);
 }
+
 .vh__chips {
   display: flex;
   gap: 8px;
@@ -107,6 +139,7 @@ const HOME_CSS = `
   align-items: center;
   padding-top: 4px;
 }
+
 .vh__chip {
   font-size: 12px;
   color: var(--muted);
@@ -117,13 +150,13 @@ const HOME_CSS = `
   white-space: nowrap;
 }
 
-/* ── KPI row ── */
 .vh__kpis {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   margin-bottom: 16px;
 }
+
 .vh__kpi {
   background: var(--surface);
   border: 0.5px solid var(--border);
@@ -132,18 +165,21 @@ const HOME_CSS = `
   position: relative;
   overflow: hidden;
 }
+
 .vh__kpi-bar {
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 3px;
   border-radius: 14px 14px 0 0;
 }
+
 .vh__kpi-label {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 10px;
   margin-top: 3px;
 }
+
 .vh__kpi-value {
   font-size: 34px;
   font-weight: 700;
@@ -151,12 +187,12 @@ const HOME_CSS = `
   margin-bottom: 7px;
   letter-spacing: -0.02em;
 }
+
 .vh__kpi-note {
   font-size: 11px;
   color: var(--faint);
 }
 
-/* ── Charts row ── */
 .vh__charts {
   display: grid;
   grid-template-columns: 1.45fr 1fr;
@@ -164,39 +200,39 @@ const HOME_CSS = `
   margin-bottom: 14px;
 }
 
-/* ── Bottom row ── */
 .vh__bottom {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 
-/* ── Card ── */
 .vh__card {
   background: var(--surface);
   border: 0.5px solid var(--border);
   border-radius: 14px;
   padding: 20px 20px 18px;
 }
+
 .vh__card-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text);
   margin-bottom: 3px;
 }
+
 .vh__card-sub {
   font-size: 12px;
   color: var(--faint);
   margin-bottom: 16px;
 }
 
-/* ── Legend ── */
 .vh__legend {
   display: flex;
   gap: 14px;
   flex-wrap: wrap;
   margin-bottom: 10px;
 }
+
 .vh__legend-item {
   display: flex;
   align-items: center;
@@ -204,13 +240,14 @@ const HOME_CSS = `
   font-size: 12px;
   color: var(--muted);
 }
+
 .vh__legend-dot {
-  width: 9px; height: 9px;
+  width: 9px;
+  height: 9px;
   border-radius: 2px;
   flex-shrink: 0;
 }
 
-/* ── Bar rows (locations) ── */
 .vh__bar-row {
   display: grid;
   grid-template-columns: 110px 1fr 38px;
@@ -218,7 +255,9 @@ const HOME_CSS = `
   gap: 10px;
   margin-bottom: 13px;
 }
+
 .vh__bar-row:last-child { margin-bottom: 0; }
+
 .vh__bar-label {
   font-size: 12px;
   color: var(--muted);
@@ -226,16 +265,19 @@ const HOME_CSS = `
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 .vh__bar-track {
   height: 8px;
   border-radius: 999px;
   background: var(--surface2);
   overflow: hidden;
 }
+
 .vh__bar-fill {
   height: 100%;
   border-radius: 999px;
 }
+
 .vh__bar-val {
   font-size: 12px;
   font-weight: 600;
@@ -243,7 +285,6 @@ const HOME_CSS = `
   text-align: right;
 }
 
-/* ── Recent inspections ── */
 .vh__recent-item {
   display: flex;
   align-items: center;
@@ -251,25 +292,33 @@ const HOME_CSS = `
   padding: 10px 0;
   border-bottom: 0.5px solid var(--border);
 }
+
 .vh__recent-item:last-child { border-bottom: none; }
+
 .vh__avatar {
-  width: 32px; height: 32px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
 }
+
 .vh__recent-name {
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
   margin-bottom: 2px;
 }
+
 .vh__recent-desc {
   font-size: 11px;
   color: var(--faint);
 }
+
 .vh__badge {
   font-size: 11px;
   font-weight: 500;
@@ -278,6 +327,7 @@ const HOME_CSS = `
   flex-shrink: 0;
   margin-left: auto;
 }
+
 .vh__badge--ok   { background: #e6f7f1; color: #0f6e56; }
 .vh__badge--warn { background: #fff4e0; color: #854f0b; }
 .vh__badge--bad  { background: #fceaea; color: #a32d2d; }
@@ -288,25 +338,27 @@ const HOME_CSS = `
   color: var(--faint);
   font-size: 13px;
 }
+
 .vh__loading-spinner {
   width: 28px;
   height: 28px;
   border-radius: 50%;
   border: 3px solid #dbeafe;
-  border-top-color: #378ADD;
+  border-top-color: #4f46e5;
   margin: 0 auto 12px;
   animation: spin .8s linear infinite;
 }
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* ── Responsive ── */
 @media (max-width: 900px) {
   .vh__kpis   { grid-template-columns: repeat(2, 1fr); }
   .vh__charts { grid-template-columns: 1fr; }
   .vh__bottom { grid-template-columns: 1fr; }
 }
+
 @media (max-width: 500px) {
   .vh__kpis { grid-template-columns: 1fr 1fr; }
   .vh { padding: 16px 14px; }
@@ -314,6 +366,7 @@ const HOME_CSS = `
 `;
 
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
+
 function formatDate(lang) {
   return new Date().toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB", {
     weekday: "long",
@@ -325,6 +378,7 @@ function formatDate(lang) {
 
 function formatShort(iso, lang) {
   if (!iso) return lang === "ar" ? "لا يوجد" : "No update";
+
   try {
     return new Date(iso).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB", {
       day: "2-digit",
@@ -346,7 +400,7 @@ function initials(name = "") {
 }
 
 const AVATAR_COLORS = [
-  { bg: "#dbeafe", color: "#1e40af" },
+  { bg: "rgba(79, 70, 229, 0.08)", color: "#4f46e5" },
   { bg: "#dcfce7", color: "#166534" },
   { bg: "#fef3c7", color: "#92400e" },
   { bg: "#ede9fe", color: "#5b21b6" },
@@ -356,7 +410,9 @@ const AVATAR_COLORS = [
 
 function avatarColor(name = "") {
   let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  }
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
@@ -385,15 +441,48 @@ function pickBaseUrl(propBaseUrl) {
     fromProp ||
     fromEnv ||
     fromLocal ||
-    "https://acess-backend-production.up.railway.app";
+    "https://acess-backend-production-8856.up.railway.app";
 
   return raw.replace(/\/+$/, "");
 }
+
+function hasObjectData(obj) {
+  return obj && typeof obj === "object" && !Array.isArray(obj) && Object.keys(obj).length > 0;
+}
+
+function hasArrayData(arr) {
+  return Array.isArray(arr) && arr.length > 0;
+}
+
+function extractArray(payload, keys = []) {
+  if (Array.isArray(payload)) return payload;
+
+  for (const key of keys) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+  }
+
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.result)) return payload.result;
+
+  return [];
+}
+
 function mapDeviceStatus(status) {
   const s = String(status || "").toUpperCase();
-  if (["OK", "ATTENTION", "NEEDS_MAINTENANCE", "UNDER_MAINTENANCE", "OUT_OF_SERVICE"].includes(s)) {
+
+  if (
+    [
+      "OK",
+      "ATTENTION",
+      "NEEDS_MAINTENANCE",
+      "UNDER_MAINTENANCE",
+      "OUT_OF_SERVICE",
+    ].includes(s)
+  ) {
     return s;
   }
+
   return "OK";
 }
 
@@ -438,8 +527,8 @@ function normalizeInspection(item) {
 
   return {
     id: item.id,
-    deviceId: item.deviceId,
-    inspectionStatus: String(item.inspectionStatus || "").toUpperCase() || "NOT_REACHABLE",
+    deviceId: item.deviceId || device.id,
+    inspectionStatus: String(item.inspectionStatus || item.status || "").toUpperCase() || "NOT_REACHABLE",
     issueReason: item.issueReason || "",
     notes: item.notes || "",
     inspectedAt: item.inspectedAt || item.createdAt || null,
@@ -452,7 +541,7 @@ function normalizeInspection(item) {
       "Technician",
     device: {
       id: device.id || item.deviceId,
-      deviceCode: device.deviceCode || device.code || device.barcode || `#${item.deviceId}`,
+      deviceCode: device.deviceCode || device.code || device.barcode || `#${item.deviceId || device.id || ""}`,
       deviceName: device.deviceName || device.name || "Unknown device",
       location: {
         cluster: location.cluster || "",
@@ -531,6 +620,8 @@ async function fetchJsonCandidates(candidates, token) {
   throw lastError || new Error("No working endpoint found.");
 }
 
+/* ─── Donut ─────────────────────────────────────────────────────────────────── */
+
 function DonutSVG({ healthy, attention, total, lang }) {
   const safe = total || 1;
   const pct = Math.round((healthy / safe) * 100);
@@ -541,21 +632,27 @@ function DonutSVG({ healthy, attention, total, lang }) {
   return (
     <svg viewBox="0 0 160 160" width="160" height="160" aria-hidden="true" style={{ flexShrink: 0 }}>
       <circle cx="80" cy="80" r="52" fill="none" stroke="#eef1f6" strokeWidth="18" />
+
       <circle
-        cx="80" cy="80" r="52"
+        cx="80"
+        cy="80"
+        r="52"
         fill="none"
-        stroke="#378ADD"
+        stroke="#4f46e5"
         strokeWidth="18"
         strokeLinecap="round"
         strokeDasharray={`${healthyDash} ${C}`}
         strokeDashoffset={C / 4}
         style={{ transform: "rotate(-90deg)", transformOrigin: "80px 80px" }}
       />
+
       {attention > 0 && (
         <circle
-          cx="80" cy="80" r="52"
+          cx="80"
+          cy="80"
+          r="52"
           fill="none"
-          stroke="#BA7517"
+          stroke="#f59e0b"
           strokeWidth="18"
           strokeLinecap="round"
           strokeDasharray={`${attentionDash} ${C}`}
@@ -563,10 +660,13 @@ function DonutSVG({ healthy, attention, total, lang }) {
           style={{ transform: "rotate(-90deg)", transformOrigin: "80px 80px" }}
         />
       )}
+
       <circle cx="80" cy="80" r="34" fill="#ffffff" />
+
       <text x="80" y="74" textAnchor="middle" fontSize="11" fill="#9aa0ad" fontFamily="inherit">
         {lang === "ar" ? "جاهزية" : "Readiness"}
       </text>
+
       <text x="80" y="95" textAnchor="middle" fontSize="22" fontWeight="700" fill="#16181d" fontFamily="inherit">
         {pct}%
       </text>
@@ -574,17 +674,29 @@ function DonutSVG({ healthy, attention, total, lang }) {
   );
 }
 
+/* ─── Chart ─────────────────────────────────────────────────────────────────── */
+
 const CHARTJS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
 
 function loadChartJS() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (window.Chart) {
       resolve();
       return;
     }
+
+    const oldScript = document.querySelector(`script[src="${CHARTJS_CDN}"]`);
+
+    if (oldScript) {
+      oldScript.addEventListener("load", resolve);
+      oldScript.addEventListener("error", reject);
+      return;
+    }
+
     const s = document.createElement("script");
     s.src = CHARTJS_CDN;
     s.onload = resolve;
+    s.onerror = reject;
     document.head.appendChild(s);
   });
 }
@@ -593,94 +705,106 @@ function TrendChart({ weeklyData = [], lang = "en" }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
 
-  const labels = weeklyData.length
-    ? weeklyData.map((_, i) => (lang === "ar" ? `الأسبوع ${i + 1}` : `Week ${i + 1}`))
+  const safeWeeklyData = Array.isArray(weeklyData) ? weeklyData : [];
+
+  const labels = safeWeeklyData.length
+    ? safeWeeklyData.map((_, i) => (lang === "ar" ? `الأسبوع ${i + 1}` : `Week ${i + 1}`))
     : ["Week 1", "Week 2", "Week 3", "Week 4"];
 
-  const completions = weeklyData.length
-    ? weeklyData.map((w) => w.completions ?? 0)
+  const completions = safeWeeklyData.length
+    ? safeWeeklyData.map((w) => Number(w.completions ?? 0))
     : [0, 0, 0, 0];
 
-  const pending = weeklyData.length
-    ? weeklyData.map((w) => w.pending ?? 0)
+  const pending = safeWeeklyData.length
+    ? safeWeeklyData.map((w) => Number(w.pending ?? 0))
     : [0, 0, 0, 0];
 
   useEffect(() => {
     let alive = true;
 
-    loadChartJS().then(() => {
-      if (!alive || !canvasRef.current) return;
-      if (chartRef.current) chartRef.current.destroy();
+    loadChartJS()
+      .then(() => {
+        if (!alive || !canvasRef.current || !window.Chart) return;
 
-      chartRef.current = new window.Chart(canvasRef.current, {
-        type: "line",
-        data: {
-          labels,
-          datasets: [
-            {
-              label: lang === "ar" ? "مكتملة" : "Completions",
-              data: completions,
-              borderColor: "#378ADD",
-              backgroundColor: "rgba(55,138,221,0.08)",
-              borderWidth: 2,
-              pointBackgroundColor: "#378ADD",
-              pointRadius: 4,
-              pointHoverRadius: 6,
-              tension: 0.42,
-              fill: true,
+        if (chartRef.current) {
+          chartRef.current.destroy();
+        }
+
+        chartRef.current = new window.Chart(canvasRef.current, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: lang === "ar" ? "مكتملة" : "Completions",
+                data: completions,
+                borderColor: "#4f46e5",
+                backgroundColor: "rgba(79, 70, 229, 0.08)",
+                borderWidth: 2,
+                pointBackgroundColor: "#4f46e5",
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                tension: 0.42,
+                fill: true,
+              },
+              {
+                label: lang === "ar" ? "تحتاج متابعة" : "Attention",
+                data: pending,
+                borderColor: "#10b981",
+                backgroundColor: "transparent",
+                borderWidth: 1.5,
+                borderDash: [4, 4],
+                pointBackgroundColor: "#10b981",
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                tension: 0.42,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: "#ffffff",
+                titleColor: "#16181d",
+                bodyColor: "#475569",
+                borderColor: "rgba(0,0,0,0.08)",
+                borderWidth: 1,
+                padding: 10,
+                boxPadding: 4,
+              },
             },
-            {
-              label: lang === "ar" ? "تحتاج متابعة" : "Attention",
-              data: pending,
-              borderColor: "#1D9E75",
-              backgroundColor: "transparent",
-              borderWidth: 1.5,
-              borderDash: [4, 4],
-              pointBackgroundColor: "#1D9E75",
-              pointRadius: 3,
-              pointHoverRadius: 5,
-              tension: 0.42,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: "index", intersect: false },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: "#ffffff",
-              titleColor: "#16181d",
-              bodyColor: "#6b7585",
-              borderColor: "rgba(0,0,0,0.08)",
-              borderWidth: 1,
-              padding: 10,
-              boxPadding: 4,
+            scales: {
+              x: {
+                grid: { color: "rgba(0,0,0,0.05)", drawBorder: false },
+                ticks: { color: "#9aa0ad", font: { size: 11 } },
+                border: { display: false },
+              },
+              y: {
+                grid: { color: "rgba(0,0,0,0.05)", drawBorder: false },
+                ticks: { color: "#9aa0ad", font: { size: 11 } },
+                border: { display: false },
+                beginAtZero: true,
+              },
             },
           },
-          scales: {
-            x: {
-              grid: { color: "rgba(0,0,0,0.05)", drawBorder: false },
-              ticks: { color: "#9aa0ad", font: { size: 11 } },
-              border: { display: false },
-            },
-            y: {
-              grid: { color: "rgba(0,0,0,0.05)", drawBorder: false },
-              ticks: { color: "#9aa0ad", font: { size: 11 } },
-              border: { display: false },
-              beginAtZero: true,
-            },
-          },
-        },
+        });
+      })
+      .catch(() => {
+        console.warn("Chart.js failed to load");
       });
-    });
 
     return () => {
       alive = false;
-      chartRef.current?.destroy();
+      if (chartRef.current) {
+        chartRef.current.destroy();
+        chartRef.current = null;
+      }
     };
-  }, [JSON.stringify(weeklyData), lang]);
+  }, [JSON.stringify(safeWeeklyData), lang]);
 
   return (
     <div style={{ position: "relative", width: "100%", height: 185 }}>
@@ -690,46 +814,41 @@ function TrendChart({ weeklyData = [], lang = "en" }) {
 }
 
 /* ─── Main component ───────────────────────────────────────────────────────── */
+
+const MIN_HOMELOAD_MS = 700;
+
 export function ViewerHomePage({
   currentUser: currentUserProp = null,
   kpis: kpisProp = null,
   locationRows: locationRowsProp = null,
   recentInspections: recentInspectionsProp = null,
   weeklyData: weeklyDataProp = null,
+  loading: loadingProp = false,
   lang = "en",
   apiBaseUrl = "",
 }) {
   const [currentUser, setCurrentUser] = useState(currentUserProp || null);
-  const [kpis, setKpis] = useState(kpisProp || {});
-  const [locationRows, setLocationRows] = useState(Array.isArray(locationRowsProp) ? locationRowsProp : []);
-  const [recentInspections, setRecentInspections] = useState(Array.isArray(recentInspectionsProp) ? recentInspectionsProp : []);
-  const [weeklyData, setWeeklyData] = useState(Array.isArray(weeklyDataProp) ? weeklyDataProp : []);
-
-  const [loading, setLoading] = useState(
-    !currentUserProp || !kpisProp || !Array.isArray(locationRowsProp) || !Array.isArray(recentInspectionsProp)
+  const [kpis, setKpis] = useState(hasObjectData(kpisProp) ? kpisProp : {});
+  const [locationRows, setLocationRows] = useState(hasArrayData(locationRowsProp) ? locationRowsProp : []);
+  const [recentInspections, setRecentInspections] = useState(
+    hasArrayData(recentInspectionsProp) ? recentInspectionsProp : []
   );
+  const [weeklyData, setWeeklyData] = useState(hasArrayData(weeklyDataProp) ? weeklyDataProp : []);
+
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sourceInfo, setSourceInfo] = useState([]);
+
+  const mountedRef = useRef(true);
+  const requestIdRef = useRef(0);
+
+  const isLoading = Boolean(loadingProp || loading);
 
   const baseUrl = useMemo(() => pickBaseUrl(apiBaseUrl), [apiBaseUrl]);
 
   async function loadHomeData() {
-    if (
-      currentUserProp &&
-      kpisProp &&
-      Array.isArray(locationRowsProp) &&
-      Array.isArray(recentInspectionsProp) &&
-      Array.isArray(weeklyDataProp)
-    ) {
-      setCurrentUser(currentUserProp);
-      setKpis(kpisProp);
-      setLocationRows(locationRowsProp);
-      setRecentInspections(recentInspectionsProp);
-      setWeeklyData(weeklyDataProp);
-      setLoading(false);
-      setError("");
-      return;
-    }
+    const requestId = ++requestIdRef.current;
+    const startTime = Date.now();
 
     try {
       setLoading(true);
@@ -738,7 +857,7 @@ export function ViewerHomePage({
       const token = pickToken();
       const sources = [];
 
-      let userInfo = currentUserProp;
+      let userInfo = currentUserProp || null;
 
       if (!userInfo) {
         try {
@@ -772,13 +891,7 @@ export function ViewerHomePage({
         token
       );
 
-      const rawDevices =
-        Array.isArray(devicesRes.data) ? devicesRes.data :
-        Array.isArray(devicesRes.data?.data) ? devicesRes.data.data :
-        Array.isArray(devicesRes.data?.devices) ? devicesRes.data.devices :
-        Array.isArray(devicesRes.data?.items) ? devicesRes.data.items :
-        [];
-
+      const rawDevices = extractArray(devicesRes.data, ["devices"]);
       const devices = rawDevices.map(normalizeDevice);
       sources.push(devicesRes.url);
 
@@ -793,16 +906,15 @@ export function ViewerHomePage({
         token
       );
 
-      const rawInspections =
-        Array.isArray(inspectionsRes.data) ? inspectionsRes.data :
-        Array.isArray(inspectionsRes.data?.data) ? inspectionsRes.data.data :
-        Array.isArray(inspectionsRes.data?.inspections) ? inspectionsRes.data.inspections :
-        Array.isArray(inspectionsRes.data?.items) ? inspectionsRes.data.items :
-        [];
+      const rawInspections = extractArray(inspectionsRes.data, ["inspections"]);
 
       const inspections = rawInspections
         .map(normalizeInspection)
-        .sort((a, b) => new Date(b.inspectedAt || b.createdAt || 0) - new Date(a.inspectedAt || a.createdAt || 0));
+        .sort((a, b) => {
+          const da = new Date(a.inspectedAt || a.createdAt || 0).getTime();
+          const db = new Date(b.inspectedAt || b.createdAt || 0).getTime();
+          return db - da;
+        });
 
       sources.push(inspectionsRes.url);
 
@@ -820,22 +932,18 @@ export function ViewerHomePage({
           token
         );
 
-        const rawLocations =
-          Array.isArray(locationsRes.data) ? locationsRes.data :
-          Array.isArray(locationsRes.data?.data) ? locationsRes.data.data :
-          Array.isArray(locationsRes.data?.locations) ? locationsRes.data.locations :
-          Array.isArray(locationsRes.data?.items) ? locationsRes.data.items :
-          [];
-
+        const rawLocations = extractArray(locationsRes.data, ["locations"]);
         const autoRows = buildLocationRows(devices, inspections);
 
         locationRowsBuilt = rawLocations.map((loc) => {
-          const matched = autoRows.find((r) =>
-            (r.cluster || "") === (loc.cluster || "") &&
-            (r.building || "") === (loc.building || "") &&
-            (r.zone || "") === (loc.zone || "") &&
-            (r.direction || "") === (loc.direction || "")
-          );
+          const matched = autoRows.find((r) => {
+            return (
+              (r.cluster || "") === (loc.cluster || "") &&
+              (r.building || "") === (loc.building || "") &&
+              (r.zone || "") === (loc.zone || "") &&
+              (r.direction || "") === (loc.direction || "")
+            );
+          });
 
           return {
             id: loc.id ?? matched?.id ?? `loc-${Math.random().toString(36).slice(2, 8)}`,
@@ -848,17 +956,30 @@ export function ViewerHomePage({
           };
         });
 
+        if (!locationRowsBuilt.length) {
+          locationRowsBuilt = autoRows;
+        }
+
         sources.push(locationsRes.url);
       } catch {
         locationRowsBuilt = buildLocationRows(devices, inspections);
       }
 
       const healthyDevices = devices.filter((d) => d.currentStatus === "OK").length;
+
       const attentionDevices = devices.filter((d) =>
-        ["ATTENTION", "NEEDS_MAINTENANCE", "UNDER_MAINTENANCE", "OUT_OF_SERVICE"].includes(d.currentStatus)
+        ["ATTENTION", "NEEDS_MAINTENANCE", "UNDER_MAINTENANCE", "OUT_OF_SERVICE"].includes(
+          d.currentStatus
+        )
       ).length;
 
-      const latestInspectionAt = inspections[0]?.inspectedAt || null;
+      const latestInspectionAt = inspections[0]?.inspectedAt || inspections[0]?.createdAt || null;
+
+      const inspectedDevices = new Set(
+        inspections
+          .map((i) => i.deviceId || i.device?.id)
+          .filter(Boolean)
+      ).size;
 
       const kpiBuilt = {
         totalDevices: devices.length,
@@ -866,7 +987,7 @@ export function ViewerHomePage({
         attentionDevices,
         totalInspections: inspections.length,
         latestInspectionAt,
-        inspectedDevices: new Set(inspections.map((i) => i.deviceId).filter(Boolean)).size,
+        inspectedDevices,
       };
 
       const recentBuilt = inspections.slice(0, 5).map((ins) => ({
@@ -876,10 +997,14 @@ export function ViewerHomePage({
           ins.device?.deviceCode || `#${ins.deviceId}`,
           ins.device?.deviceName || "",
           ins.device?.location?.building || ins.device?.location?.cluster || "",
-        ].filter(Boolean).join(" · "),
+        ]
+          .filter(Boolean)
+          .join(" · "),
         time: (() => {
           try {
-            return new Date(ins.inspectedAt || ins.createdAt).toLocaleTimeString("en-GB", {
+            const d = new Date(ins.inspectedAt || ins.createdAt);
+            if (Number.isNaN(d.getTime())) return "";
+            return d.toLocaleTimeString("en-GB", {
               hour: "2-digit",
               minute: "2-digit",
             });
@@ -891,17 +1016,19 @@ export function ViewerHomePage({
       }));
 
       const now = new Date();
+
       const weeklyBuilt = [3, 2, 1, 0].map((offset) => {
         const start = new Date(now);
         start.setDate(now.getDate() - (offset * 7 + 6));
         start.setHours(0, 0, 0, 0);
 
         const end = new Date(now);
-        end.setDate(now.getDate() - (offset * 7));
+        end.setDate(now.getDate() - offset * 7);
         end.setHours(23, 59, 59, 999);
 
         const weekInspections = inspections.filter((ins) => {
           const d = new Date(ins.inspectedAt || ins.createdAt);
+          if (Number.isNaN(d.getTime())) return false;
           return d >= start && d <= end;
         });
 
@@ -911,36 +1038,112 @@ export function ViewerHomePage({
         return { completions, pending };
       });
 
-      setCurrentUser(userInfo);
-      setKpis(kpisProp || kpiBuilt);
-      setLocationRows(Array.isArray(locationRowsProp) ? locationRowsProp : locationRowsBuilt);
-      setRecentInspections(Array.isArray(recentInspectionsProp) ? recentInspectionsProp : recentBuilt);
-      setWeeklyData(Array.isArray(weeklyDataProp) ? weeklyDataProp : weeklyBuilt);
+      if (!mountedRef.current || requestId !== requestIdRef.current) return;
+
+      /*
+        مهم جدًا:
+        هنا لا نستخدم kpisProp أو locationRowsProp لو فاضيين.
+        الداتا الأساسية الآن جاية من الباك إند فقط.
+      */
+      setCurrentUser(userInfo || currentUserProp || null);
+      setKpis(kpiBuilt);
+      setLocationRows(locationRowsBuilt);
+      setRecentInspections(recentBuilt);
+      setWeeklyData(weeklyBuilt);
       setSourceInfo(sources);
+      setError("");
     } catch (err) {
       console.error("Failed to load home data:", err);
+
+      if (!mountedRef.current || requestId !== requestIdRef.current) return;
+
       setError(err?.message || "Failed to load home data from backend.");
-      setCurrentUser(currentUserProp || null);
-      setKpis(kpisProp || {});
-      setLocationRows(Array.isArray(locationRowsProp) ? locationRowsProp : []);
-      setRecentInspections(Array.isArray(recentInspectionsProp) ? recentInspectionsProp : []);
-      setWeeklyData(Array.isArray(weeklyDataProp) ? weeklyDataProp : []);
+
+      /*
+        لا نصفر الداتا القديمة عند فشل الاتصال.
+        لو كان فيه داتا معروضة، نخليها موجودة.
+      */
+      setCurrentUser((prev) => prev || currentUserProp || null);
+      setKpis((prev) => (hasObjectData(prev) ? prev : hasObjectData(kpisProp) ? kpisProp : {}));
+      setLocationRows((prev) =>
+        hasArrayData(prev) ? prev : hasArrayData(locationRowsProp) ? locationRowsProp : []
+      );
+      setRecentInspections((prev) =>
+        hasArrayData(prev)
+          ? prev
+          : hasArrayData(recentInspectionsProp)
+          ? recentInspectionsProp
+          : []
+      );
+      setWeeklyData((prev) =>
+        hasArrayData(prev) ? prev : hasArrayData(weeklyDataProp) ? weeklyDataProp : []
+      );
       setSourceInfo([]);
     } finally {
+      const elapsed = Date.now() - startTime;
+      const wait = Math.max(0, MIN_HOMELOAD_MS - elapsed);
+
+      if (wait > 0) {
+        await new Promise((r) => setTimeout(r, wait));
+      }
+
+      if (!mountedRef.current || requestId !== requestIdRef.current) return;
+
       setLoading(false);
     }
   }
 
   useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /*
+    هذا الـ useEffect آمن:
+    لا يسمح لـ [] أو {} إنهم يغطوا على داتا الباك إند.
+  */
+  useEffect(() => {
+    if (currentUserProp) {
+      setCurrentUser(currentUserProp);
+    }
+
+    if (hasObjectData(kpisProp)) {
+      setKpis(kpisProp);
+    }
+
+    if (hasArrayData(locationRowsProp)) {
+      setLocationRows(locationRowsProp);
+    }
+
+    if (hasArrayData(recentInspectionsProp)) {
+      setRecentInspections(recentInspectionsProp);
+    }
+
+    if (hasArrayData(weeklyDataProp)) {
+      setWeeklyData(weeklyDataProp);
+    }
+  }, [
+    currentUserProp,
+    kpisProp,
+    locationRowsProp,
+    recentInspectionsProp,
+    weeklyDataProp,
+  ]);
+
+  useEffect(() => {
     loadHomeData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseUrl]);
 
-  const total = kpis.totalDevices ?? 0;
-  const healthy = kpis.healthyDevices ?? 0;
-  const attention = kpis.attentionDevices ?? 0;
-  const totalInsp = kpis.totalInspections ?? 0;
+  const total = Number(kpis.totalDevices ?? 0);
+  const healthy = Number(kpis.healthyDevices ?? 0);
+  const attention = Number(kpis.attentionDevices ?? 0);
+  const totalInsp = Number(kpis.totalInspections ?? 0);
   const latest = kpis.latestInspectionAt;
-  const inspected = kpis.inspectedDevices ?? 0;
+  const inspected = Number(kpis.inspectedDevices ?? 0);
 
   const userName =
     currentUser?.fullName ||
@@ -949,61 +1152,81 @@ export function ViewerHomePage({
     (lang === "ar" ? "المستخدم" : "User");
 
   const topLocations = [...locationRows]
-    .sort((a, b) => (b.devicesCount || 0) - (a.devicesCount || 0))
+    .sort((a, b) => Number(b.devicesCount || 0) - Number(a.devicesCount || 0))
     .slice(0, 4);
 
-  const maxLoc = Math.max(...topLocations.map((l) => l.devicesCount || 0), 1);
+  const maxLoc = Math.max(...topLocations.map((l) => Number(l.devicesCount || 0)), 1);
 
   const T = {
-    greeting:            lang === "ar" ? `أهلًا ${userName}` : `Hello, ${userName}`,
-    title:               lang === "ar" ? "نظرة عامة على العمليات" : "Operational Overview",
-    dateChip:            formatDate(lang),
-    updateChip:          (lang === "ar" ? "آخر تحديث: " : "Updated: ") + formatShort(latest, lang),
-    inspChip:            (lang === "ar" ? "مفحوص: " : "Inspected: ") + inspected + (lang === "ar" ? " جهاز" : " devices"),
-    kpi1Label:           lang === "ar" ? "إجمالي الأجهزة" : "Total devices",
-    kpi1Note:            lang === "ar" ? "كل الأجهزة في النطاق" : "All visible in scope",
-    kpi2Label:           lang === "ar" ? "تعمل بشكل طبيعي" : "Operational",
-    kpi2Note:            lang === "ar" ? "جاهزية مستقرة" : "Stable readiness",
-    kpi3Label:           lang === "ar" ? "تحتاج متابعة" : "Need attention",
-    kpi3Note:            lang === "ar" ? "مُعلَّمة للمراجعة" : "Flagged for review",
-    kpi4Label:           lang === "ar" ? "الفحوصات" : "Inspections",
-    kpi4Note:            (lang === "ar" ? "آخر: " : "Last: ") + formatShort(latest, lang),
-    trendTitle:          lang === "ar" ? "اتجاه إتمام العمليات" : "Operations completion trend",
-    trendSub:            lang === "ar" ? "آخر 4 أسابيع" : "Last 4 weeks",
-    trendComp:           lang === "ar" ? "مكتملة" : "Completions",
-    trendPend:           lang === "ar" ? "تحتاج متابعة" : "Attention",
-    donutTitle:          lang === "ar" ? "توزيع الحالة" : "Readiness split",
-    donutSub:            lang === "ar" ? "أجهزة سليمة مقابل تحتاج متابعة" : "Healthy vs attention devices",
-    donutOp:             lang === "ar" ? "تعمل" : "Operational",
-    donutAt:             lang === "ar" ? "تحتاج متابعة" : "Need attention",
-    locTitle:            lang === "ar" ? "أكثر المواقع نشاطًا" : "Top active locations",
-    locSub:              lang === "ar" ? "عدد الأجهزة لكل موقع" : "Device count per site",
-    locEmpty:            lang === "ar" ? "لا توجد مواقع." : "No locations available.",
-    recTitle:            lang === "ar" ? "آخر الفحوصات" : "Recent inspections",
-    recSub:              lang === "ar" ? "آخر نشاط للفنيين" : "Latest technician activity",
-    badgeOk:             lang === "ar" ? "سليم" : "OK",
-    badgeNotOk:          lang === "ar" ? "غير سليم" : "NOT_OK",
-    badgePartial:        lang === "ar" ? "جزئي" : "PARTIAL",
-    badgeNotReachable:   lang === "ar" ? "غير متاح" : "NOT_REACHABLE",
+    greeting: lang === "ar" ? `أهلًا ${userName}` : `Hello, ${userName}`,
+    title: lang === "ar" ? "نظرة عامة على العمليات" : "Operational Overview",
+    dateChip: formatDate(lang),
+    updateChip: (lang === "ar" ? "آخر تحديث: " : "Updated: ") + formatShort(latest, lang),
+    inspChip:
+      (lang === "ar" ? "مفحوص: " : "Inspected: ") +
+      inspected +
+      (lang === "ar" ? " جهاز" : " devices"),
+    kpi1Label: lang === "ar" ? "إجمالي الأجهزة" : "Total devices",
+    kpi1Note: lang === "ar" ? "كل الأجهزة في النطاق" : "All visible in scope",
+    kpi2Label: lang === "ar" ? "تعمل بشكل طبيعي" : "Operational",
+    kpi2Note: lang === "ar" ? "جاهزية مستقرة" : "Stable readiness",
+    kpi3Label: lang === "ar" ? "تحتاج متابعة" : "Need attention",
+    kpi3Note: lang === "ar" ? "مُعلَّمة للمراجعة" : "Flagged for review",
+    kpi4Label: lang === "ar" ? "الفحوصات" : "Inspections",
+    kpi4Note: (lang === "ar" ? "آخر: " : "Last: ") + formatShort(latest, lang),
+    trendTitle: lang === "ar" ? "اتجاه إتمام العمليات" : "Operations completion trend",
+    trendSub: lang === "ar" ? "آخر 4 أسابيع" : "Last 4 weeks",
+    trendComp: lang === "ar" ? "مكتملة" : "Completions",
+    trendPend: lang === "ar" ? "تحتاج متابعة" : "Attention",
+    donutTitle: lang === "ar" ? "توزيع الحالة" : "Readiness split",
+    donutSub: lang === "ar" ? "أجهزة سليمة مقابل تحتاج متابعة" : "Healthy vs attention devices",
+    donutOp: lang === "ar" ? "تعمل" : "Operational",
+    donutAt: lang === "ar" ? "تحتاج متابعة" : "Need attention",
+    locTitle: lang === "ar" ? "أكثر المواقع نشاطًا" : "Top active locations",
+    locSub: lang === "ar" ? "عدد الأجهزة لكل موقع" : "Device count per site",
+    locEmpty: lang === "ar" ? "لا توجد مواقع." : "No locations available.",
+    recTitle: lang === "ar" ? "آخر الفحوصات" : "Recent inspections",
+    recSub: lang === "ar" ? "آخر نشاط للفنيين" : "Latest technician activity",
+    badgeOk: lang === "ar" ? "سليم" : "OK",
+    badgeNotOk: lang === "ar" ? "غير سليم" : "NOT_OK",
+    badgePartial: lang === "ar" ? "جزئي" : "PARTIAL",
+    badgeNotReachable: lang === "ar" ? "غير متاح" : "NOT_REACHABLE",
   };
 
-  const barColors = ["#378ADD", "#7F77DD", "#1D9E75", "#BA7517"];
+  const barColors = ["#4f46e5", "#818cf8", "#10b981", "#f59e0b"];
 
   return (
     <>
       <style>{HOME_CSS}</style>
 
       <div className="vh" dir={lang === "ar" ? "rtl" : "ltr"}>
+        <div className="vh__brand-box">
+          <div className="vh__brand-logo">
+            <img src={smartitLogo} alt="SmartIT" />
+          </div>
+        </div>
+
         <div className="vh__header-actions">
           <div>
-            <div className="vh__page-title">{lang === "ar" ? "الصفحة الرئيسية" : "Home"}</div>
+            <div className="vh__page-title">
+              {lang === "ar" ? "الصفحة الرئيسية" : "Home"}
+            </div>
+
             <div className="vh__page-sub">
-              {lang === "ar" ? "عرض مباشر لمؤشرات النظام" : "Live operational snapshot from backend"}
+              {lang === "ar"
+                ? "عرض مباشر لمؤشرات النظام"
+                : "Live operational snapshot from backend"}
             </div>
           </div>
 
-          <button className="vh__action-btn" onClick={loadHomeData} disabled={loading}>
-            {loading ? (lang === "ar" ? "جارٍ التحميل..." : "Loading...") : (lang === "ar" ? "تحديث" : "Refresh")}
+          <button className="vh__action-btn" onClick={loadHomeData} disabled={isLoading}>
+            {isLoading
+              ? lang === "ar"
+                ? "جارٍ التحميل..."
+                : "Loading..."
+              : lang === "ar"
+              ? "تحديث"
+              : "Refresh"}
           </button>
         </div>
 
@@ -1021,10 +1244,12 @@ export function ViewerHomePage({
           </div>
         )}
 
-        {loading ? (
+        {isLoading ? (
           <div className="vh__loading">
             <div className="vh__loading-spinner" />
-            {lang === "ar" ? "جارٍ تحميل بيانات الصفحة الرئيسية..." : "Loading home data from backend..."}
+            {lang === "ar"
+              ? "جارٍ تحميل بيانات الصفحة الرئيسية..."
+              : "Loading home data from backend..."}
           </div>
         ) : (
           <>
@@ -1045,28 +1270,36 @@ export function ViewerHomePage({
               <div className="vh__kpi">
                 <div className="vh__kpi-bar" style={{ background: "var(--blue)" }} />
                 <div className="vh__kpi-label">{T.kpi1Label}</div>
-                <div className="vh__kpi-value" style={{ color: "var(--blue)" }}>{total}</div>
+                <div className="vh__kpi-value" style={{ color: "var(--blue)" }}>
+                  {total}
+                </div>
                 <div className="vh__kpi-note">{T.kpi1Note}</div>
               </div>
 
               <div className="vh__kpi">
                 <div className="vh__kpi-bar" style={{ background: "var(--green)" }} />
                 <div className="vh__kpi-label">{T.kpi2Label}</div>
-                <div className="vh__kpi-value" style={{ color: "var(--green)" }}>{healthy}</div>
+                <div className="vh__kpi-value" style={{ color: "var(--green)" }}>
+                  {healthy}
+                </div>
                 <div className="vh__kpi-note">{T.kpi2Note}</div>
               </div>
 
               <div className="vh__kpi">
                 <div className="vh__kpi-bar" style={{ background: "var(--amber)" }} />
                 <div className="vh__kpi-label">{T.kpi3Label}</div>
-                <div className="vh__kpi-value" style={{ color: "var(--amber)" }}>{attention}</div>
+                <div className="vh__kpi-value" style={{ color: "var(--amber)" }}>
+                  {attention}
+                </div>
                 <div className="vh__kpi-note">{T.kpi3Note}</div>
               </div>
 
               <div className="vh__kpi">
                 <div className="vh__kpi-bar" style={{ background: "var(--purple)" }} />
                 <div className="vh__kpi-label">{T.kpi4Label}</div>
-                <div className="vh__kpi-value" style={{ color: "var(--purple)" }}>{totalInsp}</div>
+                <div className="vh__kpi-value" style={{ color: "var(--purple)" }}>
+                  {totalInsp}
+                </div>
                 <div className="vh__kpi-note">{T.kpi4Note}</div>
               </div>
             </div>
@@ -1078,17 +1311,19 @@ export function ViewerHomePage({
 
                 <div className="vh__legend">
                   <div className="vh__legend-item">
-                    <span className="vh__legend-dot" style={{ background: "#378ADD" }} />
+                    <span className="vh__legend-dot" style={{ background: "#4f46e5" }} />
                     {T.trendComp}
                   </div>
+
                   <div className="vh__legend-item">
                     <span
                       className="vh__legend-dot"
                       style={{
-                        background: "#1D9E75",
-                        backgroundImage: "repeating-linear-gradient(90deg,#1D9E75 0 4px,transparent 4px 8px)",
+                        background: "#10b981",
+                        backgroundImage:
+                          "repeating-linear-gradient(90deg,#10b981 0 4px,transparent 4px 8px)",
                         height: 2,
-                        borderRadius: 0
+                        borderRadius: 0,
                       }}
                     />
                     {T.trendPend}
@@ -1104,11 +1339,12 @@ export function ViewerHomePage({
 
                 <div className="vh__legend">
                   <div className="vh__legend-item">
-                    <span className="vh__legend-dot" style={{ background: "#378ADD" }} />
+                    <span className="vh__legend-dot" style={{ background: "#4f46e5" }} />
                     {T.donutOp} — {healthy}
                   </div>
+
                   <div className="vh__legend-item">
-                    <span className="vh__legend-dot" style={{ background: "#BA7517" }} />
+                    <span className="vh__legend-dot" style={{ background: "#f59e0b" }} />
                     {T.donutAt} — {attention}
                   </div>
                 </div>
@@ -1125,23 +1361,29 @@ export function ViewerHomePage({
                 <div className="vh__card-sub">{T.locSub}</div>
 
                 {topLocations.length === 0 ? (
-                  <div style={{ fontSize: 13, color: "var(--faint)" }}>{T.locEmpty}</div>
+                  <div style={{ fontSize: 13, color: "var(--faint)" }}>
+                    {T.locEmpty}
+                  </div>
                 ) : (
                   topLocations.map((loc, i) => (
                     <div className="vh__bar-row" key={loc.id}>
                       <div className="vh__bar-label">
                         {loc.building || loc.cluster || `#${loc.id}`}
                       </div>
+
                       <div className="vh__bar-track">
                         <div
                           className="vh__bar-fill"
                           style={{
-                            width: `${((loc.devicesCount || 0) / maxLoc) * 100}%`,
+                            width: `${((Number(loc.devicesCount || 0)) / maxLoc) * 100}%`,
                             background: barColors[i % barColors.length],
                           }}
                         />
                       </div>
-                      <div className="vh__bar-val">{loc.devicesCount || 0}</div>
+
+                      <div className="vh__bar-val">
+                        {Number(loc.devicesCount || 0)}
+                      </div>
                     </div>
                   ))
                 )}
@@ -1179,6 +1421,7 @@ export function ViewerHomePage({
 
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div className="vh__recent-name">{item.techName}</div>
+
                           <div className="vh__recent-desc">
                             {item.deviceLabel}
                             {item.time ? ` — ${item.time}` : ""}

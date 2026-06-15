@@ -1,13 +1,13 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { DataGrid } from "../components/DataGrid";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-/* ─────────────────────────────────────────────────────────────────
-   API CONFIG
-───────────────────────────────────────────────────────────────── */
-const API_BASE_URL =
+const API_BASE =
+  localStorage.getItem("dashboard_api_base_url") ||
   localStorage.getItem("api_base_url") ||
   import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:3000";
+  import.meta.env.VITE_API_URL ||
+  "https://acess-backend-production-8856.up.railway.app";
+
+const STORAGE_KEY = "smartit_global_tasks_wow_v2";
 
 const getToken = () =>
   localStorage.getItem("token") ||
@@ -15,2266 +15,1703 @@ const getToken = () =>
   localStorage.getItem("authToken") ||
   "";
 
-const buildHeaders = (json = true) => {
+async function api(path, options = {}) {
   const token = getToken();
-  const headers = {};
-  if (json) headers["Content-Type"] = "application/json";
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-  return headers;
-};
 
-async function apiRequest(path, options = {}) {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
-      ...buildHeaders(options.body ? true : false),
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
   });
 
-  const raw = await res.text();
+  const text = await res.text();
   let data = null;
 
   try {
-    data = raw ? JSON.parse(raw) : null;
+    data = text ? JSON.parse(text) : null;
   } catch {
-    data = raw;
+    data = text;
   }
 
   if (!res.ok) {
-    throw new Error(
-      data?.message ||
-        data?.error ||
-        (typeof data === "string" ? data : "") ||
-        `Request failed: ${res.status}`
-    );
+    throw new Error(data?.message || data?.error || `HTTP ${res.status}`);
   }
 
   return data;
 }
 
-async function tryGet(paths = []) {
-  let lastError = null;
-  for (const path of paths) {
+async function tryPaths(paths) {
+  let lastError;
+  for (const p of paths) {
     try {
-      return await apiRequest(path, { method: "GET" });
-    } catch (err) {
-      lastError = err;
+      return await api(p);
+    } catch (e) {
+      lastError = e;
     }
   }
-  throw lastError || new Error("All GET endpoints failed");
+  throw lastError || new Error("Failed");
 }
 
-function normalizeArrayResponse(data) {
+function toArray(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.data)) return data.data;
   if (Array.isArray(data?.items)) return data.items;
   if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.users)) return data.users;
+  if (Array.isArray(data?.devices)) return data.devices;
+  if (Array.isArray(data?.gates)) return data.gates;
   return [];
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   HELPERS & LOCATION PARSER
-───────────────────────────────────────────────────────────────── */
-const initials = (name = "") =>
-  name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2) || "U";
-
-const formatDate = (dateString, withTime = true) => {
-  if (!dateString) return "—";
-  const d = new Date(dateString);
-  const opts = {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    ...(withTime && { hour: "2-digit", minute: "2-digit" }),
-  };
-  return d.toLocaleDateString("en-GB", opts);
-};
-
-const parseDeviceLocation = (dev) => {
-  const loc = dev?.location || {};
-
-  const out = {
-    cluster: loc.cluster || dev?.cluster || "",
-    building: loc.building || dev?.building || "",
-    zone: loc.zone || dev?.zone || "",
-    lane: loc.lane || dev?.lane || "",
-    direction: loc.direction || dev?.direction || "",
-    type: loc.type || dev?.deviceType?.name || dev?.type || "",
-  };
-
-  if (!out.cluster && (dev?.deviceName || dev?.deviceCode || dev?.excelId)) {
-    const text = `${dev.deviceName || ""} - ${dev.deviceCode || dev?.excelId || ""}`;
-    const parts = text
-      .split("-")
-      .map((p) => p.trim())
-      .filter(Boolean);
-
-    for (const p of parts) {
-      const low = p.toLowerCase();
-      if (low.startsWith("cluster")) out.cluster = p.substring(7).trim();
-      else if (low.startsWith("building")) out.building = p.substring(8).trim();
-      else if (low.startsWith("zone")) out.zone = p.substring(4).trim();
-      else if (low.startsWith("lane")) out.lane = p.substring(4).trim();
-      else if (["in", "out", "entry", "exit"].includes(low)) out.direction = p.toUpperCase();
-    }
-  }
-
-  return out;
-};
-
-const STATUS_META = {
-  PENDING:     { label: "Pending",     bg: "#fffbeb", color: "#b45309", border: "#fcd34d" },
-  IN_PROGRESS: { label: "In Progress", bg: "#eff6ff", color: "#1d4ed8", border: "#93c5fd" },
-  COMPLETED:   { label: "Completed",   bg: "#f0fdf4", color: "#15803d", border: "#86efac" },
-  CANCELLED:   { label: "Cancelled",   bg: "#fef2f2", color: "#b91c1c", border: "#fca5a5" },
-};
-
-const isEmergency = (t) =>
-  t.isEmergency || t.priority === "EMERGENCY" || /EMERGENCY/i.test(t.notes || "");
-
-const uniqueValues = (arr) => [...new Set(arr.filter(Boolean))];
-
-const userDisplayName = (u) =>
-  u?.fullName || u?.name || u?.username || u?.email || `ID: ${u?.id}`;
-
-const extractRoleName = (u) =>
-  String(u?.role?.name || u?.role || u?.userRole || "")
+function getRole(user) {
+  return String(
+    user?.role?.name ||
+      user?.role ||
+      user?.userRole ||
+      user?.type ||
+      user?.jobTitle ||
+      ""
+  )
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[_-]/g, " ");
+}
 
-const isAdminUser = (u) => extractRoleName(u).includes("admin");
-const isTechnicianUser = (u) => extractRoleName(u).includes("technician");
+function isTechnician(user) {
+  const r = getRole(user);
+  return r === "technician" || r.includes("technician") || r.includes("فني");
+}
 
-/* ─────────────────────────────────────────────────────────────────
-   CSS
-───────────────────────────────────────────────────────────────── */
-const LUX_CSS = `
-  .lux-tp-root {
-    font-family: 'Inter', system-ui, sans-serif;
-    background: var(--bg-tertiary, #f8fafc);
-    min-height: 100vh;
-    padding: 24px 32px;
-    color: #0f172a;
-  }
-
-  .lux-btn-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
-    color: #fff;
-    font-weight: 600;
-    font-size: 14px;
-    border: none;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(79,70,229,0.3);
-  }
-  .lux-btn-primary:hover {
-    box-shadow: 0 6px 16px rgba(79,70,229,0.4);
-    transform: translateY(-1px);
-  }
-  .lux-btn-primary:disabled {
-    opacity: 0.6;
-    pointer-events: none;
-  }
-
-  .lux-btn-secondary {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 20px;
-    border-radius: 12px;
-    background: #fff;
-    color: #334155;
-    font-weight: 600;
-    font-size: 14px;
-    border: 1px solid #e2e8f0;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-  .lux-btn-secondary:hover {
-    background: #f8fafc;
-    border-color: #cbd5e1;
-  }
-
-  .lux-page-title {
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
-    margin: 0 0 6px 0;
-    color: #0f172a;
-  }
-  .lux-page-sub {
-    font-size: 14px;
-    color: #64748b;
-    font-weight: 500;
-  }
-
-  .lux-filter-bar {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    background: #fff;
-    padding: 12px 16px;
-    border-radius: 16px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.02);
-    border: 1px solid #f1f5f9;
-    margin-top: 24px;
-    margin-bottom: 18px;
-    flex-wrap: wrap;
-  }
-
-  .lux-search-box {
-    position: relative;
-    flex: 1;
-    min-width: 320px;
-  }
-  .lux-search-box input {
-    width: 100%;
-    padding: 12px 16px 12px 42px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    font-size: 14px;
-    outline: none;
-    transition: all 0.2s ease;
-  }
-  .lux-search-box input:focus {
-    border-color: #4f46e5;
-    background: #fff;
-    box-shadow: 0 0 0 4px rgba(79,70,229,0.1);
-  }
-  .lux-search-box svg {
-    position: absolute;
-    left: 14px;
-    top: 12px;
-    color: #94a3b8;
-  }
-
-  .lux-filters-panel {
-    background: #fff;
-    border: 1px solid #f1f5f9;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
-    padding: 16px;
-    margin-bottom: 20px;
-  }
-
-  .lux-filters-grid {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(120px, 1fr));
-    gap: 12px;
-    align-items: end;
-  }
-
-  .lux-filter-field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .lux-filter-label {
-    font-size: 11px;
-    font-weight: 800;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-  }
-
-  .lux-filter-select,
-  .lux-filter-input {
-    width: 100%;
-    height: 40px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    padding: 0 12px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #0f172a;
-    outline: none;
-    transition: all 0.2s ease;
-  }
-
-  .lux-filter-select:focus,
-  .lux-filter-input:focus {
-    border-color: #4f46e5;
-    background: #fff;
-    box-shadow: 0 0 0 4px rgba(79,70,229,0.08);
-  }
-
-  .lux-filter-actions {
-    display: flex;
-    gap: 10px;
-    align-items: end;
-    justify-content: flex-end;
-    margin-top: 14px;
-    flex-wrap: wrap;
-  }
-
-  .lux-clear-btn {
-    height: 40px;
-    padding: 0 14px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    background: #fff;
-    color: #475569;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-  }
-  .lux-clear-btn:hover {
-    background: #f8fafc;
-  }
-
-  .lux-chip-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-  }
-  .lux-chip {
-    padding: 6px 12px;
-    border-radius: 999px;
-    background: #eef2ff;
-    color: #4338ca;
-    font-size: 12px;
-    font-weight: 700;
-    border: 1px solid #c7d2fe;
-  }
-
-  .lux-table-wrapper {
-    background: #fff;
-    border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.03);
-    border: 1px solid #f1f5f9;
-    overflow: hidden;
-  }
-
-  .lux-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .lux-badge.emerg {
-    background: #fef2f2;
-    color: #ef4444;
-    border: 1px solid #fca5a5;
-  }
-
-  /* ── device block with separated location badges ── */
-  .lux-device-block {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-  }
-  .lux-device-name {
-    font-size: 13px;
-    font-weight: 800;
-    color: #0f172a;
-    line-height: 1.35;
-    word-break: break-word;
-  }
-  .lux-device-code {
-    font-size: 11px;
-    font-weight: 700;
-    color: #4f46e5;
-  }
-  .lux-device-loc-badges {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    margin-top: 2px;
-  }
-
-  /* ── location badges — each on its own row ── */
-  .lux-device-loc-badges {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 3px !important;
-    flex-wrap: nowrap !important;
-    margin-top: 4px;
-  }
-  .lux-loc-tag {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    white-space: nowrap;
-    border: 1px solid transparent;
-    width: fit-content;
-  }
-  .lux-loc-tag--cluster  { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
-  .lux-loc-tag--building { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
-  .lux-loc-tag--zone     { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
-  .lux-loc-tag--lane     { background: #f5f3ff; color: #7c3aed; border-color: #ddd6fe; }
-  .lux-loc-tag--type     { background: #fdf4ff; color: #a21caf; border-color: #f0abfc; }
-  .lux-loc-tag--in       { background: #dcfce7; color: #15803d; border-color: #86efac; }
-  .lux-loc-tag--out      { background: #fef9c3; color: #a16207; border-color: #fde68a; }
-
-  .lux-modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(15,23,42,0.6);
-    backdrop-filter: blur(4px);
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: luxFadeIn 0.2s forwards;
-  }
-
-  .lux-modal-body {
-    background: #ffffff;
-    border-radius: 24px;
-    box-shadow: 0 24px 48px rgba(0,0,0,0.2);
-    width: 100%;
-    max-width: 760px;
-    max-height: 90vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    transform: translateY(20px);
-    animation: luxSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  .lux-modal-header {
-    padding: 24px 32px;
-    border-bottom: 1px solid #f1f5f9;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #f8fafc;
-  }
-
-  .lux-modal-content {
-    padding: 32px;
-    overflow-y: auto;
-    flex: 1;
-  }
-
-  .lux-modal-footer {
-    padding: 20px 32px;
-    background: #f8fafc;
-    border-top: 1px solid #f1f5f9;
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-  }
-
-  .lux-slide-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(15,23,42,0.4);
-    backdrop-filter: blur(2px);
-    z-index: 998;
-    animation: luxFadeIn 0.3s forwards;
-  }
-
-  .lux-slide-panel {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 100%;
-    max-width: 500px;
-    background: #fff;
-    z-index: 999;
-    box-shadow: -10px 0 40px rgba(0,0,0,0.1);
-    transform: translateX(100%);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    display: flex;
-    flex-direction: column;
-  }
-  .lux-slide-panel.open {
-    transform: translateX(0);
-  }
-  .lux-slide-header {
-    padding: 32px;
-    border-bottom: 1px solid #f1f5f9;
-    background: #f8fafc;
-    position: relative;
-  }
-
-  .lux-field {
-    margin-bottom: 20px;
-  }
-
-  .lux-label {
-    display: block;
-    font-size: 13px;
-    font-weight: 700;
-    color: #475569;
-    margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .lux-input {
-    width: 100%;
-    padding: 12px 16px;
-    border-radius: 12px;
-    border: 1px solid #e2e8f0;
-    background: #fff;
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    color: #0f172a;
-    font-weight: 500;
-  }
-
-  .lux-input:focus {
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 4px rgba(79,70,229,0.1);
-  }
-
-  .lux-input:disabled {
-    background: #f1f5f9;
-    color: #94a3b8;
-    cursor: not-allowed;
-  }
-
-  .lux-img-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-    gap: 12px;
-    margin-top: 16px;
-  }
-
-  .lux-img-card {
-    height: 130px;
-    border-radius: 12px;
-    background-size: cover;
-    background-position: center;
-    border: 1px solid #e2e8f0;
-    position: relative;
-    overflow: hidden;
-    cursor: crosshair;
-  }
-  .lux-img-card:hover::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.1);
-  }
-
-  .lux-device-selector-shell {
-    background: #f8fafc;
-    border-radius: 16px;
-    border: 1px solid #e2e8f0;
-    padding: 18px;
-  }
-
-  .lux-device-selector-top {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-  }
-
-  .lux-device-search {
-    position: relative;
-  }
-
-  .lux-device-search input {
-    width: 100%;
-    height: 44px;
-    border-radius: 14px;
-    border: 1px solid #dbe3f0;
-    background: #fff;
-    padding: 0 14px 0 42px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #0f172a;
-    outline: none;
-    transition: 0.2s ease;
-  }
-
-  .lux-device-search input:focus {
-    border-color: #4f46e5;
-    box-shadow: 0 0 0 4px rgba(79,70,229,0.08);
-  }
-
-  .lux-device-search svg {
-    position: absolute;
-    left: 14px;
-    top: 13px;
-    color: #94a3b8;
-  }
-
-  .lux-device-filter-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-
-  .lux-device-list {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    max-height: 260px;
-    overflow-y: auto;
-    padding-right: 4px;
-  }
-
-  .lux-device-card {
-    padding: 12px;
-    border-radius: 14px;
-    border: 1px solid #e2e8f0;
-    background: #fff;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .lux-device-card:hover {
-    border-color: #c7d2fe;
-    box-shadow: 0 4px 14px rgba(79,70,229,0.08);
-    transform: translateY(-1px);
-  }
-
-  .lux-device-card.active {
-    border-color: #4f46e5;
-    background: #f5f3ff;
-    box-shadow: 0 4px 14px rgba(79,70,229,0.12);
-  }
-
-  .lux-device-card-title {
-    font-size: 14px;
-    font-weight: 800;
-    color: #1e293b;
-    margin-bottom: 2px;
-  }
-
-  .lux-device-card.active .lux-device-card-title {
-    color: #4f46e5;
-  }
-
-  .lux-device-card-code {
-    font-size: 12px;
-    color: #64748b;
-    font-weight: 700;
-  }
-
-  .lux-device-card-meta {
-    font-size: 11px;
-    color: #94a3b8;
-    margin-top: 5px;
-    line-height: 1.45;
-  }
-
-  .lux-device-summary {
-    margin-top: 14px;
-    padding: 12px 16px;
-    background: #ecfdf5;
-    border: 1px solid #a7f3d0;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #065f46;
-    font-weight: 700;
-    font-size: 13px;
-  }
-
-  .lux-device-inline-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    margin-top: 12px;
-    padding-top: 12px;
-    border-top: 1px solid #e2e8f0;
-    flex-wrap: wrap;
-  }
-
-  .lux-device-results-count {
-    font-size: 12px;
-    color: #64748b;
-    font-weight: 700;
-  }
-
-  .lux-loading-box, .lux-error-box {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 18px;
-    margin-bottom: 18px;
-    font-size: 14px;
-    font-weight: 600;
-  }
-
-  .lux-error-box {
-    color: #b91c1c;
-    background: #fef2f2;
-    border-color: #fecaca;
-  }
-
-  @media (max-width: 1350px) {
-    .lux-filters-grid {
-      grid-template-columns: repeat(4, minmax(140px, 1fr));
-    }
-  }
-
-  @media (max-width: 900px) {
-    .lux-tp-root {
-      padding: 18px 14px;
-    }
-    .lux-filters-grid {
-      grid-template-columns: repeat(2, minmax(140px, 1fr));
-    }
-    .lux-device-filter-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .lux-device-list {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 600px) {
-    .lux-filters-grid {
-      grid-template-columns: 1fr;
-    }
-    .lux-device-filter-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @keyframes luxFadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-  @keyframes luxSlideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-`;
-
-/* ─────────────────────────────────────────────────────────────────
-   LOCATION BADGES COMPONENT
-───────────────────────────────────────────────────────────────── */
-function LocationBadges({ ploc = {} }) {
+function userName(user) {
   return (
-    <div className="lux-device-loc-badges">
-      {ploc.cluster && (
-        <span className="lux-loc-tag lux-loc-tag--cluster">
-          📍 {ploc.cluster}
-        </span>
-      )}
-      {ploc.building && (
-        <span className="lux-loc-tag lux-loc-tag--building">
-          🏢 {ploc.building}
-        </span>
-      )}
-      {ploc.zone && (
-        <span className="lux-loc-tag lux-loc-tag--zone">
-          {ploc.zone}
-        </span>
-      )}
-      {ploc.lane && (
-        <span className="lux-loc-tag lux-loc-tag--lane">
-          Lane {ploc.lane}
-        </span>
-      )}
-      {ploc.direction && (
-        <span className={`lux-loc-tag lux-loc-tag--${ploc.direction === "IN" ? "in" : "out"}`}>
-          {ploc.direction}
-        </span>
-      )}
-      {ploc.type && (
-        <span className="lux-loc-tag lux-loc-tag--type">
-          {ploc.type}
-        </span>
-      )}
-    </div>
+    user?.fullName ||
+    user?.name ||
+    user?.username ||
+    user?.email ||
+    `Technician #${user?.id}`
   );
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   COMPONENTS
-───────────────────────────────────────────────────────────────── */
-function DeviceSelector({ devices, selectedId, onSelect }) {
-  const [search, setSearch] = useState("");
-  const [cluster, setCluster] = useState("ALL");
-  const [building, setBuilding] = useState("ALL");
-  const [zone, setZone] = useState("ALL");
-  const [lane, setLane] = useState("ALL");
-  const [direction, setDirection] = useState("ALL");
-  const [type, setType] = useState("ALL");
+function loadLocal() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
 
-  const clusterOptions = useMemo(
-    () => ["ALL", ...uniqueValues(devices.map((d) => d.parsedLoc.cluster)).sort()],
-    [devices]
+function saveLocal(tasks) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+function assetLocation(x) {
+  const l = x?.location || {};
+
+  return {
+    ministry:
+      x?.ministry ||
+      x?.ministryName ||
+      x?.organization ||
+      l?.ministry ||
+      l?.name ||
+      x?.building ||
+      "",
+    cluster: x?.cluster || l?.cluster || "",
+    building: x?.building || l?.building || "",
+    zone: x?.zone || l?.zone || "",
+    lane: x?.lane || l?.lane || "",
+    direction: x?.direction || l?.direction || "",
+    type:
+      x?.type ||
+      x?.deviceType?.name ||
+      x?.gateType ||
+      x?.currentStatus ||
+      "",
+  };
+}
+
+function assetTitle(a) {
+  if (a.assetType === "GATE") {
+    return `Gate ${a.gateNo || a.gateNumber || a.name || a.id}`;
+  }
+
+  return (
+    a.deviceName ||
+    a.name ||
+    a.deviceCode ||
+    a.barcode ||
+    `Device ${a.id}`
   );
+}
 
-  const buildingOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...uniqueValues(
-        devices
-          .filter((d) => cluster === "ALL" || d.parsedLoc.cluster === cluster)
-          .map((d) => d.parsedLoc.building)
-      ).sort(),
-    ];
-  }, [devices, cluster]);
+function unique(list) {
+  return [...new Set(list.filter(Boolean).map(String))].sort();
+}
 
-  const zoneOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...uniqueValues(
-        devices
-          .filter((d) => cluster === "ALL" || d.parsedLoc.cluster === cluster)
-          .filter((d) => building === "ALL" || d.parsedLoc.building === building)
-          .map((d) => d.parsedLoc.zone)
-      ).sort(),
-    ];
-  }, [devices, cluster, building]);
+function percent(done, total) {
+  if (!total) return 0;
+  return Math.round((done / total) * 100);
+}
 
-  const laneOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...uniqueValues(
-        devices
-          .filter((d) => cluster === "ALL" || d.parsedLoc.cluster === cluster)
-          .filter((d) => building === "ALL" || d.parsedLoc.building === building)
-          .filter((d) => zone === "ALL" || d.parsedLoc.zone === zone)
-          .map((d) => String(d.parsedLoc.lane || ""))
-      ).sort(),
-    ];
-  }, [devices, cluster, building, zone]);
+function statusClass(status) {
+  if (status === "DONE") return "done";
+  if (status === "IN_PROGRESS") return "progress";
+  if (status === "ISSUE") return "issue";
+  return "pending";
+}
 
-  const directionOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...uniqueValues(
-        devices
-          .filter((d) => cluster === "ALL" || d.parsedLoc.cluster === cluster)
-          .filter((d) => building === "ALL" || d.parsedLoc.building === building)
-          .filter((d) => zone === "ALL" || d.parsedLoc.zone === zone)
-          .filter((d) => lane === "ALL" || String(d.parsedLoc.lane || "") === lane)
-          .map((d) => d.parsedLoc.direction)
-      ).sort(),
-    ];
-  }, [devices, cluster, building, zone, lane]);
+const styles = `
+.tasks-wow{
+  min-height:100vh;
+  padding:24px;
+  background:
+    radial-gradient(circle at top left,rgba(14,165,233,.18),transparent 28%),
+    radial-gradient(circle at top right,rgba(99,102,241,.14),transparent 30%),
+    linear-gradient(135deg,#f8fbff,#eefaff);
+  color:#0f172a;
+  font-family:Inter,system-ui,Arial,sans-serif;
+}
 
-  const typeOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...uniqueValues(
-        devices
-          .filter((d) => cluster === "ALL" || d.parsedLoc.cluster === cluster)
-          .filter((d) => building === "ALL" || d.parsedLoc.building === building)
-          .filter((d) => zone === "ALL" || d.parsedLoc.zone === zone)
-          .filter((d) => lane === "ALL" || String(d.parsedLoc.lane || "") === lane)
-          .filter((d) => direction === "ALL" || d.parsedLoc.direction === direction)
-          .map((d) => d.parsedLoc.type || d.deviceType?.name || "")
-      ).sort(),
-    ];
-  }, [devices, cluster, building, zone, lane, direction]);
+.tw-hero{
+  border-radius:32px;
+  padding:30px;
+  background:linear-gradient(135deg,#061427,#102f55,#0ea5e9);
+  color:white;
+  box-shadow:0 30px 80px rgba(14,165,233,.25);
+  display:flex;
+  justify-content:space-between;
+  gap:20px;
+  align-items:flex-start;
+}
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+.tw-hero h1{
+  margin:0;
+  font-size:38px;
+  letter-spacing:-1px;
+}
 
-    return devices.filter((d) => {
-      const haystack = [
-        d.deviceName,
-        d.deviceCode,
-        d.barcode,
-        d.parsedLoc.cluster,
-        d.parsedLoc.building,
-        d.parsedLoc.zone,
-        d.parsedLoc.lane,
-        d.parsedLoc.direction,
-        d.parsedLoc.type,
+.tw-hero p{
+  margin:8px 0 0;
+  color:#dff7ff;
+  font-weight:800;
+}
+
+.tw-btn{
+  border:0;
+  border-radius:16px;
+  padding:12px 18px;
+  font-weight:1000;
+  cursor:pointer;
+  background:#0ea5e9;
+  color:white;
+  box-shadow:0 12px 28px rgba(14,165,233,.28);
+  transition:.18s ease;
+}
+
+.tw-btn:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.03);
+}
+
+.tw-btn.white{
+  background:white;
+  color:#0f172a;
+  border:1px solid #dbeafe;
+  box-shadow:none;
+}
+
+.tw-btn.dark{
+  background:#0f172a;
+}
+
+.tw-btn.green{
+  background:#22c55e;
+}
+
+.tw-btn.blue{
+  background:#2563eb;
+}
+
+.tw-btn.red{
+  background:#ef4444;
+}
+
+.tw-btn.orange{
+  background:#f97316;
+}
+
+.tw-btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.tw-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.tw-tabs{
+  margin:18px 0;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.tw-tab{
+  background:white;
+  border:1px solid #cbd5e1;
+  border-radius:999px;
+  padding:11px 16px;
+  font-weight:1000;
+  color:#334155;
+  cursor:pointer;
+}
+
+.tw-tab.active{
+  background:#0f172a;
+  color:white;
+  border-color:#0f172a;
+}
+
+.tw-stats{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:14px;
+}
+
+.tw-stat{
+  background:white;
+  border:1px solid #dbeafe;
+  border-radius:24px;
+  padding:18px;
+  box-shadow:0 18px 42px rgba(15,23,42,.06);
+  position:relative;
+  overflow:hidden;
+}
+
+.tw-stat:before{
+  content:"";
+  position:absolute;
+  inset:0 0 auto 0;
+  height:5px;
+  background:linear-gradient(90deg,#0ea5e9,#6366f1,#22c55e);
+}
+
+.tw-stat span{
+  display:block;
+  color:#64748b;
+  font-size:11px;
+  font-weight:1000;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+
+.tw-stat strong{
+  display:block;
+  font-size:32px;
+  margin-top:9px;
+  line-height:1;
+}
+
+.tw-progress{
+  height:12px;
+  border-radius:999px;
+  background:#e2e8f0;
+  overflow:hidden;
+  margin-top:12px;
+}
+
+.tw-progress i{
+  display:block;
+  height:100%;
+  background:linear-gradient(90deg,#ef4444,#2563eb,#22c55e);
+  transition:.3s;
+}
+
+.tw-panel{
+  margin-top:18px;
+  background:white;
+  border:1px solid #dbeafe;
+  border-radius:30px;
+  padding:20px;
+  box-shadow:0 20px 48px rgba(15,23,42,.07);
+}
+
+.tw-panel-head{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+  margin-bottom:16px;
+}
+
+.tw-panel h2{
+  margin:0;
+  font-size:23px;
+}
+
+.tw-panel p{
+  margin:6px 0 0;
+  color:#64748b;
+  font-weight:800;
+}
+
+.tw-toolbar{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.tw-input,
+.tw-select,
+.tw-textarea{
+  width:100%;
+  border:1px solid #cbd5e1;
+  border-radius:15px;
+  padding:12px;
+  outline:none;
+  font-weight:900;
+  background:white;
+}
+
+.tw-input:focus,
+.tw-select:focus,
+.tw-textarea:focus{
+  border-color:#0ea5e9;
+  box-shadow:0 0 0 4px rgba(14,165,233,.12);
+}
+
+.tw-textarea{
+  min-height:90px;
+}
+
+.tw-grid-form{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+}
+
+.tw-field label{
+  display:block;
+  font-size:11px;
+  font-weight:1000;
+  text-transform:uppercase;
+  color:#64748b;
+  margin-bottom:6px;
+}
+
+.tw-wide{
+  grid-column:span 4;
+}
+
+.tw-layout{
+  display:grid;
+  grid-template-columns:330px 1fr 330px;
+  gap:16px;
+}
+
+.tw-filter{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:24px;
+  padding:16px;
+}
+
+.tw-stack{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.tw-list{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:24px;
+  padding:12px;
+  max-height:560px;
+  overflow:auto;
+}
+
+.tw-asset{
+  background:white;
+  border:1px solid #e2e8f0;
+  border-radius:20px;
+  padding:13px;
+  display:flex;
+  gap:12px;
+  cursor:pointer;
+  margin-bottom:10px;
+  transition:.18s ease;
+}
+
+.tw-asset:hover{
+  transform:translateY(-1px);
+  box-shadow:0 12px 28px rgba(15,23,42,.07);
+}
+
+.tw-asset.selected{
+  background:#ecfeff;
+  border-color:#0ea5e9;
+}
+
+.tw-asset.done{
+  background:#f0fdf4;
+  border-color:#86efac;
+}
+
+.tw-asset.progress{
+  background:#eff6ff;
+  border-color:#93c5fd;
+}
+
+.tw-asset.issue{
+  background:#fff7ed;
+  border-color:#fdba74;
+}
+
+.tw-asset.pending{
+  background:#fff1f2;
+  border-color:#fecdd3;
+}
+
+.tw-asset b{
+  display:block;
+}
+
+.tw-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+
+.tw-tag{
+  font-size:11px;
+  font-weight:1000;
+  padding:4px 8px;
+  border-radius:999px;
+  background:#eef2ff;
+  color:#3730a3;
+}
+
+.tw-tag.device{
+  background:#ecfdf5;
+  color:#047857;
+}
+
+.tw-tag.gate{
+  background:#fff7ed;
+  color:#c2410c;
+}
+
+.tw-tag.done{
+  background:#dcfce7;
+  color:#15803d;
+}
+
+.tw-tag.progress{
+  background:#dbeafe;
+  color:#1d4ed8;
+}
+
+.tw-tag.pending{
+  background:#fee2e2;
+  color:#b91c1c;
+}
+
+.tw-mini{
+  color:#64748b;
+  font-size:12px;
+  font-weight:800;
+  margin-top:4px;
+}
+
+.tw-basket{
+  background:linear-gradient(180deg,#ffffff,#f8fafc);
+  border:1px solid #dbeafe;
+  border-radius:24px;
+  padding:16px;
+  max-height:560px;
+  overflow:auto;
+}
+
+.tw-basket h3{
+  margin:0 0 10px;
+}
+
+.tw-basket-card{
+  border:1px solid #e2e8f0;
+  background:white;
+  border-radius:18px;
+  padding:11px;
+  margin-bottom:8px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.tw-x{
+  border:0;
+  background:#fee2e2;
+  color:#b91c1c;
+  border-radius:10px;
+  font-weight:1000;
+  cursor:pointer;
+  width:32px;
+  height:32px;
+}
+
+.tw-task-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+
+.tw-task{
+  border:1px solid #dbeafe;
+  background:linear-gradient(180deg,#fff,#f8fbff);
+  border-radius:26px;
+  padding:16px;
+  box-shadow:0 14px 35px rgba(15,23,42,.06);
+}
+
+.tw-task-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.tw-task h3{
+  margin:0;
+}
+
+.tw-task-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:12px 0;
+}
+
+.tw-task-items{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
+  margin-top:12px;
+}
+
+.tw-item{
+  border-radius:20px;
+  padding:12px;
+  border:1px solid #fecdd3;
+  background:#fff1f2;
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  transition:.2s ease;
+}
+
+.tw-item.progress{
+  border-color:#93c5fd;
+  background:#eff6ff;
+}
+
+.tw-item.done{
+  border-color:#86efac;
+  background:#f0fdf4;
+}
+
+.tw-item.issue{
+  border-color:#fdba74;
+  background:#fff7ed;
+}
+
+.tw-item-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.tw-small{
+  padding:8px 10px;
+  border-radius:12px;
+  font-size:12px;
+}
+
+.tw-empty{
+  border:1px dashed #cbd5e1;
+  border-radius:20px;
+  padding:30px;
+  text-align:center;
+  color:#64748b;
+  font-weight:900;
+  background:#f8fafc;
+}
+
+.tw-modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.62);
+  backdrop-filter:blur(8px);
+  z-index:1000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.tw-modal{
+  width:min(1180px,96vw);
+  max-height:92vh;
+  overflow:auto;
+  background:white;
+  border-radius:32px;
+  box-shadow:0 40px 120px rgba(0,0,0,.35);
+  border:1px solid #dbeafe;
+}
+
+.tw-modal-head{
+  position:sticky;
+  top:0;
+  z-index:3;
+  background:linear-gradient(135deg,#071427,#123a64,#0ea5e9);
+  color:white;
+  padding:22px;
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+}
+
+.tw-modal-head h2{
+  margin:0;
+  font-size:26px;
+}
+
+.tw-modal-head p{
+  margin:6px 0 0;
+  color:#dff7ff;
+  font-weight:800;
+}
+
+.tw-close{
+  background:rgba(255,255,255,.18);
+  border:1px solid rgba(255,255,255,.3);
+  color:white;
+  border-radius:14px;
+  width:42px;
+  height:42px;
+  font-size:22px;
+  cursor:pointer;
+}
+
+.tw-modal-body{
+  padding:20px;
+}
+
+.tw-stepper{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  margin-bottom:18px;
+}
+
+.tw-step{
+  border-radius:18px;
+  padding:13px;
+  background:#f1f5f9;
+  border:1px solid #e2e8f0;
+  font-weight:1000;
+  color:#64748b;
+}
+
+.tw-step.active{
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-color:#93c5fd;
+}
+
+.tw-step.done{
+  background:#f0fdf4;
+  color:#15803d;
+  border-color:#86efac;
+}
+
+.tw-modal-foot{
+  position:sticky;
+  bottom:0;
+  background:white;
+  border-top:1px solid #e2e8f0;
+  padding:16px 20px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.tw-review{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+}
+
+.tw-review-card{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:22px;
+  padding:16px;
+}
+
+.tw-review-card span{
+  color:#64748b;
+  font-size:11px;
+  font-weight:1000;
+  text-transform:uppercase;
+}
+
+.tw-review-card strong{
+  display:block;
+  font-size:28px;
+  margin-top:8px;
+}
+
+.tw-alert{
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid #fecaca;
+  background:#fef2f2;
+  color:#b91c1c;
+  font-weight:900;
+  margin-top:14px;
+}
+
+@media(max-width:1200px){
+  .tw-stats{grid-template-columns:repeat(3,1fr)}
+  .tw-layout{grid-template-columns:1fr}
+  .tw-grid-form{grid-template-columns:repeat(2,1fr)}
+  .tw-wide{grid-column:span 2}
+  .tw-task-grid{grid-template-columns:1fr}
+}
+
+@media(max-width:700px){
+  .tw-hero{flex-direction:column}
+  .tw-stats{grid-template-columns:1fr}
+  .tw-grid-form{grid-template-columns:1fr}
+  .tw-wide{grid-column:span 1}
+  .tw-review{grid-template-columns:1fr}
+  .tw-stepper{grid-template-columns:1fr}
+}
+`;
+
+export function TasksPage() {
+  const [view, setView] = useState("ADMIN");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [step, setStep] = useState(1);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [users, setUsers] = useState([]);
+  const [devices, setDevices] = useState([]);
+  const [gates, setGates] = useState([]);
+
+  const [tasks, setTasks] = useState(loadLocal());
+
+  const [form, setForm] = useState({
+    title: "Global Inspection Task",
+    technicianId: "",
+    scheduledDate: "",
+    priority: "HIGH",
+    notes: "",
+  });
+
+  const [filters, setFilters] = useState({
+    search: "",
+    assetType: "ALL",
+    ministry: "ALL",
+    cluster: "ALL",
+    building: "ALL",
+    zone: "ALL",
+    direction: "ALL",
+    type: "ALL",
+  });
+
+  const [selected, setSelected] = useState([]);
+
+  useEffect(() => {
+    const s = document.createElement("style");
+    s.innerHTML = styles;
+    document.head.appendChild(s);
+    return () => s.remove();
+  }, []);
+
+  useEffect(() => {
+    saveLocal(tasks);
+  }, [tasks]);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [u, d, g] = await Promise.all([
+        tryPaths(["/users", "/accounts", "/auth/users"]).catch(() => []),
+        tryPaths(["/devices"]).catch(() => []),
+        tryPaths(["/gates"]).catch(() => []),
+      ]);
+
+      setUsers(toArray(u));
+      setDevices(toArray(d));
+      setGates(toArray(g));
+    } catch (e) {
+      setError(e.message || "Failed to load backend data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const technicians = useMemo(() => users.filter(isTechnician), [users]);
+
+  const assets = useMemo(() => {
+    const mappedDevices = devices.map((d) => ({
+      ...d,
+      uid: `DEVICE-${d.id}`,
+      assetType: "DEVICE",
+      loc: assetLocation(d),
+    }));
+
+    const mappedGates = gates.map((g) => ({
+      ...g,
+      uid: `GATE-${g.id}`,
+      assetType: "GATE",
+      loc: assetLocation(g),
+    }));
+
+    return [...mappedDevices, ...mappedGates];
+  }, [devices, gates]);
+
+  const optionBase = useMemo(() => {
+    return assets.filter((a) => {
+      if (filters.assetType !== "ALL" && a.assetType !== filters.assetType) return false;
+      if (filters.ministry !== "ALL" && a.loc.ministry !== filters.ministry) return false;
+      if (filters.cluster !== "ALL" && a.loc.cluster !== filters.cluster) return false;
+      if (filters.building !== "ALL" && a.loc.building !== filters.building) return false;
+      if (filters.zone !== "ALL" && a.loc.zone !== filters.zone) return false;
+      return true;
+    });
+  }, [assets, filters]);
+
+  const filterOptions = useMemo(() => {
+    return {
+      ministry: unique(assets.map((a) => a.loc.ministry)),
+      cluster: unique(optionBase.map((a) => a.loc.cluster)),
+      building: unique(optionBase.map((a) => a.loc.building)),
+      zone: unique(optionBase.map((a) => a.loc.zone)),
+      direction: unique(optionBase.map((a) => a.loc.direction)),
+      type: unique(optionBase.map((a) => a.loc.type)),
+    };
+  }, [assets, optionBase]);
+
+  const filteredAssets = useMemo(() => {
+    const q = filters.search.trim().toLowerCase();
+
+    return assets.filter((a) => {
+      const text = [
+        assetTitle(a),
+        a.deviceCode,
+        a.barcode,
+        a.gateNo,
+        a.loc.ministry,
+        a.loc.cluster,
+        a.loc.building,
+        a.loc.zone,
+        a.loc.direction,
+        a.loc.type,
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
 
-      if (q && !haystack.includes(q)) return false;
-      if (cluster !== "ALL" && d.parsedLoc.cluster !== cluster) return false;
-      if (building !== "ALL" && d.parsedLoc.building !== building) return false;
-      if (zone !== "ALL" && d.parsedLoc.zone !== zone) return false;
-      if (lane !== "ALL" && String(d.parsedLoc.lane || "") !== lane) return false;
-      if (direction !== "ALL" && d.parsedLoc.direction !== direction) return false;
-      if (type !== "ALL" && (d.parsedLoc.type || "") !== type) return false;
+      if (q && !text.includes(q)) return false;
+      if (filters.assetType !== "ALL" && a.assetType !== filters.assetType) return false;
+      if (filters.ministry !== "ALL" && a.loc.ministry !== filters.ministry) return false;
+      if (filters.cluster !== "ALL" && a.loc.cluster !== filters.cluster) return false;
+      if (filters.building !== "ALL" && a.loc.building !== filters.building) return false;
+      if (filters.zone !== "ALL" && a.loc.zone !== filters.zone) return false;
+      if (filters.direction !== "ALL" && a.loc.direction !== filters.direction) return false;
+      if (filters.type !== "ALL" && a.loc.type !== filters.type) return false;
 
       return true;
     });
-  }, [devices, search, cluster, building, zone, lane, direction, type]);
+  }, [assets, filters]);
 
-  const selectedDev = devices.find((d) => d.id === selectedId);
+  const selectedAssets = useMemo(
+    () => assets.filter((a) => selected.includes(a.uid)),
+    [assets, selected]
+  );
 
-  const resetFilters = () => {
-    setSearch("");
-    setCluster("ALL");
-    setBuilding("ALL");
-    setZone("ALL");
-    setLane("ALL");
-    setDirection("ALL");
-    setType("ALL");
-  };
+  const summary = useMemo(() => {
+    const all = tasks.flatMap((t) => t.items);
+    const done = all.filter((i) => i.status === "DONE");
+    const progress = all.filter((i) => i.status === "IN_PROGRESS");
+    const pending = all.filter((i) => i.status === "PENDING");
+    const devicesAll = all.filter((i) => i.assetType === "DEVICE");
+    const gatesAll = all.filter((i) => i.assetType === "GATE");
+
+    return {
+      tasks: tasks.length,
+      total: all.length,
+      done: done.length,
+      progress: progress.length,
+      pending: pending.length,
+      remaining: all.length - done.length,
+      devicesDone: devicesAll.filter((i) => i.status === "DONE").length,
+      devicesTotal: devicesAll.length,
+      gatesDone: gatesAll.filter((i) => i.status === "DONE").length,
+      gatesTotal: gatesAll.length,
+      percent: percent(done.length, all.length),
+    };
+  }, [tasks]);
+
+  const shownTasks = useMemo(() => {
+    if (view === "ADMIN") return tasks;
+    const techId = form.technicianId || technicians[0]?.id;
+    return tasks.filter((t) => String(t.technicianId) === String(techId));
+  }, [view, tasks, form.technicianId, technicians]);
+
+  function openAddTask() {
+    setModalOpen(true);
+    setStep(1);
+  }
+
+  function closeAddTask() {
+    setModalOpen(false);
+  }
+
+  function toggleAsset(uid) {
+    setSelected((old) =>
+      old.includes(uid) ? old.filter((x) => x !== uid) : [...old, uid]
+    );
+  }
+
+  function removeAsset(uid) {
+    setSelected((old) => old.filter((x) => x !== uid));
+  }
+
+  function selectAllFiltered() {
+    setSelected((old) => {
+      const set = new Set(old);
+      filteredAssets.forEach((a) => set.add(a.uid));
+      return [...set];
+    });
+  }
+
+  function selectOnlyDevices() {
+    setSelected((old) => {
+      const set = new Set(old);
+      filteredAssets
+        .filter((a) => a.assetType === "DEVICE")
+        .forEach((a) => set.add(a.uid));
+      return [...set];
+    });
+  }
+
+  function selectOnlyGates() {
+    setSelected((old) => {
+      const set = new Set(old);
+      filteredAssets
+        .filter((a) => a.assetType === "GATE")
+        .forEach((a) => set.add(a.uid));
+      return [...set];
+    });
+  }
+
+  function clearSelected() {
+    setSelected([]);
+  }
+
+  function createTask() {
+    if (!form.technicianId) return alert("اختاري الفني الأول");
+    if (!form.scheduledDate) return alert("اختاري ميعاد التاسك");
+    if (!selectedAssets.length) return alert("اختاري أجهزة أو بوابات");
+
+    const tech = technicians.find((t) => String(t.id) === String(form.technicianId));
+
+    const newTask = {
+      id: Date.now(),
+      title: form.title || "Global Inspection Task",
+      technicianId: String(form.technicianId),
+      technicianName: userName(tech),
+      scheduledDate: form.scheduledDate,
+      priority: form.priority,
+      notes: form.notes,
+      createdAt: new Date().toISOString(),
+      items: selectedAssets.map((a) => ({
+        id: `${a.uid}-${Date.now()}-${Math.random()}`,
+        assetUid: a.uid,
+        assetId: a.id,
+        assetType: a.assetType,
+        label: assetTitle(a),
+        loc: a.loc,
+        status: "PENDING",
+        doneAt: null,
+        startedAt: null,
+      })),
+    };
+
+    setTasks((old) => [newTask, ...old]);
+    setModalOpen(false);
+    setStep(1);
+    setSelected([]);
+  }
+
+  function setItemStatus(taskId, itemId, nextStatus) {
+    setTasks((old) =>
+      old.map((task) => {
+        if (task.id !== taskId) return task;
+
+        return {
+          ...task,
+          items: task.items.map((item) => {
+            if (item.id !== itemId) return item;
+
+            return {
+              ...item,
+              status: nextStatus,
+              startedAt:
+                nextStatus === "IN_PROGRESS"
+                  ? item.startedAt || new Date().toISOString()
+                  : item.startedAt,
+              doneAt:
+                nextStatus === "DONE"
+                  ? new Date().toISOString()
+                  : nextStatus === "PENDING"
+                    ? null
+                    : item.doneAt,
+            };
+          }),
+        };
+      })
+    );
+  }
+
+  function markAllDone(taskId) {
+    setTasks((old) =>
+      old.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              items: task.items.map((i) => ({
+                ...i,
+                status: "DONE",
+                doneAt: i.doneAt || new Date().toISOString(),
+              })),
+            }
+          : task
+      )
+    );
+  }
+
+  function deleteTask(taskId) {
+    if (!confirm("Delete this task?")) return;
+    setTasks((old) => old.filter((t) => t.id !== taskId));
+  }
+
+  const reviewDevices = selectedAssets.filter((a) => a.assetType === "DEVICE").length;
+  const reviewGates = selectedAssets.filter((a) => a.assetType === "GATE").length;
 
   return (
-    <div className="lux-device-selector-shell">
-      <div className="lux-device-selector-top">
-        <div className="lux-device-search">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            type="text"
-            placeholder="Search by device name, code, cluster, building, zone, lane, direction..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+    <section className="tasks-wow">
+      <div className="tw-hero">
+        <div>
+          <h1>Global Task Command Center</h1>
+          <p>
+            اختاري فني، حددي أجهزة وبوابات، تابعي Done و Remaining بألوان واضحة.
+          </p>
         </div>
 
-        <div className="lux-device-filter-grid">
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Cluster</label>
-            <select
-              className="lux-filter-select"
-              value={cluster}
-              onChange={(e) => {
-                setCluster(e.target.value);
-                setBuilding("ALL");
-                setZone("ALL");
-                setLane("ALL");
-                setDirection("ALL");
-                setType("ALL");
-                onSelect(null);
-              }}
-            >
-              {clusterOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All Clusters" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Building</label>
-            <select
-              className="lux-filter-select"
-              value={building}
-              onChange={(e) => {
-                setBuilding(e.target.value);
-                setZone("ALL");
-                setLane("ALL");
-                setDirection("ALL");
-                setType("ALL");
-                onSelect(null);
-              }}
-            >
-              {buildingOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All Buildings" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Zone</label>
-            <select
-              className="lux-filter-select"
-              value={zone}
-              onChange={(e) => {
-                setZone(e.target.value);
-                setLane("ALL");
-                setDirection("ALL");
-                setType("ALL");
-                onSelect(null);
-              }}
-            >
-              {zoneOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All Zones" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Lane</label>
-            <select
-              className="lux-filter-select"
-              value={lane}
-              onChange={(e) => {
-                setLane(e.target.value);
-                setDirection("ALL");
-                setType("ALL");
-                onSelect(null);
-              }}
-            >
-              {laneOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All Lanes" : `Lane ${v}`}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Direction</label>
-            <select
-              className="lux-filter-select"
-              value={direction}
-              onChange={(e) => {
-                setDirection(e.target.value);
-                setType("ALL");
-                onSelect(null);
-              }}
-            >
-              {directionOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All Directions" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Type</label>
-            <select
-              className="lux-filter-select"
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value);
-                onSelect(null);
-              }}
-            >
-              {typeOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All Types" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="lux-device-inline-actions">
-          <div className="lux-device-results-count">
-            Showing {filtered.length} of {devices.length} devices
-          </div>
-          <button type="button" className="lux-clear-btn" onClick={resetFilters}>
-            Reset Device Filters
+        <div className="tw-actions">
+          <button className="tw-btn white" onClick={loadData}>
+            {loading ? "Loading..." : "Refresh Data"}
+          </button>
+          <button className="tw-btn green" onClick={openAddTask}>
+            + Add Global Task
           </button>
         </div>
+      </div>
 
-        {filtered.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#94a3b8", margin: 0 }}>No devices match these filters.</p>
+      {error && <div className="tw-alert">{error}</div>}
+
+      <div className="tw-tabs">
+        <button
+          className={`tw-tab ${view === "ADMIN" ? "active" : ""}`}
+          onClick={() => setView("ADMIN")}
+        >
+          Admin Monitor
+        </button>
+        <button
+          className={`tw-tab ${view === "TECH" ? "active" : ""}`}
+          onClick={() => setView("TECH")}
+        >
+          Technician View
+        </button>
+      </div>
+
+      <div className="tw-stats">
+        <div className="tw-stat">
+          <span>Tasks</span>
+          <strong>{summary.tasks}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Total Items</span>
+          <strong>{summary.total}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Done Green</span>
+          <strong>{summary.done}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>In Progress Blue</span>
+          <strong>{summary.progress}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Remaining Red</span>
+          <strong>{summary.remaining}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Progress</span>
+          <strong>{summary.percent}%</strong>
+          <div className="tw-progress">
+            <i style={{ width: `${summary.percent}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <div className="tw-stats" style={{ marginTop: 14 }}>
+        <div className="tw-stat">
+          <span>Devices Done</span>
+          <strong>
+            {summary.devicesDone}/{summary.devicesTotal}
+          </strong>
+        </div>
+        <div className="tw-stat">
+          <span>Gates Done</span>
+          <strong>
+            {summary.gatesDone}/{summary.gatesTotal}
+          </strong>
+        </div>
+        <div className="tw-stat">
+          <span>Backend Devices</span>
+          <strong>{devices.length}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Backend Gates</span>
+          <strong>{gates.length}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Technicians</span>
+          <strong>{technicians.length}</strong>
+        </div>
+        <div className="tw-stat">
+          <span>Selected</span>
+          <strong>{selectedAssets.length}</strong>
+        </div>
+      </div>
+
+      {view === "TECH" && (
+        <div className="tw-panel">
+          <div className="tw-panel-head">
+            <div>
+              <h2>Technician Preview</h2>
+              <p>اختاري الفني علشان تشوفي التاسكات بتاعته وتعملي Done زي الموبايل.</p>
+            </div>
+          </div>
+
+          <div className="tw-field">
+            <label>Technician</label>
+            <select
+              className="tw-select"
+              value={form.technicianId}
+              onChange={(e) => setForm({ ...form, technicianId: e.target.value })}
+            >
+              <option value="">Auto first technician</option>
+              {technicians.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {userName(t)} — TECHNICIAN
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div className="tw-panel">
+        <div className="tw-panel-head">
+          <div>
+            <h2>{view === "ADMIN" ? "All Global Tasks" : "My Assigned Tasks"}</h2>
+            <p>
+              الأحمر = لسه، الأزرق = الفني بدأ، الأخضر = Done.
+            </p>
+          </div>
+
+          {view === "ADMIN" && (
+            <button className="tw-btn green" onClick={openAddTask}>
+              + Add Task
+            </button>
+          )}
+        </div>
+
+        {shownTasks.length === 0 ? (
+          <div className="tw-empty">
+            No tasks yet. اضغطي Add Global Task وابدئي أول تاسك.
+          </div>
         ) : (
-          <div className="lux-device-list">
-            {filtered.map((d) => {
-              const sel = selectedId === d.id;
+          <div className="tw-task-grid">
+            {shownTasks.map((task) => {
+              const done = task.items.filter((i) => i.status === "DONE").length;
+              const inProgress = task.items.filter((i) => i.status === "IN_PROGRESS").length;
+              const total = task.items.length;
+              const devicesTotal = task.items.filter((i) => i.assetType === "DEVICE").length;
+              const gatesTotal = task.items.filter((i) => i.assetType === "GATE").length;
+              const taskPercent = percent(done, total);
+
               return (
-                <div
-                  key={d.id}
-                  onClick={() => onSelect(d.id)}
-                  className={`lux-device-card ${sel ? "active" : ""}`}
-                >
-                  <div className="lux-device-card-title">{d.deviceName || "Unknown Device"}</div>
-                  <div className="lux-device-card-code">
-                    Code: {d.deviceCode || d.barcode || d.excelId || "—"}
+                <article className="tw-task" key={task.id}>
+                  <div className="tw-task-head">
+                    <div>
+                      <h3>{task.title}</h3>
+                      <div className="tw-mini">
+                        {task.technicianName} • {new Date(task.scheduledDate).toLocaleString()}
+                      </div>
+                    </div>
+
+                    <span className={`tw-tag ${taskPercent === 100 ? "done" : inProgress ? "progress" : "pending"}`}>
+                      {taskPercent}%
+                    </span>
                   </div>
-                  {/* Separated location badges inside device selector card */}
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 8 }}>
-                    {d.parsedLoc.cluster && (
-                      <span className="lux-loc-tag lux-loc-tag--cluster">📍 {d.parsedLoc.cluster}</span>
-                    )}
-                    {d.parsedLoc.building && (
-                      <span className="lux-loc-tag lux-loc-tag--building">🏢 {d.parsedLoc.building}</span>
-                    )}
-                    {d.parsedLoc.zone && (
-                      <span className="lux-loc-tag lux-loc-tag--zone">{d.parsedLoc.zone}</span>
-                    )}
-                    {d.parsedLoc.lane && (
-                      <span className="lux-loc-tag lux-loc-tag--lane">Lane {d.parsedLoc.lane}</span>
-                    )}
-                    {d.parsedLoc.direction && (
-                      <span className={`lux-loc-tag lux-loc-tag--${d.parsedLoc.direction === "IN" ? "in" : "out"}`}>
-                        {d.parsedLoc.direction}
-                      </span>
-                    )}
-                    {d.parsedLoc.type && (
-                      <span className="lux-loc-tag lux-loc-tag--type">{d.parsedLoc.type}</span>
+
+                  <div className="tw-task-meta">
+                    <span className="tw-tag">Total {total}</span>
+                    <span className="tw-tag device">Devices {devicesTotal}</span>
+                    <span className="tw-tag gate">Gates {gatesTotal}</span>
+                    <span className="tw-tag done">Done {done}</span>
+                    <span className="tw-tag progress">Blue {inProgress}</span>
+                    <span className="tw-tag pending">Remaining {total - done}</span>
+                  </div>
+
+                  <div className="tw-progress">
+                    <i style={{ width: `${taskPercent}%` }} />
+                  </div>
+
+                  {task.notes && <p>{task.notes}</p>}
+
+                  <div className="tw-actions" style={{ marginTop: 12 }}>
+                    <button className="tw-btn green tw-small" onClick={() => markAllDone(task.id)}>
+                      Mark All Done
+                    </button>
+                    {view === "ADMIN" && (
+                      <button className="tw-btn red tw-small" onClick={() => deleteTask(task.id)}>
+                        Delete
+                      </button>
                     )}
                   </div>
-                </div>
+
+                  <div className="tw-task-items">
+                    {task.items.map((item) => (
+                      <div
+                        key={item.id}
+                        className={`tw-item ${statusClass(item.status)}`}
+                      >
+                        <div>
+                          <b>{item.label}</b>
+                          <div className="tw-mini">
+                            {item.assetType} • {item.loc?.ministry || "—"} •{" "}
+                            {item.loc?.building || "—"} • {item.loc?.zone || "—"}
+                          </div>
+
+                          <div className="tw-tags">
+                            <span className={`tw-tag ${item.assetType === "GATE" ? "gate" : "device"}`}>
+                              {item.assetType}
+                            </span>
+                            <span className={`tw-tag ${statusClass(item.status)}`}>
+                              {item.status === "PENDING"
+                                ? "Red Pending"
+                                : item.status === "IN_PROGRESS"
+                                  ? "Blue Started"
+                                  : item.status === "DONE"
+                                    ? "Green Done"
+                                    : item.status}
+                            </span>
+                            {item.loc?.direction && <span className="tw-tag">{item.loc.direction}</span>}
+                          </div>
+                        </div>
+
+                        <div className="tw-item-actions">
+                          <button
+                            className="tw-btn blue tw-small"
+                            onClick={() => setItemStatus(task.id, item.id, "IN_PROGRESS")}
+                          >
+                            Start
+                          </button>
+                          <button
+                            className="tw-btn green tw-small"
+                            onClick={() => setItemStatus(task.id, item.id, "DONE")}
+                          >
+                            Done
+                          </button>
+                          <button
+                            className="tw-btn white tw-small"
+                            onClick={() => setItemStatus(task.id, item.id, "PENDING")}
+                          >
+                            Undo
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </article>
               );
             })}
           </div>
         )}
       </div>
 
-      {selectedDev && (
-        <div className="lux-device-summary">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="20 6 9 17 4 12"></polyline>
-          </svg>
-          Selected: {selectedDev.deviceName} ({selectedDev.deviceCode || selectedDev.barcode || selectedDev.excelId || "—"})
-        </div>
-      )}
-    </div>
-  );
-}
-
-function NewTaskModalLux({
-  technicians,
-  admins = [],
-  devicesMapped,
-  onClose,
-  onSubmit,
-  loading,
-}) {
-  const [form, setForm] = useState({
-    assignedToId: "",
-    createdById: "",
-    scheduledDate: "",
-    frequency: "ONCE",
-    notes: "",
-    isEmergency: false,
-    deviceId: null,
-  });
-
-  const [error, setError] = useState("");
-
-  const adminOptions = useMemo(() => {
-    const map = new Map();
-    (admins || []).forEach((a) => {
-      if (!a?.id) return;
-      map.set(String(a.id), a);
-    });
-    return Array.from(map.values());
-  }, [admins]);
-
-  const handle = async () => {
-    if (!form.assignedToId || !form.createdById || !form.scheduledDate || !form.deviceId) {
-      setError("Please fill out all required fields marked with * and select a device.");
-      return;
-    }
-
-    setError("");
-    const noteText = form.isEmergency ? `EMERGENCY | ${form.notes || "Urgent task"}` : form.notes;
-
-    try {
-      await onSubmit({
-        deviceId: Number(form.deviceId),
-        assignedToId: Number(form.assignedToId),
-        createdById: Number(form.createdById),
-        scheduledDate: new Date(form.scheduledDate).toISOString(),
-        frequency: form.frequency,
-        status: "PENDING",
-        notes: noteText,
-      });
-      onClose();
-    } catch (e) {
-      setError(e?.message || "Failed to create task. Please try again.");
-    }
-  };
-
-  return (
-    <div className="lux-modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="lux-modal-body">
-        <div className="lux-modal-header">
-          <div>
-            <h2 style={{ margin: 0, fontSize: "20px", fontWeight: 800, color: "#0f172a" }}>
-              Dispatch New Task
-            </h2>
-            <p style={{ margin: "4px 0 0 0", fontSize: "13px", color: "#64748b" }}>
-              Assign maintenance or structural repairs to your field integrators.
-            </p>
-          </div>
-
-          <button
-            onClick={onClose}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8" }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-
-        <div className="lux-modal-content">
-          {error && (
-            <div
-              style={{
-                padding: "12px 16px",
-                borderRadius: "12px",
-                background: "#fef2f2",
-                border: "1px solid #fecaca",
-                color: "#b91c1c",
-                fontSize: "14px",
-                fontWeight: 500,
-                marginBottom: "20px",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-              {error}
-            </div>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-            <div className="lux-field">
-              <label className="lux-label">Assign Technician *</label>
-              <select
-                className="lux-input"
-                value={form.assignedToId}
-                onChange={(e) => setForm({ ...form, assignedToId: e.target.value })}
-              >
-                <option value="">Select Technician...</option>
-                {technicians.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {userDisplayName(t)} ({t.jobTitle || "Technician"})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="lux-field">
-              <label className="lux-label">Scheduled Date/Time *</label>
-              <input
-                type="datetime-local"
-                className="lux-input"
-                value={form.scheduledDate}
-                onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
-              />
-            </div>
-
-            <div className="lux-field">
-              <label className="lux-label">Created By (Admin ID) *</label>
-              <select
-                className="lux-input"
-                value={form.createdById}
-                onChange={(e) => setForm({ ...form, createdById: e.target.value })}
-              >
-                <option value="">Select Admin...</option>
-                {adminOptions.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {userDisplayName(a)} (ID: {a.id})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="lux-field">
-              <label className="lux-label">Recurrence / Frequency</label>
-              <select
-                className="lux-input"
-                value={form.frequency}
-                onChange={(e) => setForm({ ...form, frequency: e.target.value })}
-              >
-                <option value="ONCE">One-time / ONCE</option>
-                <option value="DAILY">DAILY</option>
-                <option value="WEEKLY">WEEKLY</option>
-                <option value="MONTHLY">MONTHLY</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="lux-field" style={{ marginTop: "4px" }}>
-            <label className="lux-label">Select Hardware Device *</label>
-            <DeviceSelector
-              devices={devicesMapped}
-              selectedId={form.deviceId}
-              onSelect={(id) => setForm({ ...form, deviceId: id })}
-            />
-          </div>
-
-          <div className="lux-field">
-            <label className="lux-label">Context / Instructions</label>
-            <textarea
-              className="lux-input"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              placeholder="Add specific warnings or steps required..."
-              style={{ minHeight: "80px", resize: "vertical" }}
-            />
-          </div>
-
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              fontSize: "14px",
-              fontWeight: 700,
-              color: "#b91c1c",
-              cursor: "pointer",
-              background: "#fef2f2",
-              padding: "16px",
-              borderRadius: "12px",
-              border: "1px solid #fecaca",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={form.isEmergency}
-              onChange={(e) => setForm({ ...form, isEmergency: e.target.checked })}
-              style={{ transform: "scale(1.2)" }}
-            />
-            Mark this operation as an EMERGENCY ESCALATION
-          </label>
-        </div>
-
-        <div className="lux-modal-footer">
-          <button className="lux-btn-secondary" onClick={onClose} disabled={loading}>
-            Cancel
-          </button>
-          <button className="lux-btn-primary" onClick={handle} disabled={loading}>
-            {loading ? "Dispatching..." : "Dispatch Task to Field"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TaskDetailsOverlay({ task, onClose, devicesMapped, inspections = [] }) {
-  if (!task) return null;
-
-  const device = devicesMapped.find((d) => d.id === (task.deviceId || task.device?.id)) || {};
-  const ploc = device.parsedLoc || {};
-
-  const taskInspections = inspections.filter(
-    (i) =>
-      i.taskId === task.id ||
-      (i.deviceId === device.id &&
-        new Date(i.inspectedAt || i.createdAt).toDateString() ===
-          new Date(task.scheduledDate || task.createdAt).toDateString())
-  );
-
-  const allImages = taskInspections.flatMap((i) => i.images || i.inspectionImages || []);
-  const meta = STATUS_META[task.status] || STATUS_META.PENDING;
-  const emerg = isEmergency(task);
-
-  return (
-    <>
-      <div className="lux-slide-backdrop" onClick={onClose}></div>
-
-      <div className="lux-slide-panel open">
-        <div className="lux-slide-header">
-          <button
-            onClick={onClose}
-            style={{
-              position: "absolute",
-              top: "32px",
-              right: "32px",
-              background: "#f1f5f9",
-              border: "none",
-              borderRadius: "50%",
-              width: "36px",
-              height: "36px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              transition: "all 0.2s",
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "16px" }}>
-            <span className="lux-badge" style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
-              {meta.label}
-            </span>
-            {emerg && <span className="lux-badge emerg">EMERGENCY</span>}
-            <span style={{ fontSize: "13px", color: "#94a3b8", fontWeight: 600 }}>TASK #{task.id}</span>
-          </div>
-
-          <h2 style={{ fontSize: "24px", fontWeight: 800, color: "#0f172a", margin: "0 0 8px 0", lineHeight: 1.2 }}>
-            {task.title || `Maintenance: ${device.deviceName || "Unknown Device"}`}
-          </h2>
-
-          <p style={{ margin: 0, fontSize: "14px", color: "#475569", lineHeight: 1.5 }}>
-            Scheduled for <strong style={{ color: "#0f172a" }}>{formatDate(task.scheduledDate || task.createdAt)}</strong>
-          </p>
-        </div>
-
-        <div style={{ flex: 1, padding: "32px", overflowY: "auto", background: "#fff" }}>
-          <div style={{ background: "#f8fafc", padding: "20px", borderRadius: "16px", border: "1px solid #f1f5f9", marginBottom: "24px" }}>
-            <h3 style={{ fontSize: "12px", textTransform: "uppercase", color: "#64748b", letterSpacing: "0.5px", margin: "0 0 16px 0", fontWeight: 700 }}>
-              Assignment Protocol
-            </h3>
-
-            <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-              <div
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  borderRadius: "12px",
-                  background: "linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#4f46e5",
-                  fontWeight: 800,
-                  fontSize: "18px",
-                  border: "1px solid #a5b4fc",
-                }}
-              >
-                {initials(task.assignedTo?.fullName || task.assignedTo?.username || String(task.assignedToId))}
-              </div>
-
+      {modalOpen && (
+        <div className="tw-modal-backdrop">
+          <div className="tw-modal">
+            <div className="tw-modal-head">
               <div>
-                <div style={{ fontSize: "16px", fontWeight: 700, color: "#0f172a" }}>
-                  {task.assignedTo?.fullName || task.assignedTo?.username || `Technician ID: ${task.assignedToId}`}
-                </div>
-                <div style={{ fontSize: "13px", color: "#64748b", marginTop: "2px" }}>
-                  {task.assignedTo?.jobTitle || "Field Operative"} · {task.assignedTo?.phone || "No phone listed"}
-                </div>
+                <h2>Dispatch New Global Task</h2>
+                <p>بوكس منظم: اختاري الفني، الفلاتر، الأجهزة والبوابات، ثم إرسال.</p>
               </div>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: "32px" }}>
-            <h3 style={{ fontSize: "12px", textTransform: "uppercase", color: "#64748b", letterSpacing: "0.5px", margin: "0 0 12px 0", fontWeight: 700 }}>
-              Hardware Designation
-            </h3>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-              <div style={{ padding: "16px", border: "1px solid #e2e8f0", borderRadius: "12px", background: "#fff" }}>
-                <div style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase", fontWeight: 600, marginBottom: "4px" }}>
-                  Device / Hardware
-                </div>
-                <div style={{ fontSize: "14px", fontWeight: 700, color: "#0f172a" }}>
-                  {device.deviceName || "—"}{" "}
-                  <span style={{ color: "#64748b", fontWeight: 400, marginLeft: "4px" }}>
-                    {device.deviceCode || device.barcode || device.excelId || ""}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ padding: "16px", border: "1px solid #e2e8f0", borderRadius: "12px", background: "#fff" }}>
-                <div style={{ fontSize: "11px", color: "#94a3b8", textTransform: "uppercase", fontWeight: 600, marginBottom: "8px" }}>
-                  Deployment Vector
-                </div>
-                {/* Separated location badges in the detail overlay */}
-                <LocationBadges ploc={ploc} />
-              </div>
+              <button className="tw-close" onClick={closeAddTask}>
+                ×
+              </button>
             </div>
 
-            {(task.notes || task.description) && (
-              <div style={{ marginTop: "16px", padding: "16px", borderLeft: "4px solid #4f46e5", background: "#e0e7ff", borderRadius: "0 12px 12px 0" }}>
-                <div style={{ fontSize: "12px", fontWeight: 700, color: "#3730a3", marginBottom: "4px" }}>
-                  ADMIN DIRECTIVE / NOTES
+            <div className="tw-modal-body">
+              <div className="tw-stepper">
+                <div className={`tw-step ${step === 1 ? "active" : step > 1 ? "done" : ""}`}>
+                  1. Technician & Info
                 </div>
-                <div style={{ fontSize: "14px", color: "#312e81", lineHeight: 1.5 }}>
-                  "{task.notes || task.description}"
+                <div className={`tw-step ${step === 2 ? "active" : step > 2 ? "done" : ""}`}>
+                  2. Select Assets
                 </div>
-              </div>
-            )}
-          </div>
-
-          <div style={{ borderTop: "2px dashed #e2e8f0", paddingTop: "32px" }}>
-            <h3 style={{ fontSize: "12px", textTransform: "uppercase", color: "#64748b", letterSpacing: "0.5px", margin: "0 0 16px 0", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-              </svg>
-              Technician Field Reports & Media
-            </h3>
-
-            {taskInspections.length === 0 ? (
-              <div style={{ padding: "24px", textAlign: "center", background: "#f8fafc", borderRadius: "12px", border: "1px solid #f1f5f9" }}>
-                <div style={{ fontSize: "14px", fontWeight: 600, color: "#94a3b8" }}>No field reports submitted yet.</div>
-                <div style={{ fontSize: "13px", color: "#cbd5e1", marginTop: "4px" }}>
-                  The assigned technician hasn't filed an inspection log for this task.
+                <div className={`tw-step ${step === 3 ? "active" : ""}`}>
+                  3. Review & Dispatch
                 </div>
               </div>
-            ) : (
-              <div>
-                {taskInspections.map((ins) => (
-                  <div key={ins.id} style={{ padding: "16px", border: "1px solid #e2e8f0", borderRadius: "12px", marginBottom: "16px", background: "#fff" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 800, color: ins.inspectionStatus === "COMPLETED" || ins.inspectionStatus === "OK" ? "#10b981" : "#f59e0b" }}>
-                        {ins.inspectionStatus || "LOGGED"}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>
-                        {formatDate(ins.inspectedAt || ins.createdAt)}
-                      </span>
-                    </div>
-                    <p style={{ margin: "0", fontSize: "14px", color: "#334155", lineHeight: 1.5 }}>
-                      {ins.notes || ins.issueReason || "No specific text remarks left by technician."}
-                    </p>
+
+              {step === 1 && (
+                <div className="tw-grid-form">
+                  <div className="tw-field">
+                    <label>Technician only</label>
+                    <select
+                      className="tw-select"
+                      value={form.technicianId}
+                      onChange={(e) => setForm({ ...form, technicianId: e.target.value })}
+                    >
+                      <option value="">Select Technician...</option>
+                      {technicians.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {userName(t)} — TECHNICIAN
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                ))}
 
-                {allImages.length > 0 && (
-                  <div style={{ marginTop: "24px" }}>
-                    <div className="lux-label" style={{ fontSize: "11px" }}>
-                      Attached Visual Evidence ({allImages.length})
-                    </div>
-                    <div className="lux-img-grid">
-                      {allImages.map((img, idx) => {
-                        const url = img?.imageUrl || img?.url || img?.path || "";
-                        return (
-                          <div
-                            key={idx}
-                            className="lux-img-card"
-                            style={{ backgroundImage: `url(${url})` }}
-                            onClick={() => url && window.open(url, "_blank")}
-                            title="Click to enlarge"
-                          />
-                        );
-                      })}
+                  <div className="tw-field">
+                    <label>Scheduled Date</label>
+                    <input
+                      className="tw-input"
+                      type="datetime-local"
+                      value={form.scheduledDate}
+                      onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="tw-field">
+                    <label>Priority</label>
+                    <select
+                      className="tw-select"
+                      value={form.priority}
+                      onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                    >
+                      <option value="LOW">LOW</option>
+                      <option value="MEDIUM">MEDIUM</option>
+                      <option value="HIGH">HIGH</option>
+                      <option value="EMERGENCY">EMERGENCY</option>
+                    </select>
+                  </div>
+
+                  <div className="tw-field">
+                    <label>Task Title</label>
+                    <input
+                      className="tw-input"
+                      value={form.title}
+                      onChange={(e) => setForm({ ...form, title: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="tw-field tw-wide">
+                    <label>Instructions</label>
+                    <textarea
+                      className="tw-textarea"
+                      placeholder="تعليمات للفني..."
+                      value={form.notes}
+                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="tw-layout">
+                  <div className="tw-filter">
+                    <h3>Power Filters</h3>
+
+                    <div className="tw-stack">
+                      <input
+                        className="tw-input"
+                        placeholder="Search ministry, building, device, gate..."
+                        value={filters.search}
+                        onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                      />
+
+                      <select
+                        className="tw-select"
+                        value={filters.assetType}
+                        onChange={(e) => setFilters({ ...filters, assetType: e.target.value })}
+                      >
+                        <option value="ALL">Devices + Gates</option>
+                        <option value="DEVICE">Devices Only</option>
+                        <option value="GATE">Gates Only</option>
+                      </select>
+
+                      <select
+                        className="tw-select"
+                        value={filters.ministry}
+                        onChange={(e) => setFilters({ ...filters, ministry: e.target.value })}
+                      >
+                        <option value="ALL">All Ministries</option>
+                        {filterOptions.ministry.map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="tw-select"
+                        value={filters.building}
+                        onChange={(e) => setFilters({ ...filters, building: e.target.value })}
+                      >
+                        <option value="ALL">All Buildings</option>
+                        {filterOptions.building.map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="tw-select"
+                        value={filters.cluster}
+                        onChange={(e) => setFilters({ ...filters, cluster: e.target.value })}
+                      >
+                        <option value="ALL">All Clusters</option>
+                        {filterOptions.cluster.map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="tw-select"
+                        value={filters.zone}
+                        onChange={(e) => setFilters({ ...filters, zone: e.target.value })}
+                      >
+                        <option value="ALL">All Zones</option>
+                        {filterOptions.zone.map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="tw-select"
+                        value={filters.direction}
+                        onChange={(e) => setFilters({ ...filters, direction: e.target.value })}
+                      >
+                        <option value="ALL">All Directions</option>
+                        {filterOptions.direction.map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </select>
+
+                      <button className="tw-btn" onClick={selectAllFiltered}>
+                        Select Current Filter ({filteredAssets.length})
+                      </button>
+
+                      <button className="tw-btn blue" onClick={selectOnlyDevices}>
+                        Select Devices
+                      </button>
+
+                      <button className="tw-btn orange" onClick={selectOnlyGates}>
+                        Select Gates
+                      </button>
+
+                      <button className="tw-btn white" onClick={clearSelected}>
+                        Clear All ({selected.length})
+                      </button>
                     </div>
                   </div>
+
+                  <div className="tw-list">
+                    {filteredAssets.map((a) => (
+                      <div
+                        key={a.uid}
+                        className={`tw-asset ${selected.includes(a.uid) ? "selected" : ""}`}
+                        onClick={() => toggleAsset(a.uid)}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(a.uid)}
+                          onChange={() => toggleAsset(a.uid)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+
+                        <div>
+                          <b>{assetTitle(a)}</b>
+                          <div className="tw-mini">
+                            ID: {a.id} {a.deviceCode ? `• ${a.deviceCode}` : ""}
+                          </div>
+
+                          <div className="tw-tags">
+                            <span className={`tw-tag ${a.assetType === "GATE" ? "gate" : "device"}`}>
+                              {a.assetType}
+                            </span>
+                            {a.loc.ministry && <span className="tw-tag">{a.loc.ministry}</span>}
+                            {a.loc.building && <span className="tw-tag">{a.loc.building}</span>}
+                            {a.loc.zone && <span className="tw-tag">{a.loc.zone}</span>}
+                            {a.loc.direction && <span className="tw-tag">{a.loc.direction}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {!filteredAssets.length && (
+                      <div className="tw-empty">No assets match this filter.</div>
+                    )}
+                  </div>
+
+                  <div className="tw-basket">
+                    <h3>Selected Basket</h3>
+                    <div className="tw-task-meta">
+                      <span className="tw-tag device">Devices {reviewDevices}</span>
+                      <span className="tw-tag gate">Gates {reviewGates}</span>
+                      <span className="tw-tag">Total {selectedAssets.length}</span>
+                    </div>
+
+                    {selectedAssets.length === 0 ? (
+                      <div className="tw-empty">اختاري أجهزة أو بوابات</div>
+                    ) : (
+                      selectedAssets.map((a) => (
+                        <div className="tw-basket-card" key={a.uid}>
+                          <div>
+                            <b>{assetTitle(a)}</b>
+                            <div className="tw-mini">
+                              {a.assetType} • {a.loc.building || "—"} • {a.loc.zone || "—"}
+                            </div>
+                          </div>
+                          <button className="tw-x" onClick={() => removeAsset(a.uid)}>
+                            ×
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
+                <>
+                  <div className="tw-review">
+                    <div className="tw-review-card">
+                      <span>Technician</span>
+                      <strong>
+                        {userName(
+                          technicians.find((t) => String(t.id) === String(form.technicianId))
+                        ) || "—"}
+                      </strong>
+                    </div>
+                    <div className="tw-review-card">
+                      <span>Total Selected</span>
+                      <strong>{selectedAssets.length}</strong>
+                    </div>
+                    <div className="tw-review-card">
+                      <span>Devices</span>
+                      <strong>{reviewDevices}</strong>
+                    </div>
+                    <div className="tw-review-card">
+                      <span>Gates</span>
+                      <strong>{reviewGates}</strong>
+                    </div>
+                  </div>
+
+                  <div className="tw-panel">
+                    <h2>{form.title}</h2>
+                    <p>{form.notes || "No notes"}</p>
+
+                    <div className="tw-task-meta">
+                      <span className="tw-tag pending">Will start RED pending</span>
+                      <span className="tw-tag progress">Start makes it BLUE</span>
+                      <span className="tw-tag done">Done makes it GREEN</span>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="tw-modal-foot">
+              <div className="tw-actions">
+                <button className="tw-btn white" onClick={closeAddTask}>
+                  Cancel
+                </button>
+                {step > 1 && (
+                  <button className="tw-btn white" onClick={() => setStep(step - 1)}>
+                    Back
+                  </button>
                 )}
               </div>
-            )}
+
+              <div className="tw-actions">
+                {step < 3 ? (
+                  <button
+                    className="tw-btn blue"
+                    onClick={() => {
+                      if (step === 1 && !form.technicianId) return alert("اختاري الفني");
+                      if (step === 1 && !form.scheduledDate) return alert("اختاري الميعاد");
+                      if (step === 2 && !selectedAssets.length) return alert("اختاري أجهزة أو بوابات");
+                      setStep(step + 1);
+                    }}
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button className="tw-btn green" onClick={createTask}>
+                    Dispatch Task To Field
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   MAIN PAGE
-───────────────────────────────────────────────────────────────── */
-export function TasksPage({ canManage = true }) {
-  const [tasks, setTasks] = useState([]);
-  const [technicians, setTechnicians] = useState([]);
-  const [admins, setAdmins] = useState([]);
-  const [devices, setDevices] = useState([]);
-  const [inspections, setInspections] = useState([]);
-
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [clusterFilter, setClusterFilter] = useState("ALL");
-  const [buildingFilter, setBuildingFilter] = useState("ALL");
-  const [zoneFilter, setZoneFilter] = useState("ALL");
-  const [directionFilter, setDirectionFilter] = useState("ALL");
-  const [technicianFilter, setTechnicianFilter] = useState("ALL");
-  const [emergencyFilter, setEmergencyFilter] = useState("ALL");
-
-  const [loading, setLoading] = useState(false);
-  const [bootLoading, setBootLoading] = useState(true);
-  const [pageError, setPageError] = useState("");
-
-  useEffect(() => {
-    const el = document.createElement("style");
-    el.innerHTML = LUX_CSS;
-    document.head.appendChild(el);
-    return () => document.head.removeChild(el);
-  }, []);
-
-  const fetchUsers = useCallback(async () => {
-    try {
-      const techRes = await tryGet([
-        "/users?role=technician",
-        "/users?type=technician",
-        "/users/technicians",
-      ]);
-      const technicianList = normalizeArrayResponse(techRes);
-
-      let adminList = [];
-      try {
-        const adminRes = await tryGet([
-          "/users?role=admin",
-          "/users?type=admin",
-          "/users/admins",
-        ]);
-        adminList = normalizeArrayResponse(adminRes);
-      } catch {
-        adminList = [];
-      }
-
-      if (technicianList.length > 0 || adminList.length > 0) {
-        return { technicians: technicianList, admins: adminList };
-      }
-    } catch {
-      /* fallback below */
-    }
-
-    const allUsersRes = await tryGet(["/users"]);
-    const allUsers = normalizeArrayResponse(allUsersRes);
-
-    return {
-      technicians: allUsers.filter(isTechnicianUser),
-      admins: allUsers.filter(isAdminUser),
-    };
-  }, []);
-
-  const loadAllData = useCallback(async () => {
-    try {
-      setPageError("");
-      setBootLoading(true);
-
-      const [tasksRes, usersPack, devicesRes, inspectionsRes] = await Promise.all([
-        tryGet(["/inspection-tasks", "/tasks"]),
-        fetchUsers(),
-        tryGet(["/devices"]),
-        tryGet(["/inspections"]).catch(() => []),
-      ]);
-
-      setTasks(normalizeArrayResponse(tasksRes));
-      setTechnicians(usersPack.technicians || []);
-      setAdmins(usersPack.admins || []);
-      setDevices(normalizeArrayResponse(devicesRes));
-      setInspections(normalizeArrayResponse(inspectionsRes));
-    } catch (err) {
-      setPageError(err?.message || "Failed to load tasks page data from backend.");
-    } finally {
-      setBootLoading(false);
-    }
-  }, [fetchUsers]);
-
-  useEffect(() => {
-    loadAllData();
-  }, [loadAllData]);
-
-  const onCreateTask = useCallback(async (payload) => {
-    setLoading(true);
-    try {
-      await apiRequest("/inspection-tasks", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      await loadAllData();
-    } finally {
-      setLoading(false);
-    }
-  }, [loadAllData]);
-
-  const onDeleteTask = useCallback(async (taskId) => {
-    const ok = window.confirm(`Are you sure you want to revoke task #${taskId}?`);
-    if (!ok) return;
-
-    setLoading(true);
-    try {
-      await apiRequest(`/inspection-tasks/${taskId}`, { method: "DELETE" });
-      await loadAllData();
-    } finally {
-      setLoading(false);
-    }
-  }, [loadAllData]);
-
-  const onUpdateTaskStatus = useCallback(async (taskId, status) => {
-    setLoading(true);
-    try {
-      await apiRequest(`/inspection-tasks/${taskId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ status }),
-      });
-      await loadAllData();
-    } finally {
-      setLoading(false);
-    }
-  }, [loadAllData]);
-
-  const devicesMapped = useMemo(
-    () => devices.map((d) => ({ ...d, parsedLoc: parseDeviceLocation(d) })),
-    [devices]
-  );
-
-  const tasksEnriched = useMemo(() => {
-    return tasks.map((t) => {
-      const deviceId =
-        t.deviceId ||
-        t.device?.id ||
-        t.hardwareDeviceId ||
-        t.device?.deviceId;
-
-      const d =
-        devicesMapped.find((dev) => String(dev.id) === String(deviceId)) ||
-        { parsedLoc: {} };
-
-      return {
-        ...t,
-        device: t.device || d,
-        ploc: d.parsedLoc || {},
-      };
-    });
-  }, [tasks, devicesMapped]);
-
-  const statusOptions = useMemo(() => ["ALL", ...Object.keys(STATUS_META)], []);
-
-  const clusterOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...new Set(
-        tasksEnriched
-          .map((t) => t.ploc?.cluster)
-          .filter((v) => v && v !== "Unknown")
-      ),
-    ];
-  }, [tasksEnriched]);
-
-  const buildingOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...new Set(
-        tasksEnriched
-          .filter((t) => clusterFilter === "ALL" || t.ploc?.cluster === clusterFilter)
-          .map((t) => t.ploc?.building)
-          .filter((v) => v && v !== "Unknown")
-      ),
-    ];
-  }, [tasksEnriched, clusterFilter]);
-
-  const zoneOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...new Set(
-        tasksEnriched
-          .filter((t) => clusterFilter === "ALL" || t.ploc?.cluster === clusterFilter)
-          .filter((t) => buildingFilter === "ALL" || t.ploc?.building === buildingFilter)
-          .map((t) => t.ploc?.zone)
-          .filter((v) => v && v !== "Unknown")
-      ),
-    ];
-  }, [tasksEnriched, clusterFilter, buildingFilter]);
-
-  const directionOptions = useMemo(() => {
-    return [
-      "ALL",
-      ...new Set(
-        tasksEnriched
-          .filter((t) => clusterFilter === "ALL" || t.ploc?.cluster === clusterFilter)
-          .filter((t) => buildingFilter === "ALL" || t.ploc?.building === buildingFilter)
-          .filter((t) => zoneFilter === "ALL" || t.ploc?.zone === zoneFilter)
-          .map((t) => t.ploc?.direction)
-          .filter((v) => v && v !== "Unknown")
-      ),
-    ];
-  }, [tasksEnriched, clusterFilter, buildingFilter, zoneFilter]);
-
-  const technicianOptions = useMemo(() => {
-    const base = technicians.map((t) => ({
-      id: String(t.id),
-      name: t.fullName || t.username || t.name || `ID: ${t.id}`,
-    }));
-
-    const seen = new Set();
-    const uniq = [];
-
-    for (const item of base) {
-      if (!seen.has(item.id)) {
-        seen.add(item.id);
-        uniq.push(item);
-      }
-    }
-
-    return uniq;
-  }, [technicians]);
-
-  const filteredTasks = useMemo(() => {
-    const q = search.trim().toLowerCase();
-
-    return tasksEnriched
-      .filter((t) => {
-        const emergency = isEmergency(t);
-
-        const haystack = [
-          t.id,
-          t.title,
-          t.notes,
-          t.description,
-          t.device?.deviceName,
-          t.device?.deviceCode,
-          t.device?.barcode,
-          t.device?.excelId,
-          t.ploc?.cluster,
-          t.ploc?.building,
-          t.ploc?.zone,
-          t.ploc?.lane,
-          t.ploc?.direction,
-          t.assignedTo?.fullName,
-          t.assignedTo?.username,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-
-        if (q && !haystack.includes(q)) return false;
-        if (statusFilter !== "ALL" && t.status !== statusFilter) return false;
-        if (clusterFilter !== "ALL" && t.ploc?.cluster !== clusterFilter) return false;
-        if (buildingFilter !== "ALL" && t.ploc?.building !== buildingFilter) return false;
-        if (zoneFilter !== "ALL" && t.ploc?.zone !== zoneFilter) return false;
-        if (directionFilter !== "ALL" && t.ploc?.direction !== directionFilter) return false;
-        if (technicianFilter !== "ALL" && String(t.assignedToId || "") !== technicianFilter) return false;
-        if (emergencyFilter === "YES" && !emergency) return false;
-        if (emergencyFilter === "NO" && emergency) return false;
-
-        return true;
-      })
-      .sort((a, b) => new Date(b.scheduledDate || b.createdAt) - new Date(a.scheduledDate || a.createdAt));
-  }, [
-    tasksEnriched,
-    search,
-    statusFilter,
-    clusterFilter,
-    buildingFilter,
-    zoneFilter,
-    directionFilter,
-    technicianFilter,
-    emergencyFilter,
-  ]);
-
-  const activeFilters = [
-    statusFilter !== "ALL" ? `Status: ${statusFilter}` : null,
-    clusterFilter !== "ALL" ? `Cluster: ${clusterFilter}` : null,
-    buildingFilter !== "ALL" ? `Building: ${buildingFilter}` : null,
-    zoneFilter !== "ALL" ? `Zone: ${zoneFilter}` : null,
-    directionFilter !== "ALL" ? `Direction: ${directionFilter}` : null,
-    technicianFilter !== "ALL"
-      ? `Technician: ${technicianOptions.find((t) => t.id === technicianFilter)?.name || technicianFilter}`
-      : null,
-    emergencyFilter !== "ALL" ? `Emergency: ${emergencyFilter}` : null,
-  ].filter(Boolean);
-
-  const clearFilters = () => {
-    setSearch("");
-    setStatusFilter("ALL");
-    setClusterFilter("ALL");
-    setBuildingFilter("ALL");
-    setZoneFilter("ALL");
-    setDirectionFilter("ALL");
-    setTechnicianFilter("ALL");
-    setEmergencyFilter("ALL");
-  };
-
-  const columns = [
-    {
-      key: "id",
-      label: "TASK ID",
-      render: (v, t) => <strong style={{ color: "#4f46e5" }}>#{t.id}</strong>,
-    },
-    {
-      key: "assignedTo",
-      label: "OPERATIVE",
-      render: (v, t) => (
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <div
-            style={{
-              width: "28px",
-              height: "28px",
-              borderRadius: "50%",
-              background: "#e2e8f0",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "10px",
-              fontWeight: 800,
-              color: "#475569",
-            }}
-          >
-            {initials(t.assignedTo?.fullName || t.assignedTo?.username || String(t.assignedToId))}
-          </div>
-          <span style={{ fontWeight: 600, color: "#1e293b" }}>
-            {t.assignedTo?.fullName || t.assignedTo?.username || `ID: ${t.assignedToId}`}
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: "deviceName",
-      label: "DEVICE",
-      render: (v, t) => (
-        <div className="lux-device-block">
-          <div className="lux-device-name">{t.device?.deviceName || "—"}</div>
-          <div className="lux-device-code">
-            {t.device?.deviceCode || t.device?.barcode || t.device?.excelId || ""}
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "ploc_cluster",
-      label: "CLUSTER",
-      render: (v, t) =>
-        t.ploc?.cluster ? (
-          <span className="lux-loc-tag lux-loc-tag--cluster">📍 {t.ploc.cluster}</span>
-        ) : <span style={{ color: "#ccc" }}>—</span>,
-    },
-    {
-      key: "ploc_building",
-      label: "BUILDING",
-      render: (v, t) =>
-        t.ploc?.building ? (
-          <span className="lux-loc-tag lux-loc-tag--building">🏢 {t.ploc.building}</span>
-        ) : <span style={{ color: "#ccc" }}>—</span>,
-    },
-    {
-      key: "ploc_zone",
-      label: "ZONE",
-      render: (v, t) =>
-        t.ploc?.zone ? (
-          <span className="lux-loc-tag lux-loc-tag--zone">{t.ploc.zone}</span>
-        ) : <span style={{ color: "#ccc" }}>—</span>,
-    },
-    {
-      key: "ploc_lane",
-      label: "LANE",
-      render: (v, t) =>
-        t.ploc?.lane ? (
-          <span className="lux-loc-tag lux-loc-tag--lane">Lane {t.ploc.lane}</span>
-        ) : <span style={{ color: "#ccc" }}>—</span>,
-    },
-    {
-      key: "ploc_direction",
-      label: "DIRECTION",
-      render: (v, t) =>
-        t.ploc?.direction ? (
-          <span className={`lux-loc-tag lux-loc-tag--${t.ploc.direction === "IN" ? "in" : "out"}`}>
-            {t.ploc.direction}
-          </span>
-        ) : <span style={{ color: "#ccc" }}>—</span>,
-    },
-    {
-      key: "ploc_type",
-      label: "TYPE",
-      render: (v, t) =>
-        t.ploc?.type ? (
-          <span className="lux-loc-tag lux-loc-tag--type">{t.ploc.type}</span>
-        ) : <span style={{ color: "#ccc" }}>—</span>,
-    },
-    {
-      key: "status",
-      label: "STATUS VECTOR",
-      render: (v, t) => {
-        const meta = STATUS_META[t.status] || STATUS_META.PENDING;
-        const emerg = isEmergency(t);
-
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-            {canManage ? (
-              <select
-                value={t.status}
-                onChange={(e) => onUpdateTaskStatus(t.id, e.target.value)}
-                disabled={loading}
-                style={{
-                  background: meta.bg,
-                  color: meta.color,
-                  border: `1px solid ${meta.border}`,
-                  borderRadius: "20px",
-                  padding: "4px 28px 4px 10px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  outline: "none",
-                  appearance: "none",
-                  cursor: "pointer",
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {Object.keys(STATUS_META).map((k) => (
-                  <option key={k} value={k}>
-                    {STATUS_META[k].label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span
-                className="lux-badge"
-                style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}
-              >
-                {meta.label}
-              </span>
-            )}
-
-            {emerg && <span className="lux-badge emerg">⚡</span>}
-          </div>
-        );
-      },
-    },
-    {
-      key: "scheduledDate",
-      label: "TIMEFRAME",
-      render: (v, t) => (
-        <span style={{ color: "#475569", fontSize: "13px", fontWeight: 500 }}>
-          {formatDate(t.scheduledDate || t.createdAt)}
-        </span>
-      ),
-    },
-  ];
-
-  if (canManage) {
-    columns.push({
-      key: "action",
-      label: "",
-      render: (v, t) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteTask(t.id);
-          }}
-          style={{
-            padding: "6px 12px",
-            borderRadius: "8px",
-            border: "1px solid #fee2e2",
-            background: "#fff",
-            color: "#ef4444",
-            fontSize: "12px",
-            fontWeight: 600,
-            cursor: "pointer",
-            transition: "all 0.2s",
-            opacity: 0.8,
-          }}
-          onMouseOver={(e) => {
-            e.target.style.background = "#fef2f2";
-            e.target.style.opacity = "1";
-          }}
-          onMouseOut={(e) => {
-            e.target.style.background = "#fff";
-            e.target.style.opacity = "0.8";
-          }}
-        >
-          Revoke
-        </button>
-      ),
-    });
-  }
-
-  return (
-    <div className="lux-tp-root">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", gap: "16px", flexWrap: "wrap" }}>
-        <div>
-          <h1 className="lux-page-title">Tasks</h1>
-          <p className="lux-page-sub">System Administrative Control</p>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="lux-btn-secondary" onClick={loadAllData} disabled={loading || bootLoading}>
-            Refresh
-          </button>
-
-          {canManage && (
-            <button className="lux-btn-primary" onClick={() => setModalOpen(true)}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Dispatch New Task
-            </button>
-          )}
-        </div>
-      </div>
-
-      {bootLoading && (
-        <div className="lux-loading-box">
-          Loading tasks, users, devices, and inspections from backend...
         </div>
       )}
-      {pageError && <div className="lux-error-box">{pageError}</div>}
-
-      <div className="lux-filter-bar">
-        <div className="lux-search-box">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            type="text"
-            placeholder="Trace tasks by ID, technician, device, cluster, building, zone, or notes..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <div style={{ fontSize: "13px", color: "#64748b", fontWeight: 700, marginLeft: "auto" }}>
-          Showing {filteredTasks.length} of {tasks.length} records
-        </div>
-      </div>
-
-      <div className="lux-filters-panel">
-        <div className="lux-filters-grid">
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Status</label>
-            <select
-              className="lux-filter-select"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              {statusOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s === "ALL" ? "All statuses" : STATUS_META[s]?.label || s}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Cluster</label>
-            <select
-              className="lux-filter-select"
-              value={clusterFilter}
-              onChange={(e) => {
-                setClusterFilter(e.target.value);
-                setBuildingFilter("ALL");
-                setZoneFilter("ALL");
-                setDirectionFilter("ALL");
-              }}
-            >
-              {clusterOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All clusters" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Building</label>
-            <select
-              className="lux-filter-select"
-              value={buildingFilter}
-              onChange={(e) => {
-                setBuildingFilter(e.target.value);
-                setZoneFilter("ALL");
-                setDirectionFilter("ALL");
-              }}
-            >
-              {buildingOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All buildings" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Zone</label>
-            <select
-              className="lux-filter-select"
-              value={zoneFilter}
-              onChange={(e) => {
-                setZoneFilter(e.target.value);
-                setDirectionFilter("ALL");
-              }}
-            >
-              {zoneOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All zones" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Direction</label>
-            <select
-              className="lux-filter-select"
-              value={directionFilter}
-              onChange={(e) => setDirectionFilter(e.target.value)}
-            >
-              {directionOptions.map((v) => (
-                <option key={v} value={v}>
-                  {v === "ALL" ? "All directions" : v}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Technician</label>
-            <select
-              className="lux-filter-select"
-              value={technicianFilter}
-              onChange={(e) => setTechnicianFilter(e.target.value)}
-            >
-              <option value="ALL">All technicians</option>
-              {technicianOptions.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="lux-filter-field">
-            <label className="lux-filter-label">Emergency</label>
-            <select
-              className="lux-filter-select"
-              value={emergencyFilter}
-              onChange={(e) => setEmergencyFilter(e.target.value)}
-            >
-              <option value="ALL">All</option>
-              <option value="YES">Emergency only</option>
-              <option value="NO">Non-emergency</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="lux-filter-actions">
-          <button className="lux-clear-btn" onClick={clearFilters}>
-            Reset Filters
-          </button>
-        </div>
-
-        {activeFilters.length > 0 && (
-          <div className="lux-chip-row">
-            {activeFilters.map((chip) => (
-              <span key={chip} className="lux-chip">
-                {chip}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="lux-table-wrapper">
-        <DataGrid
-          data={filteredTasks}
-          columns={columns}
-          keyField="id"
-          onRowClick={(row) => setSelectedTask(row)}
-        />
-      </div>
-
-      {modalOpen && canManage && (
-        <NewTaskModalLux
-          technicians={technicians}
-          admins={admins}
-          devicesMapped={devicesMapped}
-          onClose={() => setModalOpen(false)}
-          onSubmit={onCreateTask}
-          loading={loading}
-        />
-      )}
-
-      {selectedTask && (
-        <TaskDetailsOverlay
-          task={selectedTask}
-          onClose={() => setSelectedTask(null)}
-          devicesMapped={devicesMapped}
-          inspections={inspections}
-        />
-      )}
-    </div>
+    </section>
   );
 }

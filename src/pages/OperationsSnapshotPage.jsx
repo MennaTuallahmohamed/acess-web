@@ -6,8 +6,9 @@ import { ViewerDevicesPage } from "./monitoring/ViewerDevicesPage";
 import { ViewerInspectionsPage } from "./monitoring/ViewerInspectionsPage";
 import { ViewerLocationsPage } from "./monitoring/ViewerLocationsPage";
 import { ViewerAnalyticsPage } from "./monitoring/ViewerAnalyticsPage";
+import { GatesPage } from "./GatesPage";
 
-const SNAPSHOT_TABS = ["home", "devices", "inspections", "locations", "analytics"];
+const SNAPSHOT_TABS = ["home", "devices", "gates", "inspections", "locations", "analytics"];
 
 const COPY = {
   en: {
@@ -71,6 +72,7 @@ const COPY = {
     strategicLayout: "Strategic Layout",
     homeTab: "Home",
     devicesTab: "Devices",
+    gatesTab: "Viewer Gates",
     inspectionsTab: "Inspections",
     locationsTab: "Locations",
     analyticsTab: "Analytics",
@@ -137,6 +139,7 @@ const COPY = {
     strategicLayout: "المخطط الاستراتيجي",
     homeTab: "الرئيسية",
     devicesTab: "الأجهزة",
+    gatesTab: "بوابات المشاهد",
     inspectionsTab: "الفحوصات",
     locationsTab: "المواقع",
     analyticsTab: "التحليلات",
@@ -221,6 +224,7 @@ export function OperationsSnapshotPage({
     () => ({
       home: copy.homeTab,
       devices: copy.devicesTab,
+      gates: copy.gatesTab,
       inspections: copy.inspectionsTab,
       locations: copy.locationsTab,
       analytics: copy.analyticsTab,
@@ -472,6 +476,7 @@ export function OperationsSnapshotPage({
           copy={copy}
           kpis={kpis}
           currentUser={currentUser}
+          loading={loading}
           activeFiltersText={activeFiltersText}
           recentInspections={recentInspections}
           devicesNeedingAttention={devicesNeedingAttention}
@@ -489,6 +494,18 @@ export function OperationsSnapshotPage({
           statsCards={statsCards}
           activeStatus={filters.status}
           onStatusClick={(status) => handleFilterChange("status", status)}
+        />
+      ) : null}
+
+      {tab === "gates" ? (
+        <GatesPage
+          readOnly
+          title={lang === "ar" ? "بوابات المشاهد" : "Viewer Gates"}
+          subtitle={
+            lang === "ar"
+              ? "متابعة قراءة فقط لحالة البوابات والفحوصات والمهام."
+              : "Read-only monitoring for gate status, inspections, tasks, filters, and history."
+          }
         />
       ) : null}
 

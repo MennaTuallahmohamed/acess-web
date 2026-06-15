@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import smartitLogo from "../../assets/smartit-logo-transparent.png";
 
 /* ═══════════════════════════════════════════
    CSS
@@ -8,23 +9,47 @@ const ANALYTICS_CSS = `
   box-sizing: border-box; margin: 0; padding: 0;
 }
 .analytics-root {
-  --blue:    #378ADD;
-  --green:   #1D9E75;
-  --amber:   #BA7517;
-  --red:     #C0392B;
-  --purple:  #7F77DD;
-  --cyan:    #0891B2;
+  --primary: #4f46e5;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+  --primary-light: #818cf8;
+  --accent-alt: #0ea5e9;
   --surface:  #ffffff;
   --surface2: #f7f8fa;
   --border:   rgba(0,0,0,0.07);
-  --text:     #16181d;
-  --muted:    #6b7585;
-  --faint:    #9aa0ad;
+  --text:     #0f172a;
+  --muted:    #475569;
+  --faint:    #94a3b8;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #f4f6f9;
+  background: #f1f5f9;
   color: var(--text);
   padding: 28px 24px;
   min-height: 100vh;
+}
+
+.an-brand-box {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12) 0%, rgba(79, 70, 229, 0.05) 100%);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 20px;
+  padding: 24px 32px;
+  margin-bottom: 28px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.an-brand-logo {
+  width: 120px;
+  height: auto;
+  flex-shrink: 0;
+}
+
+.an-brand-logo img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 /* top bar */
@@ -81,9 +106,9 @@ const ANALYTICS_CSS = `
   border-color: #fecdd3;
 }
 .an-alert--info {
-  background: #eff6ff;
-  color: #1d4ed8;
-  border-color: #bfdbfe;
+  background: rgba(79, 70, 229, 0.08);
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, 0.2);
 }
 
 /* pills */
@@ -110,8 +135,8 @@ const ANALYTICS_CSS = `
   user-select: none;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.an-pill:hover { border-color: var(--blue); color: var(--text); }
-.an-pill--active { background: #EBF4FF; border-color: var(--blue); color: var(--blue); }
+.an-pill:hover { border-color: var(--primary); color: var(--text); }
+.an-pill--active { background: rgba(79, 70, 229, 0.08); border-color: var(--primary); color: var(--primary); }
 .an-pill-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 
 /* grid */
@@ -208,7 +233,7 @@ const ANALYTICS_CSS = `
   height: 28px;
   border-radius: 50%;
   border: 3px solid #dbeafe;
-  border-top-color: #378ADD;
+  border-top-color: #4f46e5;
   margin: 0 auto 12px;
   animation: spin .8s linear infinite;
 }
@@ -258,7 +283,7 @@ function pickBaseUrl(propBaseUrl) {
     fromProp ||
     fromEnv ||
     fromLocal ||
-    "https://acess-backend-production.up.railway.app";
+    "https://acess-backend-production-8856.up.railway.app";
 
   return raw.replace(/\/+$/, "");
 }
@@ -522,7 +547,7 @@ function GaugeChart({ value, max = 100 }) {
     return `M ${x1},${y1} A ${R},${R} 0 ${e - s > Math.PI ? 1 : 0},1 ${x2},${y2}`;
   };
 
-  const col = value > 70 ? "#1D9E75" : value > 40 ? "#BA7517" : "#C0392B";
+  const col = value > 70 ? "#10b981" : value > 40 ? "#f59e0b" : "#ef4444";
 
   return (
     <div className="gauge-wrap">
@@ -563,7 +588,7 @@ function HeatmapCalendar({ data }) {
     <div className="heatmap-grid">
       {data.map((d, i) => {
         const intensity = d.value / max;
-        const bg = d.value === 0 ? "#eef1f6" : `rgba(55,138,221,${.15 + intensity * .85})`;
+        const bg = d.value === 0 ? "#eef1f6" : `rgba(79, 70, 229, ${.15 + intensity * .85})`;
         return <div key={i} className="heatmap-cell" style={{ background: bg }} title={`${d.label}: ${d.value}`} />;
       })}
     </div>
@@ -576,7 +601,7 @@ function StackedBarChart({ data, h = 130 }) {
   const maxVal = Math.max(...data.map((d) => d.total), 1) * 1.1;
   const bW = (cW / Math.max(data.length, 1)) * .6;
   const gap = cW / Math.max(data.length, 1);
-  const COLORS = { ok: "#1D9E75", attention: "#BA7517", maintenance: "#C0392B" };
+  const COLORS = { ok: "#10b981", attention: "#f59e0b", maintenance: "#ef4444" };
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="chart-svg" style={{ height: h }}>
@@ -702,7 +727,7 @@ function RadarChart({ data }) {
         return <polygon key={l} points={pts} fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="1" />;
       })}
       {data.map((_, i) => <line key={i} x1={cx} y1={cy} x2={pt(i, R)[0]} y2={pt(i, R)[1]} stroke="rgba(0,0,0,0.08)" strokeWidth="1" />)}
-      <polygon points={polyPts} fill="rgba(55,138,221,0.15)" stroke="#378ADD" strokeWidth="2" />
+      <polygon points={polyPts} fill="rgba(79, 70, 229, 0.15)" stroke="#4f46e5" strokeWidth="2" />
       {data.map((d, i) => {
         const [x, y] = pt(i, R + 14);
         return <text key={i} x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="chart-axis-label" fontSize="9">{d.label}</text>;
@@ -739,11 +764,11 @@ function Card({ title, subtitle, accentColor, children }) {
    CONSTANTS
 ═══════════════════════════════════════════ */
 const CHART_CATS = [
-  { key: "all",         en: "All Charts", ar: "كل الشارتات", color: "#378ADD" },
-  { key: "trends",      en: "Trends",     ar: "الاتجاهات",   color: "#0891B2" },
-  { key: "status",      en: "Status",     ar: "الحالة",      color: "#1D9E75" },
-  { key: "locations",   en: "Locations",  ar: "المواقع",     color: "#7F77DD" },
-  { key: "performance", en: "Performance",ar: "الأداء",      color: "#BA7517" },
+  { key: "all",         en: "All Charts", ar: "كل الشارتات", color: "#4f46e5" },
+  { key: "trends",      en: "Trends",     ar: "الاتجاهات",   color: "#0ea5e9" },
+  { key: "status",      en: "Status",     ar: "الحالة",      color: "#10b981" },
+  { key: "locations",   en: "Locations",  ar: "المواقع",     color: "#818cf8" },
+  { key: "performance", en: "Performance",ar: "الأداء",      color: "#f59e0b" },
 ];
 
 /* ═══════════════════════════════════════════
@@ -1004,10 +1029,10 @@ export function ViewerAnalyticsPage({
   const healthRate = total ? Math.round((healthy / total) * 100) : 0;
 
   const donutData = [
-    { label: t("Operational", "تعمل"), value: statusCounts.OK || 0, color: "#1D9E75" },
-    { label: t("Attention", "تحتاج متابعة"), value: statusCounts.ATTENTION || 0, color: "#BA7517" },
-    { label: t("Needs Maint.", "تحتاج صيانة"), value: statusCounts.NEEDS_MAINTENANCE || 0, color: "#C0392B" },
-    { label: t("Under Maint.", "تحت الصيانة"), value: statusCounts.UNDER_MAINTENANCE || 0, color: "#378ADD" },
+    { label: t("Operational", "تعمل"), value: statusCounts.OK || 0, color: "#10b981" },
+    { label: t("Attention", "تحتاج متابعة"), value: statusCounts.ATTENTION || 0, color: "#f59e0b" },
+    { label: t("Needs Maint.", "تحتاج صيانة"), value: statusCounts.NEEDS_MAINTENANCE || 0, color: "#ef4444" },
+    { label: t("Under Maint.", "تحت الصيانة"), value: statusCounts.UNDER_MAINTENANCE || 0, color: "#4f46e5" },
     { label: t("Out of Service", "خارج الخدمة"), value: statusCounts.OUT_OF_SERVICE || 0, color: "#9aa0ad" },
   ];
 
@@ -1021,20 +1046,20 @@ export function ViewerAnalyticsPage({
   ];
 
   const sparklines = [
-    { label: t("Healthy", "تعمل"), values: monthly.slice(6).map((m) => Math.max(m.value, 1)), color: "#1D9E75" },
-    { label: t("Inspections", "فحوصات"), values: monthly.slice(6).map((m) => m.value), color: "#378ADD" },
-    { label: t("Attention", "متابعة"), values: monthly.slice(6).map((_, i) => Math.floor(i * .5 + 1)), color: "#BA7517" },
+    { label: t("Healthy", "تعمل"), values: monthly.slice(6).map((m) => Math.max(m.value, 1)), color: "#10b981" },
+    { label: t("Inspections", "فحوصات"), values: monthly.slice(6).map((m) => m.value), color: "#4f46e5" },
+    { label: t("Attention", "متابعة"), values: monthly.slice(6).map((_, i) => Math.floor(i * .5 + 1)), color: "#f59e0b" },
   ];
 
   const multiSeries = [
     {
       key: "inspections",
-      color: "#378ADD",
+      color: "#4f46e5",
       data: monthly.slice(0, 8).map((m) => ({ label: m.label, value: m.value })),
     },
     {
       key: "devices",
-      color: "#1D9E75",
+      color: "#10b981",
       data: monthly.slice(0, 8).map((m, i) => ({ label: m.label, value: Math.max(m.value - i, 0) })),
     },
   ];
@@ -1058,11 +1083,11 @@ export function ViewerAnalyticsPage({
 
   const summaryStats = [
     { label: t("Total Devices", "إجمالي الأجهزة"), value: total, color: "#16181d" },
-    { label: t("Operational", "تعمل"), value: healthy, color: "#1D9E75" },
-    { label: t("Need Attention", "تحتاج متابعة"), value: attention, color: "#BA7517" },
-    { label: t("Total Inspections", "إجمالي الفحوصات"), value: totalInsp, color: "#378ADD" },
-    { label: t("Locations", "المواقع"), value: locationRows.length, color: "#7F77DD" },
-    { label: t("Operational Rate", "معدل التشغيل"), value: `${healthRate}%`, color: healthRate > 70 ? "#1D9E75" : "#BA7517" },
+    { label: t("Operational", "تعمل"), value: healthy, color: "#10b981" },
+    { label: t("Need Attention", "تحتاج متابعة"), value: attention, color: "#f59e0b" },
+    { label: t("Total Inspections", "إجمالي الفحوصات"), value: totalInsp, color: "#4f46e5" },
+    { label: t("Locations", "المواقع"), value: locationRows.length, color: "#818cf8" },
+    { label: t("Operational Rate", "معدل التشغيل"), value: `${healthRate}%`, color: healthRate > 70 ? "#10b981" : "#f59e0b" },
     { label: t("Avg Insp / Device", "متوسط فحص/جهاز"), value: total ? (totalInsp / total).toFixed(1) : "—", color: "#9aa0ad" },
   ];
 
@@ -1076,6 +1101,12 @@ export function ViewerAnalyticsPage({
       <style>{ANALYTICS_CSS}</style>
 
       <div className="analytics-root" dir={lang === "ar" ? "rtl" : "ltr"}>
+        <div className="an-brand-box">
+          <div className="an-brand-logo">
+            <img src={smartitLogo} alt="SmartIT" />
+          </div>
+        </div>
+
         <div className="an-topbar">
           <div>
             <div className="an-topbar__title">{t("Viewer Analytics", "تحليلات المشاهد")}</div>
@@ -1130,15 +1161,15 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Monthly Inspections", "الفحوصات الشهرية")}
                   subtitle={t("Total inspections per month", "عدد الفحوصات لكل شهر")}
-                  accentColor="#378ADD"
+                  accentColor="#4f46e5"
                 >
-                  <LineChart data={monthly} color="#378ADD" />
+                  <LineChart data={monthly} color="#4f46e5" />
                 </Card>
 
                 <Card
                   title={t("Operational Rate", "معدل التشغيل")}
                   subtitle={t("Fleet readiness gauge", "نسبة الأجهزة الجاهزة")}
-                  accentColor="#1D9E75"
+                  accentColor="#10b981"
                 >
                   <GaugeChart value={healthRate} />
                 </Card>
@@ -1146,7 +1177,7 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Key Metrics", "المؤشرات الرئيسية")}
                   subtitle={t("Last 6 months trend", "آخر 6 أشهر")}
-                  accentColor="#0891B2"
+                  accentColor="#0ea5e9"
                 >
                   <SparklineRow items={sparklines} />
                 </Card>
@@ -1158,7 +1189,7 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Status Distribution", "توزيع الحالات")}
                   subtitle={t("Devices by operational status", "تصنيف الأجهزة")}
-                  accentColor="#7F77DD"
+                  accentColor="#818cf8"
                 >
                   <DonutChart segments={donutData} />
                 </Card>
@@ -1166,7 +1197,7 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Device Status Monthly", "حالة الأجهزة شهرياً")}
                   subtitle={t("Stacked breakdown", "تحلل الحالات")}
-                  accentColor="#C0392B"
+                  accentColor="#ef4444"
                 >
                   <StackedBarChart data={stackedMonthly} />
                 </Card>
@@ -1174,7 +1205,7 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Fleet Radar", "رادار الأسطول")}
                   subtitle={t("Multi-axis overview", "نظرة شاملة")}
-                  accentColor="#1D9E75"
+                  accentColor="#10b981"
                 >
                   <div className="radar-wrap">
                     <RadarChart data={radarData} />
@@ -1188,23 +1219,23 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Devices by Location", "الأجهزة بالموقع")}
                   subtitle={t("Top locations by device count", "أعلى المواقع")}
-                  accentColor="#BA7517"
+                  accentColor="#f59e0b"
                 >
-                  <BarChart data={topLocs} color="#BA7517" />
+                  <BarChart data={topLocs} color="#f59e0b" />
                 </Card>
 
                 <Card
                   title={t("Inspections by Location", "الفحوصات بالموقع")}
                   subtitle={t("Most frequently inspected", "أكثر المواقع فحصاً")}
-                  accentColor="#7F77DD"
+                  accentColor="#818cf8"
                 >
-                  <HorizBarChart data={inspLocs} color="#7F77DD" />
+                  <HorizBarChart data={inspLocs} color="#818cf8" />
                 </Card>
 
                 <Card
                   title={t("Inspection Heatmap", "خريطة حرارة الفحوصات")}
                   subtitle={t("Daily activity – last 28 days", "آخر 28 يوم")}
-                  accentColor="#0891B2"
+                  accentColor="#0ea5e9"
                 >
                   <HeatmapCalendar data={heatmap} />
                 </Card>
@@ -1216,15 +1247,15 @@ export function ViewerAnalyticsPage({
                 <Card
                   title={t("Weekly Inspection Pattern", "فحوصات أيام الأسبوع")}
                   subtitle={t("Frequency by day of week", "توزيع الفحوصات")}
-                  accentColor="#0891B2"
+                  accentColor="#0ea5e9"
                 >
-                  <BarChart data={weekly} color="#0891B2" h={130} showVals />
+                  <BarChart data={weekly} color="#0ea5e9" h={130} showVals />
                 </Card>
 
                 <Card
                   title={t("Inspections vs Devices", "مقارنة الفحوصات والأجهزة")}
                   subtitle={t("Dual time-series", "مسارين زمنيين")}
-                  accentColor="#378ADD"
+                  accentColor="#4f46e5"
                 >
                   <MultiAreaChart series={multiSeries} />
                 </Card>
@@ -1235,7 +1266,7 @@ export function ViewerAnalyticsPage({
               <Card
                 title={t("Command Summary", "ملخص القيادة")}
                 subtitle={t("Full KPI digest", "المؤشرات الرئيسية الكاملة")}
-                accentColor="#1D9E75"
+                accentColor="#10b981"
               >
                 <StatSummary stats={summaryStats} />
               </Card>

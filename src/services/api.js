@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = "https://acess-backend-production.up.railway.app";
+const DEFAULT_API_BASE_URL = "https://acess-backend-production-8856.up.railway.app";
 
 const ENV_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const ENV_TOKEN = (import.meta.env.VITE_API_TOKEN || "").trim();
