@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import smartitLogo from "../../assets/smartit-logo-transparent.png";
 
 /* ═══════════════════════════════════════════
-   CSS
+   ViewerInspectionsPage
+   - Removed Partial / Not Reachable summary boxes
 ═══════════════════════════════════════════ */
 const INSPECTIONS_CSS = `
 .insp-root *, .insp-root *::before, .insp-root *::after {
@@ -23,35 +23,11 @@ const INSPECTIONS_CSS = `
   --text: #0f172a;
   --muted: #475569;
   --faint: #94a3b8;
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   background: #f1f5f9;
   color: var(--text);
   padding: 28px 24px;
   min-height: 100vh;
-}
-
-.insp-brand-box {
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.12) 0%, rgba(79, 70, 229, 0.05) 100%);
-  border: 1px solid rgba(79, 70, 229, 0.2);
-  border-radius: 20px;
-  padding: 24px 32px;
-  margin-bottom: 28px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.5);
-}
-
-.insp-brand-logo {
-  width: 120px;
-  height: auto;
-  flex-shrink: 0;
-}
-
-.insp-brand-logo img {
-  width: 100%;
-  height: auto;
-  object-fit: contain;
 }
 
 /* Top bar */
@@ -66,8 +42,9 @@ const INSPECTIONS_CSS = `
 
 .insp-topbar__title {
   font-size: 20px;
-  font-weight: 800;
+  font-weight: 900;
   color: var(--text);
+  letter-spacing: -0.02em;
 }
 
 .insp-topbar__sub {
@@ -90,13 +67,20 @@ const INSPECTIONS_CSS = `
   background: #0f172a;
   color: #fff;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.insp-refresh-btn:hover {
+  transform: translateY(-1px);
+  background: #4f46e5;
 }
 
 .insp-refresh-btn:disabled {
   opacity: .65;
   cursor: not-allowed;
+  transform: none;
 }
 
 /* Alerts */
@@ -114,13 +98,7 @@ const INSPECTIONS_CSS = `
   border-color: #fecdd3;
 }
 
-.insp-alert--info {
-  background: rgba(79, 70, 229, 0.08);
-  color: #4f46e5;
-  border-color: rgba(79, 70, 229, 0.2);
-}
-
-/* Filter - Premium */
+/* Filter */
 .insp-filter-card {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94)),
@@ -321,14 +299,10 @@ const INSPECTIONS_CSS = `
   box-shadow: 0 10px 20px rgba(79, 70, 229, 0.24);
 }
 
-.insp-filter-btn:active {
-  transform: translateY(0);
-}
-
-/* Summary */
+/* Summary - only 3 boxes */
 .insp-summary {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -353,7 +327,7 @@ const INSPECTIONS_CSS = `
 
 .insp-summary-tile__val {
   font-size: 28px;
-  font-weight: 800;
+  font-weight: 900;
   line-height: 1;
   margin-bottom: 6px;
   margin-top: 3px;
@@ -364,7 +338,7 @@ const INSPECTIONS_CSS = `
   color: var(--faint);
   text-transform: uppercase;
   letter-spacing: .05em;
-  font-weight: 700;
+  font-weight: 800;
 }
 
 /* View */
@@ -389,7 +363,7 @@ const INSPECTIONS_CSS = `
   border-radius: 8px;
   background: transparent;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--muted);
   cursor: pointer;
 }
@@ -421,7 +395,7 @@ const INSPECTIONS_CSS = `
 
 .insp-panel__title {
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--text);
   margin-bottom: 2px;
 }
@@ -433,7 +407,7 @@ const INSPECTIONS_CSS = `
 
 .insp-records {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--muted);
   background: var(--surface2);
   border: 0.5px solid var(--border);
@@ -451,7 +425,7 @@ const INSPECTIONS_CSS = `
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 1100px;
+  min-width: 980px;
 }
 
 .insp-table th {
@@ -464,6 +438,10 @@ const INSPECTIONS_CSS = `
   color: var(--muted);
   background: var(--surface2);
   border-bottom: 0.5px solid var(--border);
+}
+
+.insp-root[dir="rtl"] .insp-table th {
+  text-align: right;
 }
 
 .insp-table td {
@@ -483,8 +461,8 @@ const INSPECTIONS_CSS = `
 
 .insp-dev-code {
   font-size: 13px;
-  font-weight: 800;
-  color: var(--blue);
+  font-weight: 900;
+  color: var(--primary);
   letter-spacing: .3px;
 }
 
@@ -494,15 +472,13 @@ const INSPECTIONS_CSS = `
   margin-top: 3px;
 }
 
-.insp-tech-name {
-  font-size: 12px;
-  color: var(--muted);
-}
-
 .insp-notes {
   font-size: 12px;
   color: var(--faint);
-  max-width: 280px;
+  max-width: 360px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .insp-locline {
@@ -512,8 +488,11 @@ const INSPECTIONS_CSS = `
 
 /* Badges */
 .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 800;
   padding: 4px 10px;
   border-radius: 999px;
   white-space: nowrap;
@@ -582,6 +561,7 @@ const INSPECTIONS_CSS = `
 
 .insp-tl-body {
   flex: 1;
+  min-width: 0;
 }
 
 .insp-tl-head {
@@ -595,8 +575,8 @@ const INSPECTIONS_CSS = `
 
 .insp-tl-dev {
   font-size: 13px;
-  font-weight: 800;
-  color: var(--blue);
+  font-weight: 900;
+  color: var(--primary);
 }
 
 .insp-tl-loc {
@@ -612,8 +592,7 @@ const INSPECTIONS_CSS = `
 }
 
 .insp-tl-time,
-.insp-tl-note,
-.insp-tl-tech {
+.insp-tl-note {
   font-size: 11px;
   color: var(--faint);
 }
@@ -670,16 +649,45 @@ const INSPECTIONS_CSS = `
   .insp-filter-btn {
     flex: 1;
   }
+
+  .insp-actions {
+    width: 100%;
+  }
+
+  .insp-refresh-btn {
+    width: 100%;
+  }
 }
 
 @media (max-width: 620px) {
+  .insp-root {
+    padding: 14px 10px;
+  }
+
+  .insp-topbar {
+    align-items: stretch;
+  }
+
+  .insp-topbar__title {
+    font-size: 20px;
+  }
+
   .insp-summary {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 
   .insp-filter-card {
     padding: 15px;
     border-radius: 20px;
+  }
+
+  .insp-filter-head {
+    align-items: stretch;
+  }
+
+  .insp-filter-result {
+    width: 100%;
+    text-align: center;
   }
 
   .insp-filter-grid {
@@ -697,6 +705,88 @@ const INSPECTIONS_CSS = `
 
   .insp-filter-btn {
     width: 100%;
+  }
+
+  .insp-view-row {
+    justify-content: stretch;
+  }
+
+  .insp-view-toggle {
+    width: 100%;
+  }
+
+  .insp-view-btn {
+    flex: 1;
+  }
+
+  .insp-records {
+    width: 100%;
+    text-align: center;
+  }
+
+  .insp-table {
+    min-width: 0;
+  }
+
+  .insp-table thead {
+    display: none;
+  }
+
+  .insp-table,
+  .insp-table tbody,
+  .insp-table tr,
+  .insp-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .insp-table tr {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .insp-table td {
+    border-bottom: none;
+    padding: 8px 0;
+    display: grid;
+    grid-template-columns: 118px 1fr;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .insp-table td::before {
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  .insp-notes {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.5;
+  }
+
+  .insp-timeline {
+    padding: 6px 14px;
+  }
+
+  .insp-tl-item {
+    gap: 10px;
+  }
+
+  .insp-tl-meta {
+    display: grid;
+    gap: 5px;
+  }
+}
+
+@media (max-width: 420px) {
+  .insp-table td {
+    grid-template-columns: 100px 1fr;
   }
 }
 `;
@@ -729,8 +819,6 @@ const TILE_COLORS = {
   total: "#4f46e5",
   ok: "#10b981",
   notOk: "#ef4444",
-  partial: "#f59e0b",
-  unreachable: "#64748b",
 };
 
 const DEFAULT_FILTERS = {
@@ -757,7 +845,10 @@ function fmt(iso) {
   if (!iso) return "—";
 
   try {
-    return new Date(iso).toLocaleDateString("en-GB", {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+
+    return d.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
       year: "numeric",
@@ -771,7 +862,10 @@ function fmtTime(iso) {
   if (!iso) return "—";
 
   try {
-    return new Date(iso).toLocaleTimeString("en-GB", {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+
+    return d.toLocaleTimeString("en-GB", {
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -842,7 +936,36 @@ function cleanOptions(list) {
     .sort((a, b) => a.localeCompare(b, "ar"));
 }
 
-function normalizeInspection(item) {
+function cleanInspectionText(value) {
+  let text = String(value || "").trim();
+
+  if (!text) return "";
+
+  text = text.replace(/\[\[INSPECTION_SYSTEM_META\]\]\s*\{[\s\S]*?\}\s*$/gi, "").trim();
+  text = text.replace(/\[\[INSPECTION_SYSTEM_META\]\][\s\S]*$/gi, "").trim();
+  text = text.replace(/Final\s+Device\s+Condition\s*:\s*(OK|NOT_OK|PARTIAL|NOT_REACHABLE|GOOD|BAD)/gi, "").trim();
+  text = text.replace(/beforeDeviceStatus\s*:\s*"?[^,}"]+"?/gi, "").trim();
+  text = text.replace(/afterDeviceStatus\s*:\s*"?[^,}"]+"?/gi, "").trim();
+  text = text.replace(/^في\s+البداية\s+حالة\s+الجهاز\s*/gi, "").trim();
+  text = text.replace(/^حالة\s+الجهاز\s*/gi, "").trim();
+  text = text.replace(/^good$/gi, "").trim();
+  text = text.replace(/^ok$/gi, "").trim();
+  text = text.replace(/\s+/g, " ").trim();
+
+  if (!text) return "";
+  if (/^(good|ok|سليم)$/i.test(text)) return "";
+
+  return text;
+}
+
+function getCleanNote(item) {
+  const issue = cleanInspectionText(item.issueReason || item.reason || item.issue || "");
+  const notes = cleanInspectionText(item.notes || item.note || item.comment || item.comments || "");
+
+  return issue || notes || "";
+}
+
+function normalizeInspection(item = {}) {
   const device = item.device || {};
 
   const location =
@@ -850,14 +973,6 @@ function normalizeInspection(item) {
     item.location ||
     item.deviceLocation ||
     item.place ||
-    {};
-
-  const tech =
-    item.technician ||
-    item.user ||
-    item.createdBy ||
-    item.inspector ||
-    item.employee ||
     {};
 
   const cleanLocation = {
@@ -922,15 +1037,7 @@ function normalizeInspection(item) {
     item.serial ||
     "";
 
-  const technicianName =
-    tech.fullName ||
-    tech.name ||
-    tech.username ||
-    [tech.firstName, tech.lastName].filter(Boolean).join(" ") ||
-    tech.email ||
-    item.technicianName ||
-    item.inspectorName ||
-    "";
+  const cleanNote = getCleanNote(item);
 
   return {
     id: item.id,
@@ -943,8 +1050,8 @@ function normalizeInspection(item) {
       item.condition
     ),
 
-    issueReason: item.issueReason || item.reason || item.issue || "",
-    notes: item.notes || item.note || item.comment || item.comments || "",
+    issueReason: cleanNote,
+    notes: cleanNote,
 
     locationText:
       item.locationText ||
@@ -960,8 +1067,6 @@ function normalizeInspection(item) {
 
     inspectedAt: item.inspectedAt || item.createdAt || item.updatedAt || null,
     createdAt: item.createdAt || item.inspectedAt || item.updatedAt || null,
-
-    technicianName,
 
     device: {
       id: device.id || item.deviceId,
@@ -984,7 +1089,6 @@ function buildInspectionSearchText(ins) {
       ins.issueReason,
       ins.notes,
       ins.locationText,
-      ins.technicianName,
       ins.device?.id,
       ins.device?.deviceCode,
       ins.device?.deviceName,
@@ -1023,7 +1127,7 @@ async function fetchInspectionsFromApi(baseUrl, token) {
       });
 
       if (!response.ok) {
-        lastError = new Error(`${response.status} ${response.statusText} @ ${url}`);
+        lastError = new Error(`${response.status} ${response.statusText}`);
         continue;
       }
 
@@ -1043,7 +1147,6 @@ async function fetchInspectionsFromApi(baseUrl, token) {
           : [];
 
       return {
-        sourceUrl: url,
         items: rawList.map(normalizeInspection),
       };
     } catch (error) {
@@ -1082,7 +1185,6 @@ export function ViewerInspectionsPage({
 
   const [loading, setLoading] = useState(!Array.isArray(inspectionsProp));
   const [error, setError] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
 
   const t = (en, ar) => (lang === "ar" ? ar : en);
   const baseUrl = useMemo(() => pickBaseUrl(apiBaseUrl), [apiBaseUrl]);
@@ -1109,7 +1211,6 @@ export function ViewerInspectionsPage({
       );
 
       setInspections(sorted);
-      setSourceUrl(result.sourceUrl);
     } catch (err) {
       console.error("Failed to load inspections:", err);
       setError(err?.message || "Failed to load inspections from backend.");
@@ -1178,16 +1279,23 @@ export function ViewerInspectionsPage({
       }
 
       const haystack = buildInspectionSearchText(ins);
-
       return queryWords.every((word) => haystack.includes(word));
     });
   }, [inspections, filters]);
 
   const filteredCounts = useMemo(() => {
-    const c = { ALL: filtered.length };
+    const c = {
+      ALL: filtered.length,
+      OK: 0,
+      NOT_OK: 0,
+    };
 
     filtered.forEach((i) => {
-      c[i.inspectionStatus] = (c[i.inspectionStatus] || 0) + 1;
+      if (i.inspectionStatus === "OK") {
+        c.OK += 1;
+      } else {
+        c.NOT_OK += 1;
+      }
     });
 
     return c;
@@ -1211,18 +1319,6 @@ export function ViewerInspectionsPage({
       label: t("Not OK", "غير سليم"),
       val: filteredCounts.NOT_OK || 0,
       color: TILE_COLORS.notOk,
-    },
-    {
-      key: "partial",
-      label: t("Partial", "جزئي"),
-      val: filteredCounts.PARTIAL || 0,
-      color: TILE_COLORS.partial,
-    },
-    {
-      key: "unreachable",
-      label: t("Not Reachable", "غير متاح"),
-      val: filteredCounts.NOT_REACHABLE || 0,
-      color: TILE_COLORS.unreachable,
     },
   ];
 
@@ -1254,24 +1350,9 @@ export function ViewerInspectionsPage({
       <style>{INSPECTIONS_CSS}</style>
 
       <div className="insp-root" dir={lang === "ar" ? "rtl" : "ltr"}>
-        <div className="insp-brand-box">
-          <div className="insp-brand-logo">
-            <img src={smartitLogo} alt="SmartIT" />
-          </div>
-        </div>
-
         <div className="insp-topbar">
           <div>
-            <div className="insp-topbar__title">
-              {t("Viewer Inspections", "فحوصات المشاهد")}
-            </div>
-
-            <div className="insp-topbar__sub">
-              {t(
-                "Read-only monitoring of all inspection records",
-                "عرض فقط لكل سجلات الفحص"
-              )}
-            </div>
+        
           </div>
 
           <div className="insp-actions">
@@ -1292,13 +1373,6 @@ export function ViewerInspectionsPage({
           </div>
         )}
 
-        {!!sourceUrl && !error && (
-          <div className="insp-alert insp-alert--info">
-            {t("Connected endpoint: ", "تم الاتصال مع: ")}
-            <strong>{sourceUrl}</strong>
-          </div>
-        )}
-
         <div className="insp-filter-card">
           <div className="insp-filter-head">
             <div className="insp-filter-title">
@@ -1306,7 +1380,7 @@ export function ViewerInspectionsPage({
 
               <div>
                 <div className="insp-filter-title-text">
-                  {t("Smart Filters", "فلترة ذكية")}
+                  {t("Advanced Inspection Filter", "فلتر الفحوصات المتقدم")}
                 </div>
                 <div className="insp-filter-title-sub">
                   {t(
@@ -1333,8 +1407,8 @@ export function ViewerInspectionsPage({
                   if (e.key === "Enter") applyFilters();
                 }}
                 placeholder={t(
-                  "Code, name, serial, technician, building, zone...",
-                  "الكود، الاسم، السيريال، الفني، المبنى، الزون..."
+                  "Code, name, serial, building, zone...",
+                  "الكود، الاسم، السيريال، المبنى، الزون..."
                 )}
               />
             </div>
@@ -1433,7 +1507,7 @@ export function ViewerInspectionsPage({
                 className="insp-filter-btn insp-filter-btn-reset"
                 onClick={resetFilters}
               >
-                Reset
+                {t("Reset", "إعادة ضبط")}
               </button>
 
               <button
@@ -1441,7 +1515,7 @@ export function ViewerInspectionsPage({
                 className="insp-filter-btn insp-filter-btn-ok"
                 onClick={applyFilters}
               >
-                OK
+                {t("Apply", "تطبيق")}
               </button>
             </div>
           </div>
@@ -1470,6 +1544,7 @@ export function ViewerInspectionsPage({
         <div className="insp-view-row">
           <div className="insp-view-toggle">
             <button
+              type="button"
               className={`insp-view-btn${view === "table" ? " insp-view-btn--active" : ""}`}
               onClick={() => setView("table")}
             >
@@ -1477,6 +1552,7 @@ export function ViewerInspectionsPage({
             </button>
 
             <button
+              type="button"
               className={`insp-view-btn${view === "timeline" ? " insp-view-btn--active" : ""}`}
               onClick={() => setView("timeline")}
             >
@@ -1522,7 +1598,6 @@ export function ViewerInspectionsPage({
                       <th>{t("Building", "المبنى")}</th>
                       <th>{t("Zone", "المنطقة")}</th>
                       <th>{t("Direction", "الاتجاه")}</th>
-                      <th>{t("Technician", "الفني")}</th>
                       <th>{t("Notes", "ملاحظات")}</th>
                       <th>{t("Date", "التاريخ")}</th>
                     </tr>
@@ -1531,10 +1606,11 @@ export function ViewerInspectionsPage({
                   <tbody>
                     {filtered.map((ins) => {
                       const loc = locationParts(ins);
+                      const cleanNote = ins.issueReason || ins.notes || "—";
 
                       return (
                         <tr key={ins.id || `${ins.deviceId}-${ins.createdAt}`}>
-                          <td>
+                          <td data-label={t("Device", "الجهاز")}>
                             <div className="insp-dev-code">
                               {ins.device?.deviceCode || `#${ins.deviceId}`}
                             </div>
@@ -1544,48 +1620,42 @@ export function ViewerInspectionsPage({
                             </div>
                           </td>
 
-                          <td>
+                          <td data-label={t("Status", "الحالة")}>
                             <StatusBadge
                               value={ins.inspectionStatus}
                               lang={lang}
                             />
                           </td>
 
-                          <td>
+                          <td data-label={t("Cluster", "المجموعة")}>
                             <div className="insp-locline">
                               {loc.cluster || "—"}
                             </div>
                           </td>
 
-                          <td>
+                          <td data-label={t("Building", "المبنى")}>
                             <div className="insp-locline">
                               {loc.building || "—"}
                             </div>
                           </td>
 
-                          <td>
+                          <td data-label={t("Zone", "المنطقة")}>
                             <div className="insp-locline">
                               {loc.zone || "—"}
                             </div>
                           </td>
 
-                          <td>
+                          <td data-label={t("Direction", "الاتجاه")}>
                             <div className="insp-locline">
                               {loc.direction || "—"}
                             </div>
                           </td>
 
-                          <td>
-                            <div className="insp-tech-name">
-                              {ins.technicianName || "—"}
-                            </div>
+                          <td data-label={t("Notes", "ملاحظات")} className="insp-notes">
+                            {cleanNote}
                           </td>
 
-                          <td className="insp-notes">
-                            {ins.issueReason || ins.notes || "—"}
-                          </td>
-
-                          <td style={{ fontSize: 12, color: "var(--faint)" }}>
+                          <td data-label={t("Date", "التاريخ")} style={{ fontSize: 12, color: "var(--faint)" }}>
                             {fmt(ins.inspectedAt || ins.createdAt)}
                           </td>
                         </tr>
@@ -1616,6 +1686,8 @@ export function ViewerInspectionsPage({
                   ]
                     .filter(Boolean)
                     .join(" · ") || t("Unknown", "غير معروف");
+
+                const cleanNote = ins.issueReason || ins.notes || "";
 
                 return (
                   <div
@@ -1656,15 +1728,9 @@ export function ViewerInspectionsPage({
                           {fmtTime(ins.inspectedAt || ins.createdAt)}
                         </span>
 
-                        {ins.technicianName && (
-                          <span className="insp-tl-tech">
-                            {t("Technician:", "الفني:")} {ins.technicianName}
-                          </span>
-                        )}
-
-                        {(ins.issueReason || ins.notes) && (
+                        {cleanNote && (
                           <span className="insp-tl-note">
-                            {ins.issueReason || ins.notes}
+                            {cleanNote}
                           </span>
                         )}
                       </div>

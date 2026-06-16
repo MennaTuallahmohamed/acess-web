@@ -175,11 +175,16 @@ const styles = `
   background:rgba(20,115,148,.06);
   cursor:pointer;
   color:#64748b;
-  font-size:16px;
   display:flex;
   align-items:center;
   justify-content:center;
   transition:.2s;
+}
+
+.auth-eye svg{
+  width:18px;
+  height:18px;
+  stroke:currentColor;
 }
 
 .auth-eye:hover{
@@ -302,6 +307,40 @@ const styles = `
 }
 `;
 
+function EyeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6A2 2 0 0 0 13.4 13.4" />
+      <path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c6.5 0 10 8 10 8a17.8 17.8 0 0 1-3.1 4.2" />
+      <path d="M6.6 6.7C3.6 8.7 2 12 2 12s3.5 8 10 8a10.7 10.7 0 0 0 4.7-1.1" />
+    </svg>
+  );
+}
+
 export function AuthPage({ onLogin, loading }) {
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
@@ -372,7 +411,7 @@ export function AuthPage({ onLogin, loading }) {
                   onClick={() => setShowPassword(!showPassword)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? "🙈" : "👁"}
+                  {showPassword ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
             </div>
