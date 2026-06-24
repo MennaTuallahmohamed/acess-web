@@ -2,17 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { AuthPage } from "./components/AuthPage";
 import { AuthPanel } from "./components/AuthPanel";
 import { DashboardLayout } from "./components/DashboardLayout";
+
 import { AnalyticsPage } from "./pages/AnalyticsPage";
 import { DevicesPage } from "./pages/DevicesPage";
 import { GatesPage } from "./pages/GatesPage";
 import { HomePage } from "./pages/HomePage";
-import { InspectionsPage } from "./pages/InspectionsPage";
+import ViewerInspectionsPage from "./pages/monitoring/ViewerInspectionsPage.jsx";
 import { LocationsPage } from "./pages/LocationsPage";
 import { TasksPage } from "./pages/TasksPage";
 import { TechniciansPage } from "./pages/TechniciansPage";
 import { TechniciansDetailPage } from "./pages/TechniciansDetailPage";
 import { OperationsSnapshotPage } from "./pages/OperationsSnapshotPage";
+import { SoftwarePage } from "./pages/SoftwarePage";
+import { SoftwareAdminPage } from "./pages/SoftwareAdminPage";
 import TroubleshootingManagement from "./pages/TroubleshootingManagement";
+
 import {
   authenticateUser,
   createAccessAccount,
@@ -36,6 +40,7 @@ import {
 const TABS = [
   "home",
   "tasks",
+  "software",
   "technicians",
   "devices",
   "gates",
@@ -46,18 +51,223 @@ const TABS = [
   "accounts",
 ];
 
+const TAB_LABELS = {
+  home: "Home",
+  tasks: "Tasks",
+  software: "Software",
+  technicians: "Technicians",
+  devices: "Devices",
+  gates: "Gates",
+  inspections: "Inspections",
+  troubleshooting: "Troubleshooting",
+  analytics: "Analytics",
+  locations: "Locations",
+  accounts: "Accounts",
+};
+
 const AUTH_STORAGE_KEY = "dashboard_auth_user";
 
 const isTechnician = (u) => {
-  const roleName = String(u?.role?.name || "").toUpperCase();
+  const roleName = String(u?.role?.name || u?.role || "").toUpperCase();
   const jobTitle = String(u?.jobTitle || "").toLowerCase();
+
   const titleLooksTechnical =
     jobTitle.includes("technician") ||
     jobTitle.includes("tech") ||
-    jobTitle.includes("inspector");
+    jobTitle.includes("inspector") ||
+    jobTitle.includes("software") ||
+    jobTitle.includes("morpho") ||
+    jobTitle.includes("فني");
 
   return roleName === "TECHNICIAN" || titleLooksTechnical;
 };
+
+const isSoftwareEntryUser = (u) => {
+  const roleName = String(u?.role?.name || u?.role || "").toUpperCase();
+
+  const text = [
+    u?.fullName,
+    u?.name,
+    u?.username,
+    u?.email,
+    u?.jobTitle,
+    roleName,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    roleName === "TECHNICIAN" ||
+    text.includes("فرج") ||
+    text.includes("farag") ||
+    text.includes("software") ||
+    text.includes("morpho") ||
+    text.includes("فني")
+  );
+};
+
+function SoftwareUserShell({ currentUser, onLogout }) {
+  const styles = `
+    .software-user-shell{
+      min-height:100vh;
+      background:#f4fbfe;
+    }
+
+    .software-user-topbar{
+      height:78px;
+      padding:0 28px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      background:rgba(255,255,255,.94);
+      border-bottom:1px solid #d8edf6;
+      box-shadow:0 10px 30px rgba(15,111,140,.07);
+      position:sticky;
+      top:0;
+      z-index:50;
+    }
+
+    .software-user-brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .software-user-logo{
+      width:48px;
+      height:48px;
+      border-radius:16px;
+      background:linear-gradient(135deg,#147394,#18a7d4);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-weight:1000;
+      font-size:12px;
+      letter-spacing:-.5px;
+      box-shadow:0 12px 26px rgba(20,115,148,.22);
+    }
+
+    .software-user-brand h1{
+      margin:0;
+      color:#102033;
+      font-size:20px;
+      font-weight:1000;
+      letter-spacing:-.4px;
+    }
+
+    .software-user-brand p{
+      margin:3px 0 0;
+      color:#637083;
+      font-size:12px;
+      font-weight:800;
+    }
+
+    .software-user-chip{
+      display:flex;
+      align-items:center;
+      gap:12px;
+      background:#fff;
+      border:1px solid #d8edf6;
+      border-radius:999px;
+      padding:7px 8px 7px 16px;
+      box-shadow:0 8px 22px rgba(15,111,140,.06);
+    }
+
+    .software-user-chip strong{
+      color:#102033;
+      font-size:13px;
+      font-weight:1000;
+      display:block;
+    }
+
+    .software-user-chip span{
+      color:#637083;
+      font-size:11px;
+      font-weight:900;
+      text-transform:uppercase;
+      display:block;
+      text-align:right;
+    }
+
+    .software-logout{
+      width:36px;
+      height:36px;
+      border:0;
+      border-radius:50%;
+      background:#eef9fd;
+      color:#0f6f8c;
+      cursor:pointer;
+      font-weight:1000;
+      transition:.2s;
+    }
+
+    .software-logout:hover{
+      background:#fee2e2;
+      color:#ef4444;
+    }
+
+    @media(max-width:650px){
+      .software-user-topbar{
+        height:auto;
+        padding:14px;
+        flex-direction:column;
+        align-items:flex-start;
+      }
+
+      .software-user-chip{
+        width:100%;
+        justify-content:space-between;
+        border-radius:18px;
+      }
+    }
+  `;
+
+  return (
+    <>
+      <style>{styles}</style>
+
+      <div className="software-user-shell">
+        <header className="software-user-topbar">
+          <div className="software-user-brand">
+            <div className="software-user-logo">SMART IT</div>
+
+            <div>
+              <h1>Software & Morpho Center</h1>
+              <p>Assigned work, Morpho review, and activity history</p>
+            </div>
+          </div>
+
+          <div className="software-user-chip">
+            <div>
+              <strong>
+                {currentUser?.fullName ||
+                  currentUser?.name ||
+                  currentUser?.username ||
+                  currentUser?.email ||
+                  "User"}
+              </strong>
+              <span>Software User</span>
+            </div>
+
+            <button
+              type="button"
+              className="software-logout"
+              onClick={onLogout}
+              title="Logout"
+            >
+              ⎋
+            </button>
+          </div>
+        </header>
+
+        <SoftwarePage currentUser={currentUser} />
+      </div>
+    </>
+  );
+}
 
 function App() {
   const [tab, setTab] = useState("home");
@@ -144,7 +354,8 @@ function App() {
 
       const results = await Promise.allSettled(requests);
 
-      const [usersR, tasksR, devicesR, locationsR, inspectionsR, performanceR] = results;
+      const [usersR, tasksR, devicesR, locationsR, inspectionsR, performanceR] =
+        results;
 
       if (usersR?.status === "fulfilled") setUsers(usersR.value);
       if (tasksR?.status === "fulfilled") setTasks(tasksR.value);
@@ -161,6 +372,7 @@ function App() {
       }
 
       const firstRejected = results.find((r) => r.status === "rejected");
+
       const firstError =
         dashboardResult instanceof Error
           ? dashboardResult
@@ -182,28 +394,33 @@ function App() {
 
   useEffect(() => {
     if (!config.baseUrl || !authUser) return;
+
+    if (accessRole !== "admin" && isSoftwareEntryUser(authUser)) return;
+
     syncAll();
-  }, [config.baseUrl, authUser?.id]);
+  }, [config.baseUrl, authUser?.id, accessRole]);
 
   const handleSaveConfig = async (nextConfig) => {
     setConfig(nextConfig);
     setApiConfig(nextConfig);
   };
 
-  const handleRegister = async (payload) => {
+  const handleLogin = async (payload) => {
     setLoading(true);
+
     try {
-      const user = await createAccessAccount(payload);
+      const user = await authenticateUser(payload);
       persistAuthUser(user);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = async (payload) => {
+  const handleRegister = async (payload) => {
     setLoading(true);
+
     try {
-      const user = await authenticateUser(payload);
+      const user = await createAccessAccount(payload);
       persistAuthUser(user);
     } finally {
       setLoading(false);
@@ -246,6 +463,15 @@ function App() {
     await syncAll();
   };
 
+  const handleChangeTab = (nextTab) => {
+    setTab(nextTab);
+    setDetailView(null);
+
+    if (nextTab !== "tasks") {
+      setQuickTaskFilter(null);
+    }
+  };
+
   const handleOpenFromHome = (action) => {
     if (action === "technicians") {
       setDetailView("technicians");
@@ -260,28 +486,39 @@ function App() {
     if (action === "tasks_completed") {
       setQuickTaskFilter({ status: "COMPLETED", emergency: false });
       setTab("tasks");
+      setDetailView(null);
       return;
     }
 
     if (action === "tasks_pending") {
       setQuickTaskFilter({ status: "PENDING", emergency: false });
       setTab("tasks");
+      setDetailView(null);
       return;
     }
 
     if (action === "tasks_emergency") {
       setQuickTaskFilter({ status: "ALL", emergency: true });
       setTab("tasks");
+      setDetailView(null);
       return;
     }
 
     if (action === "inspections_monthly") {
       setTab("inspections");
+      setDetailView(null);
       return;
     }
 
     if (action === "troubleshooting") {
       setTab("troubleshooting");
+      setDetailView(null);
+      return;
+    }
+
+    if (action === "software") {
+      setTab("software");
+      setDetailView(null);
     }
   };
 
@@ -295,6 +532,10 @@ function App() {
 
   if (!authUser) {
     return <AuthPage onLogin={handleLogin} loading={loading} />;
+  }
+
+  if (accessRole !== "admin" && isSoftwareEntryUser(authUser)) {
+    return <SoftwareUserShell currentUser={authUser} onLogout={clearAuthUser} />;
   }
 
   if (accessRole === "viewer") {
@@ -317,7 +558,8 @@ function App() {
     <DashboardLayout
       tab={tab}
       tabs={TABS}
-      onChangeTab={setTab}
+      tabLabels={TAB_LABELS}
+      onChangeTab={handleChangeTab}
       onRefresh={syncAll}
       loading={loading}
       currentUser={authUser}
@@ -326,8 +568,8 @@ function App() {
     >
       {!config.baseUrl ? (
         <p className="error-box">
-          Missing API base URL. Set <code>VITE_API_BASE_URL</code> in `.env` then restart{" "}
-          <code>npm run dev</code>.
+          Missing API base URL. Set <code>VITE_API_BASE_URL</code> in `.env` then
+          restart <code>npm run dev</code>.
         </p>
       ) : null}
 
@@ -377,6 +619,10 @@ function App() {
             />
           ) : null}
 
+          {tab === "software" ? (
+            <SoftwareAdminPage currentUser={authUser} />
+          ) : null}
+
           {tab === "technicians" ? (
             <TechniciansPage
               technicians={technicians}
@@ -400,16 +646,14 @@ function App() {
           {tab === "gates" ? <GatesPage /> : null}
 
           {tab === "inspections" ? (
-            <InspectionsPage
+            <ViewerInspectionsPage
               inspections={inspections}
-              technicians={technicians}
-              locations={locations}
+              lang="en"
+              apiBaseUrl={config.baseUrl}
             />
           ) : null}
 
-          {tab === "troubleshooting" ? (
-            <TroubleshootingManagement />
-          ) : null}
+          {tab === "troubleshooting" ? <TroubleshootingManagement /> : null}
 
           {tab === "analytics" ? (
             <AnalyticsPage
@@ -420,13 +664,12 @@ function App() {
             />
           ) : null}
 
-          {tab === "locations" ? (
-            <LocationsPage locations={locations} />
-          ) : null}
+          {tab === "locations" ? <LocationsPage locations={locations} /> : null}
 
           {tab === "accounts" ? (
             <div style={{ padding: "20px" }}>
               <h2 style={{ marginBottom: "20px" }}>Account Management</h2>
+
               <div
                 style={{
                   position: "relative",

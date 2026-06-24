@@ -847,6 +847,138 @@ const LOCATIONS_CSS = `
   to { transform: rotate(360deg); }
 }
 
+
+
+.loc-zone-filter-card {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.96));
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  margin-bottom: 15px;
+}
+
+.loc-zone-filter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.loc-zone-filter-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.loc-zone-filter-sub {
+  color: var(--faint);
+  font-size: 11px;
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+.loc-zone-select {
+  min-width: 240px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid #dbe4ef;
+  background: #fff;
+  padding: 0 14px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+  outline: none;
+  cursor: pointer;
+}
+
+.loc-zone-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(79,70,229,0.12);
+}
+
+.loc-zone-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.loc-zone-chip {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 15px;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: 0.18s ease;
+  min-height: 76px;
+}
+
+.loc-zone-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+  box-shadow: 0 10px 22px rgba(15,23,42,0.06);
+}
+
+.loc-zone-chip.active {
+  background: #eef2ff;
+  border-color: rgba(79,70,229,0.35);
+  box-shadow: 0 10px 24px rgba(79,70,229,0.10);
+}
+
+.loc-zone-name {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loc-zone-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.loc-zone-num {
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 6px 5px;
+}
+
+.loc-zone-num strong {
+  display: block;
+  color: var(--primary);
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.loc-zone-num span {
+  display: block;
+  color: var(--faint);
+  font-size: 8px;
+  font-weight: 950;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+.loc-zone-empty {
+  border: 1px dashed #cbd5e1;
+  border-radius: 15px;
+  padding: 14px;
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  background: #fff;
+}
+
 /* Responsive */
 @media (max-width: 1500px) {
   .loc-grid {
@@ -1040,6 +1172,19 @@ const LOCATIONS_CSS = `
   .loc-tabs {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .loc-zone-filter-head {
+    align-items: stretch;
+  }
+
+  .loc-zone-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .loc-zone-chips {
+    grid-template-columns: 1fr;
   }
 
   .loc-tab {
@@ -1569,6 +1714,75 @@ function buildLocationGroups(locations, devices, gates, inspections) {
   return groups.sort((a, b) => a.title.localeCompare(b.title, "ar"));
 }
 
+function getDrawerZoneValue(item = {}) {
+  const loc = item.location || item.parsedLoc || item.locationData || item;
+  return String(
+    loc.zone ||
+      item.zone ||
+      item.gateZone ||
+      item.device?.location?.zone ||
+      item.gate?.location?.zone ||
+      ""
+  ).trim() || "Unknown";
+}
+
+function getDrawerZoneKey(value) {
+  return normalizeText(String(value || "Unknown"));
+}
+
+function buildDrawerZoneStats(group) {
+  if (!group) return [];
+
+  const map = new Map();
+
+  function ensure(zoneValue) {
+    const label = String(zoneValue || "").trim() || "Unknown";
+    const key = getDrawerZoneKey(label);
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        label,
+        devices: 0,
+        gates: 0,
+        inspections: 0,
+        locations: 0,
+      });
+    }
+
+    return map.get(key);
+  }
+
+  (group.zonesList || []).forEach((zone) => ensure(zone));
+
+  (group.subLocations || []).forEach((loc) => {
+    ensure(getDrawerZoneValue(loc)).locations += 1;
+  });
+
+  (group.devices || []).forEach((device) => {
+    ensure(getDrawerZoneValue(device)).devices += 1;
+  });
+
+  (group.gates || []).forEach((gate) => {
+    ensure(getDrawerZoneValue(gate)).gates += 1;
+  });
+
+  (group.inspections || []).forEach((inspection) => {
+    ensure(getDrawerZoneValue(inspection)).inspections += 1;
+  });
+
+  return [...map.values()].sort((a, b) => {
+    if (a.label === "Unknown") return 1;
+    if (b.label === "Unknown") return -1;
+    return a.label.localeCompare(b.label, "ar", { numeric: true });
+  });
+}
+
+function zoneMatchesFilter(zoneValue, selectedZone) {
+  if (!selectedZone || selectedZone === "ALL") return true;
+  return getDrawerZoneKey(zoneValue) === getDrawerZoneKey(selectedZone);
+}
+
 function Pill({ type, children }) {
   return (
     <span className={`loc-pill ${type === "ok" ? "loc-pill-ok" : type === "bad" ? "loc-pill-bad" : "loc-pill-warn"}`}>
@@ -1579,10 +1793,66 @@ function Pill({ type, children }) {
 
 function LocationDrawer({ group, lang, onClose }) {
   const [tab, setTab] = useState("devices");
-
-  if (!group) return null;
+  const [zoneFilter, setZoneFilter] = useState("ALL");
 
   const t = (en, ar) => (lang === "ar" ? ar : en);
+
+  useEffect(() => {
+    setZoneFilter("ALL");
+    setTab("devices");
+  }, [group?.key]);
+
+  const zoneStats = useMemo(() => buildDrawerZoneStats(group), [group]);
+
+  const filteredDrawerData = useMemo(() => {
+    if (!group) {
+      return {
+        devices: [],
+        gates: [],
+        inspections: [],
+        subLocations: [],
+        doneDevicesCount: 0,
+        notDoneDevicesCount: 0,
+        doneGatesCount: 0,
+      };
+    }
+
+    const devices = (group.devices || []).filter((device) =>
+      zoneMatchesFilter(getDrawerZoneValue(device), zoneFilter)
+    );
+
+    const gates = (group.gates || []).filter((gate) =>
+      zoneMatchesFilter(getDrawerZoneValue(gate), zoneFilter)
+    );
+
+    const inspections = (group.inspections || []).filter((inspection) =>
+      zoneMatchesFilter(getDrawerZoneValue(inspection), zoneFilter)
+    );
+
+    const subLocations = (group.subLocations || []).filter((loc) =>
+      zoneMatchesFilter(getDrawerZoneValue(loc), zoneFilter)
+    );
+
+    const doneDevicesCount = devices.filter((device) =>
+      group.inspectedDeviceIds.has(normalizeId(device.id))
+    ).length;
+
+    const doneGatesCount = gates.filter((gate) =>
+      group.inspectedGateIds.has(normalizeId(gate.id))
+    ).length;
+
+    return {
+      devices,
+      gates,
+      inspections,
+      subLocations,
+      doneDevicesCount,
+      doneGatesCount,
+      notDoneDevicesCount: Math.max(devices.length - doneDevicesCount, 0),
+    };
+  }, [group, zoneFilter]);
+
+  if (!group) return null;
 
   const tabs = [
     { key: "devices", label: t("Devices", "الأجهزة") },
@@ -1590,6 +1860,10 @@ function LocationDrawer({ group, lang, onClose }) {
     { key: "gates", label: t("Gates", "البوابات") },
     { key: "locations", label: t("Sub locations", "المواقع الفرعية") },
   ];
+
+  const allZonesDeviceCount = zoneStats.reduce((sum, zone) => sum + zone.devices, 0);
+  const allZonesGateCount = zoneStats.reduce((sum, zone) => sum + zone.gates, 0);
+  const allZonesInspectionCount = zoneStats.reduce((sum, zone) => sum + zone.inspections, 0);
 
   return (
     <div className="loc-drawer-backdrop" onMouseDown={onClose}>
@@ -1616,29 +1890,116 @@ function LocationDrawer({ group, lang, onClose }) {
         <div className="loc-drawer-body">
           <div className="loc-drawer-stats">
             <div className="loc-drawer-stat">
-              <div className="loc-drawer-stat-value">{numberText(group.devicesCount, lang)}</div>
+              <div className="loc-drawer-stat-value">{numberText(filteredDrawerData.devices.length, lang)}</div>
               <div className="loc-drawer-stat-label">{t("Devices", "الأجهزة")}</div>
             </div>
 
             <div className="loc-drawer-stat">
-              <div className="loc-drawer-stat-value">{numberText(group.doneDevicesCount, lang)}</div>
+              <div className="loc-drawer-stat-value">{numberText(filteredDrawerData.doneDevicesCount, lang)}</div>
               <div className="loc-drawer-stat-label">{t("Inspected devices", "أجهزة اتفحصت")}</div>
             </div>
 
             <div className="loc-drawer-stat">
-              <div className="loc-drawer-stat-value">{numberText(group.notDoneDevicesCount, lang)}</div>
+              <div className="loc-drawer-stat-value">{numberText(filteredDrawerData.notDoneDevicesCount, lang)}</div>
               <div className="loc-drawer-stat-label">{t("Remaining devices", "أجهزة متبقية")}</div>
             </div>
 
             <div className="loc-drawer-stat">
-              <div className="loc-drawer-stat-value">{numberText(group.gatesCount, lang)}</div>
+              <div className="loc-drawer-stat-value">{numberText(filteredDrawerData.gates.length, lang)}</div>
               <div className="loc-drawer-stat-label">{t("Gates", "البوابات")}</div>
             </div>
 
             <div className="loc-drawer-stat">
-              <div className="loc-drawer-stat-value">{numberText(group.inspectionsCount, lang)}</div>
+              <div className="loc-drawer-stat-value">{numberText(filteredDrawerData.inspections.length, lang)}</div>
               <div className="loc-drawer-stat-label">{t("Inspections", "الفحوصات")}</div>
             </div>
+          </div>
+
+          <div className="loc-zone-filter-card">
+            <div className="loc-zone-filter-head">
+              <div>
+                <div className="loc-zone-filter-title">
+                  {t("Zone filter inside this ministry", "فلتر الزون داخل الوزارة")}
+                </div>
+                <div className="loc-zone-filter-sub">
+                  {t(
+                    "Each zone shows how many devices, gates, and inspections it contains.",
+                    "كل زون بيظهر فيه عدد الأجهزة والبوابات والفحوصات الخاصة به."
+                  )}
+                </div>
+              </div>
+
+              <select
+                className="loc-zone-select"
+                value={zoneFilter}
+                onChange={(event) => setZoneFilter(event.target.value)}
+              >
+                <option value="ALL">
+                  {t("All zones", "كل الزونات")} · {numberText(allZonesDeviceCount, lang)} {t("devices", "جهاز")}
+                </option>
+                {zoneStats.map((zone) => (
+                  <option key={zone.key} value={zone.label}>
+                    {zone.label} · {numberText(zone.devices, lang)} {t("devices", "جهاز")} · {numberText(zone.gates, lang)} {t("gates", "بوابة")}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {zoneStats.length === 0 ? (
+              <div className="loc-zone-empty">
+                {t("No zone data found for this ministry.", "لا توجد بيانات زون لهذه الوزارة.")}
+              </div>
+            ) : (
+              <div className="loc-zone-chips">
+                <button
+                  type="button"
+                  className={`loc-zone-chip ${zoneFilter === "ALL" ? "active" : ""}`}
+                  onClick={() => setZoneFilter("ALL")}
+                >
+                  <div className="loc-zone-name">{t("All zones", "كل الزونات")}</div>
+                  <div className="loc-zone-numbers">
+                    <div className="loc-zone-num">
+                      <strong>{numberText(allZonesDeviceCount, lang)}</strong>
+                      <span>{t("Devices", "أجهزة")}</span>
+                    </div>
+                    <div className="loc-zone-num">
+                      <strong>{numberText(allZonesGateCount, lang)}</strong>
+                      <span>{t("Gates", "بوابات")}</span>
+                    </div>
+                    <div className="loc-zone-num">
+                      <strong>{numberText(allZonesInspectionCount, lang)}</strong>
+                      <span>{t("Insp.", "فحوصات")}</span>
+                    </div>
+                  </div>
+                </button>
+
+                {zoneStats.map((zone) => (
+                  <button
+                    type="button"
+                    key={zone.key}
+                    className={`loc-zone-chip ${zoneFilter === zone.label ? "active" : ""}`}
+                    onClick={() => setZoneFilter(zone.label)}
+                    title={`${zone.label} · ${zone.devices} devices`}
+                  >
+                    <div className="loc-zone-name">{zone.label}</div>
+                    <div className="loc-zone-numbers">
+                      <div className="loc-zone-num">
+                        <strong>{numberText(zone.devices, lang)}</strong>
+                        <span>{t("Devices", "أجهزة")}</span>
+                      </div>
+                      <div className="loc-zone-num">
+                        <strong>{numberText(zone.gates, lang)}</strong>
+                        <span>{t("Gates", "بوابات")}</span>
+                      </div>
+                      <div className="loc-zone-num">
+                        <strong>{numberText(zone.inspections, lang)}</strong>
+                        <span>{t("Insp.", "فحوصات")}</span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="loc-tabs">
@@ -1659,12 +2020,14 @@ function LocationDrawer({ group, lang, onClose }) {
               <div className="loc-section-head">
                 <div className="loc-section-title">{t("Linked devices", "الأجهزة المرتبطة")}</div>
                 <div className="loc-section-sub">
-                  {t("All devices attached to this ministry location", "كل الأجهزة المرتبطة بموقع الوزارة")}
+                  {zoneFilter === "ALL"
+                    ? t("All devices attached to this ministry location", "كل الأجهزة المرتبطة بموقع الوزارة")
+                    : t(`Devices filtered by ${zoneFilter}`, `الأجهزة داخل ${zoneFilter}`)}
                 </div>
               </div>
 
-              {group.devices.length === 0 ? (
-                <div className="loc-empty">{t("No devices linked.", "لا توجد أجهزة مرتبطة.")}</div>
+              {filteredDrawerData.devices.length === 0 ? (
+                <div className="loc-empty">{t("No devices linked in this zone.", "لا توجد أجهزة مرتبطة في هذا الزون.")}</div>
               ) : (
                 <div className="loc-inner-table-wrap">
                   <table className="loc-inner-table">
@@ -1681,7 +2044,7 @@ function LocationDrawer({ group, lang, onClose }) {
                     </thead>
 
                     <tbody>
-                      {group.devices.map((device) => {
+                      {filteredDrawerData.devices.map((device) => {
                         const inspected = group.inspectedDeviceIds.has(normalizeId(device.id));
 
                         return (
@@ -1722,12 +2085,14 @@ function LocationDrawer({ group, lang, onClose }) {
               <div className="loc-section-head">
                 <div className="loc-section-title">{t("Inspection history", "سجل الفحوصات")}</div>
                 <div className="loc-section-sub">
-                  {t("Device and gate inspections for this location", "فحوصات الأجهزة والبوابات لهذا الموقع")}
+                  {zoneFilter === "ALL"
+                    ? t("Device and gate inspections for this location", "فحوصات الأجهزة والبوابات لهذا الموقع")
+                    : t(`Inspections filtered by ${zoneFilter}`, `الفحوصات داخل ${zoneFilter}`)}
                 </div>
               </div>
 
-              {group.inspections.length === 0 ? (
-                <div className="loc-empty">{t("No inspections found.", "لا توجد فحوصات.")}</div>
+              {filteredDrawerData.inspections.length === 0 ? (
+                <div className="loc-empty">{t("No inspections found in this zone.", "لا توجد فحوصات في هذا الزون.")}</div>
               ) : (
                 <div className="loc-inner-table-wrap">
                   <table className="loc-inner-table">
@@ -1737,13 +2102,14 @@ function LocationDrawer({ group, lang, onClose }) {
                         <th>{t("Type", "النوع")}</th>
                         <th>{t("Result", "النتيجة")}</th>
                         <th>{t("Technician", "الفني")}</th>
+                        <th>{t("Zone", "المنطقة")}</th>
                         <th>{t("Date", "التاريخ")}</th>
                         <th>{t("Notes", "ملاحظات")}</th>
                       </tr>
                     </thead>
 
                     <tbody>
-                      {group.inspections.map((inspection) => {
+                      {filteredDrawerData.inspections.map((inspection) => {
                         const isGate = Boolean(inspection.gateId);
                         const assetLabel = isGate
                           ? `Gate ${inspection.gate?.gateNo || inspection.gateId || ""}`
@@ -1759,6 +2125,7 @@ function LocationDrawer({ group, lang, onClose }) {
                               </Pill>
                             </td>
                             <td data-label={t("Technician", "الفني")}>{inspection.technicianName || "—"}</td>
+                            <td data-label={t("Zone", "المنطقة")}>{inspection.location.zone || "—"}</td>
                             <td data-label={t("Date", "التاريخ")}>{formatDateTime(inspection.inspectedAt, lang)}</td>
                             <td data-label={t("Notes", "ملاحظات")}>
                               {inspection.notes || inspection.issueReason || "—"}
@@ -1778,12 +2145,14 @@ function LocationDrawer({ group, lang, onClose }) {
               <div className="loc-section-head">
                 <div className="loc-section-title">{t("Linked gates", "البوابات المرتبطة")}</div>
                 <div className="loc-section-sub">
-                  {t("All gates attached to this ministry location", "كل البوابات المرتبطة بموقع الوزارة")}
+                  {zoneFilter === "ALL"
+                    ? t("All gates attached to this ministry location", "كل البوابات المرتبطة بموقع الوزارة")
+                    : t(`Gates filtered by ${zoneFilter}`, `البوابات داخل ${zoneFilter}`)}
                 </div>
               </div>
 
-              {group.gates.length === 0 ? (
-                <div className="loc-empty">{t("No gates linked.", "لا توجد بوابات مرتبطة.")}</div>
+              {filteredDrawerData.gates.length === 0 ? (
+                <div className="loc-empty">{t("No gates linked in this zone.", "لا توجد بوابات مرتبطة في هذا الزون.")}</div>
               ) : (
                 <div className="loc-inner-table-wrap">
                   <table className="loc-inner-table">
@@ -1799,7 +2168,7 @@ function LocationDrawer({ group, lang, onClose }) {
                     </thead>
 
                     <tbody>
-                      {group.gates.map((gate) => {
+                      {filteredDrawerData.gates.map((gate) => {
                         const inspected = group.inspectedGateIds.has(normalizeId(gate.id));
 
                         return (
@@ -1833,39 +2202,45 @@ function LocationDrawer({ group, lang, onClose }) {
               <div className="loc-section-head">
                 <div className="loc-section-title">{t("Original backend locations", "المواقع الأصلية من الباك إند")}</div>
                 <div className="loc-section-sub">
-                  {t("Grouped rows under the selected ministry", "الصفوف المجمعة تحت الوزارة المختارة")}
+                  {zoneFilter === "ALL"
+                    ? t("Grouped rows under the selected ministry", "الصفوف المجمعة تحت الوزارة المختارة")
+                    : t(`Backend rows filtered by ${zoneFilter}`, `صفوف الباك داخل ${zoneFilter}`)}
                 </div>
               </div>
 
-              <div className="loc-inner-table-wrap">
-                <table className="loc-inner-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>{t("Cluster", "المجموعة")}</th>
-                      <th>{t("Building", "المبنى")}</th>
-                      <th>{t("Zone", "المنطقة")}</th>
-                      <th>{t("Direction", "الاتجاه")}</th>
-                      <th>{t("Lane", "المسار")}</th>
-                      <th>Excel ID</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {group.subLocations.map((loc) => (
-                      <tr key={loc.id || loc.excelId || `${loc.cluster}-${loc.zone}-${loc.lane}`}>
-                        <td data-label="ID">{loc.id || "—"}</td>
-                        <td data-label={t("Cluster", "المجموعة")}>{loc.cluster || "—"}</td>
-                        <td data-label={t("Building", "المبنى")}>{loc.building || "—"}</td>
-                        <td data-label={t("Zone", "المنطقة")}>{loc.zone || "—"}</td>
-                        <td data-label={t("Direction", "الاتجاه")}>{loc.direction || "—"}</td>
-                        <td data-label={t("Lane", "المسار")}>{loc.lane || "—"}</td>
-                        <td data-label="Excel ID">{loc.excelId || "—"}</td>
+              {filteredDrawerData.subLocations.length === 0 ? (
+                <div className="loc-empty">{t("No backend location rows in this zone.", "لا توجد صفوف موقع في هذا الزون.")}</div>
+              ) : (
+                <div className="loc-inner-table-wrap">
+                  <table className="loc-inner-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>{t("Cluster", "المجموعة")}</th>
+                        <th>{t("Building", "المبنى")}</th>
+                        <th>{t("Zone", "المنطقة")}</th>
+                        <th>{t("Direction", "الاتجاه")}</th>
+                        <th>{t("Lane", "المسار")}</th>
+                        <th>Excel ID</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+
+                    <tbody>
+                      {filteredDrawerData.subLocations.map((loc) => (
+                        <tr key={loc.id || loc.excelId || `${loc.cluster}-${loc.zone}-${loc.lane}`}>
+                          <td data-label="ID">{loc.id || "—"}</td>
+                          <td data-label={t("Cluster", "المجموعة")}>{loc.cluster || "—"}</td>
+                          <td data-label={t("Building", "المبنى")}>{loc.building || "—"}</td>
+                          <td data-label={t("Zone", "المنطقة")}>{loc.zone || "—"}</td>
+                          <td data-label={t("Direction", "الاتجاه")}>{loc.direction || "—"}</td>
+                          <td data-label={t("Lane", "المسار")}>{loc.lane || "—"}</td>
+                          <td data-label="Excel ID">{loc.excelId || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>

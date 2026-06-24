@@ -219,6 +219,15 @@ const HOME_CSS = `
   gap: 14px;
 }
 
+.vh__bottom > .vh__card:first-child {
+  display: none;
+}
+
+.vh__bottom > .vh__card:last-child {
+  grid-column: 1 / -1;
+  padding: 24px;
+}
+
 .vh__card {
   background: rgba(255,255,255,0.94);
   border: 1px solid var(--border);

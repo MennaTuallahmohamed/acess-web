@@ -7,13 +7,29 @@ const API_BASE =
   import.meta.env.VITE_API_URL ||
   "https://acess-backend-production-8856.up.railway.app";
 
-const STORAGE_KEY = "smartit_global_tasks_wow_v2";
-
 const getToken = () =>
   localStorage.getItem("token") ||
   localStorage.getItem("accessToken") ||
   localStorage.getItem("authToken") ||
   "";
+
+function getCurrentUserId() {
+  try {
+    const raw = localStorage.getItem("dashboard_auth_user");
+    const user = raw ? JSON.parse(raw) : null;
+
+    return (
+      user?.id ||
+      user?.userId ||
+      user?.sub ||
+      user?.data?.id ||
+      user?.user?.id ||
+      null
+    );
+  } catch {
+    return null;
+  }
+}
 
 async function api(path, options = {}) {
   const token = getToken();
@@ -21,6 +37,7 @@ async function api(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: {
+      Accept: "application/json",
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
@@ -45,6 +62,7 @@ async function api(path, options = {}) {
 
 async function tryPaths(paths) {
   let lastError;
+
   for (const p of paths) {
     try {
       return await api(p);
@@ -52,6 +70,7 @@ async function tryPaths(paths) {
       lastError = e;
     }
   }
+
   throw lastError || new Error("Failed");
 }
 
@@ -63,12 +82,14 @@ function toArray(data) {
   if (Array.isArray(data?.users)) return data.users;
   if (Array.isArray(data?.devices)) return data.devices;
   if (Array.isArray(data?.gates)) return data.gates;
+  if (Array.isArray(data?.tasks)) return data.tasks;
   return [];
 }
 
 function getRole(user) {
   return String(
     user?.role?.name ||
+      user?.roleName ||
       user?.role ||
       user?.userRole ||
       user?.type ||
@@ -81,8 +102,34 @@ function getRole(user) {
 }
 
 function isTechnician(user) {
-  const r = getRole(user);
-  return r === "technician" || r.includes("technician") || r.includes("فني");
+  const role = getRole(user);
+
+  const text = [
+    user?.fullName,
+    user?.name,
+    user?.username,
+    user?.email,
+    user?.jobTitle,
+    user?.title,
+    role,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    role === "technician" ||
+    role.includes("technician") ||
+    role.includes("فني") ||
+    text.includes("technician") ||
+    text.includes("inspector") ||
+    text.includes("tech") ||
+    text.includes("فني") ||
+    text.includes("software") ||
+    text.includes("morpho") ||
+    text.includes("فرج") ||
+    text.includes("تهامي")
+  );
 }
 
 function userName(user) {
@@ -91,20 +138,35 @@ function userName(user) {
     user?.name ||
     user?.username ||
     user?.email ||
-    `Technician #${user?.id}`
+    `User #${user?.id || ""}`
   );
 }
 
-function loadLocal() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch {
-    return [];
-  }
+function userSubText(user) {
+  const role =
+    user?.role?.name || user?.roleName || user?.role || user?.jobTitle || "";
+  const email = user?.email || "";
+
+  return [role, email].filter(Boolean).join(" • ") || "Assigned user";
 }
 
-function saveLocal(tasks) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+function isFaragOrSoftwareUser(user) {
+  const text = [
+    userName(user),
+    userSubText(user),
+    user?.jobTitle,
+    getRole(user),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    text.includes("فرج") ||
+    text.includes("farag") ||
+    text.includes("software") ||
+    text.includes("morpho")
+  );
 }
 
 function assetLocation(x) {
@@ -157,10 +219,105 @@ function percent(done, total) {
 }
 
 function statusClass(status) {
-  if (status === "DONE") return "done";
-  if (status === "IN_PROGRESS") return "progress";
-  if (status === "ISSUE") return "issue";
+  const s = String(status || "").toUpperCase();
+
+  if (s === "DONE" || s === "COMPLETED") return "done";
+  if (s === "IN_PROGRESS") return "progress";
+  if (s === "ISSUE" || s === "ISSUE_FOUND" || s === "NOT_REACHABLE") {
+    return "issue";
+  }
+
   return "pending";
+}
+
+function formatDate(value) {
+  if (!value) return "No date";
+
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return "No date";
+  }
+}
+
+function normalizeTask(task) {
+  const backendItems = toArray(task?.items);
+
+  let items = backendItems.map((item) => {
+    const device = item?.device || {};
+    const gate = item?.gate || {};
+    const isGate = Boolean(item?.gateId || gate?.id);
+
+    const asset = isGate ? gate : device;
+
+    return {
+      id: item.id,
+      backendItemId: item.id,
+      assetUid: `${isGate ? "GATE" : "DEVICE"}-${asset?.id || item.id}`,
+      assetId: asset?.id || item.deviceId || item.gateId,
+      assetType: isGate ? "GATE" : "DEVICE",
+      label: isGate
+        ? `Gate ${gate?.gateNo || gate?.id || item.gateId}`
+        : assetTitle(device),
+      loc: assetLocation(asset),
+      status: item.status || "PENDING",
+      doneAt: item.inspectedAt || item.completedAt || null,
+      startedAt: item.startedAt || null,
+    };
+  });
+
+  if (items.length === 0 && task?.device) {
+    items = [
+      {
+        id: `task-device-${task.id}`,
+        backendItemId: null,
+        assetUid: `DEVICE-${task.device.id}`,
+        assetId: task.device.id,
+        assetType: "DEVICE",
+        label: assetTitle(task.device),
+        loc: assetLocation(task.device),
+        status: task.status || "PENDING",
+        doneAt: task.completedAt || null,
+        startedAt: task.startedAt || null,
+      },
+    ];
+  }
+
+  if (items.length === 0 && task?.gate) {
+    items = [
+      {
+        id: `task-gate-${task.id}`,
+        backendItemId: null,
+        assetUid: `GATE-${task.gate.id}`,
+        assetId: task.gate.id,
+        assetType: "GATE",
+        label: `Gate ${task.gate.gateNo || task.gate.id}`,
+        loc: assetLocation(task.gate),
+        status: task.status || "PENDING",
+        doneAt: task.completedAt || null,
+        startedAt: task.startedAt || null,
+      },
+    ];
+  }
+
+  return {
+    id: task.id,
+    backendId: task.id,
+    title: task.title || "Global Inspection Task",
+    technicianId: String(task.assignedToId || task.technicianId || ""),
+    technicianName:
+      userName(task.assignedTo) ||
+      userName(task.technician) ||
+      `User #${task.assignedToId || ""}`,
+    scheduledDate: task.scheduledDate || task.createdAt,
+    priority: task.priority || "MEDIUM",
+    notes: task.notes || "",
+    createdAt: task.createdAt,
+    status: task.status || "PENDING",
+    assetType: task.assetType || "DEVICE",
+    progressPercent: task.progressPercent || 0,
+    items,
+  };
 }
 
 const styles = `
@@ -223,10 +380,6 @@ const styles = `
   box-shadow:none;
 }
 
-.tw-btn.dark{
-  background:#0f172a;
-}
-
 .tw-btn.green{
   background:#22c55e;
 }
@@ -246,6 +399,7 @@ const styles = `
 .tw-btn:disabled{
   opacity:.45;
   cursor:not-allowed;
+  transform:none;
 }
 
 .tw-actions{
@@ -360,13 +514,6 @@ const styles = `
   font-weight:800;
 }
 
-.tw-toolbar{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  align-items:center;
-}
-
 .tw-input,
 .tw-select,
 .tw-textarea{
@@ -377,6 +524,7 @@ const styles = `
   outline:none;
   font-weight:900;
   background:white;
+  font-family:inherit;
 }
 
 .tw-input:focus,
@@ -392,7 +540,7 @@ const styles = `
 
 .tw-grid-form{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:1.4fr 1fr 1fr 1fr;
   gap:14px;
 }
 
@@ -459,26 +607,6 @@ const styles = `
   border-color:#0ea5e9;
 }
 
-.tw-asset.done{
-  background:#f0fdf4;
-  border-color:#86efac;
-}
-
-.tw-asset.progress{
-  background:#eff6ff;
-  border-color:#93c5fd;
-}
-
-.tw-asset.issue{
-  background:#fff7ed;
-  border-color:#fdba74;
-}
-
-.tw-asset.pending{
-  background:#fff1f2;
-  border-color:#fecdd3;
-}
-
 .tw-asset b{
   display:block;
 }
@@ -524,11 +652,22 @@ const styles = `
   color:#b91c1c;
 }
 
+.tw-tag.issue{
+  background:#fff7ed;
+  color:#c2410c;
+}
+
+.tw-tag.software{
+  background:#e0f2fe;
+  color:#0369a1;
+}
+
 .tw-mini{
   color:#64748b;
   font-size:12px;
   font-weight:800;
   margin-top:4px;
+  line-height:1.45;
 }
 
 .tw-basket{
@@ -652,6 +791,112 @@ const styles = `
   color:#64748b;
   font-weight:900;
   background:#f8fafc;
+}
+
+.tw-alert{
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid #fecaca;
+  background:#fef2f2;
+  color:#b91c1c;
+  font-weight:900;
+  margin-top:14px;
+}
+
+.tw-success{
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid #bbf7d0;
+  background:#f0fdf4;
+  color:#15803d;
+  font-weight:900;
+  margin-top:14px;
+}
+
+.tw-people-box{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:22px;
+  padding:14px;
+}
+
+.tw-people-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.tw-people-head strong{
+  font-size:14px;
+}
+
+.tw-people-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+  max-height:260px;
+  overflow:auto;
+  padding:3px;
+}
+
+.tw-person-card{
+  border:1px solid #dbeafe;
+  background:#fff;
+  border-radius:18px;
+  padding:13px;
+  cursor:pointer;
+  text-align:left;
+  transition:.18s ease;
+  font-family:inherit;
+}
+
+.tw-person-card:hover{
+  transform:translateY(-1px);
+  box-shadow:0 12px 26px rgba(15,23,42,.08);
+  border-color:#93c5fd;
+}
+
+.tw-person-card.selected{
+  background:linear-gradient(180deg,#ecfeff,#f8fdff);
+  border-color:#06b6d4;
+  box-shadow:0 0 0 4px rgba(14,165,233,.12);
+}
+
+.tw-person-top{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+
+.tw-person-avatar{
+  width:38px;
+  height:38px;
+  border-radius:14px;
+  background:linear-gradient(135deg,#0ea5e9,#2563eb);
+  color:white;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:1000;
+  flex-shrink:0;
+}
+
+.tw-person-name{
+  font-weight:1000;
+  color:#0f172a;
+  line-height:1.3;
+}
+
+.tw-person-sub{
+  color:#64748b;
+  font-size:11px;
+  font-weight:800;
+  margin-top:4px;
+  line-height:1.45;
+  word-break:break-word;
 }
 
 .tw-modal-backdrop{
@@ -781,33 +1026,106 @@ const styles = `
   margin-top:8px;
 }
 
-.tw-alert{
-  padding:14px 16px;
-  border-radius:18px;
-  border:1px solid #fecaca;
-  background:#fef2f2;
-  color:#b91c1c;
-  font-weight:900;
-  margin-top:14px;
-}
-
 @media(max-width:1200px){
   .tw-stats{grid-template-columns:repeat(3,1fr)}
   .tw-layout{grid-template-columns:1fr}
   .tw-grid-form{grid-template-columns:repeat(2,1fr)}
   .tw-wide{grid-column:span 2}
   .tw-task-grid{grid-template-columns:1fr}
+  .tw-people-grid{grid-template-columns:repeat(2,1fr)}
 }
 
 @media(max-width:700px){
+  .tasks-wow{padding:14px}
   .tw-hero{flex-direction:column}
   .tw-stats{grid-template-columns:1fr}
   .tw-grid-form{grid-template-columns:1fr}
   .tw-wide{grid-column:span 1}
   .tw-review{grid-template-columns:1fr}
   .tw-stepper{grid-template-columns:1fr}
+  .tw-people-grid{grid-template-columns:1fr}
 }
 `;
+
+function TechnicianCardsSelector({
+  users,
+  value,
+  onChange,
+  title = "Select technician",
+}) {
+  const [q, setQ] = useState("");
+
+  const filtered = useMemo(() => {
+    const search = q.trim().toLowerCase();
+
+    if (!search) return users;
+
+    return users.filter((u) => {
+      const text = [userName(u), userSubText(u), u?.phone, u?.id]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(search);
+    });
+  }, [users, q]);
+
+  return (
+    <div className="tw-people-box">
+      <div className="tw-people-head">
+        <strong>{title}</strong>
+        <span className="tw-tag">Showing {filtered.length} of {users.length}</span>
+      </div>
+
+      <input
+        className="tw-input"
+        placeholder="Search name, email, role..."
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+      />
+
+      <div style={{ height: 10 }} />
+
+      {filtered.length === 0 ? (
+        <div className="tw-empty" style={{ padding: 18 }}>
+          لا يوجد أسماء مطابقة
+        </div>
+      ) : (
+        <div className="tw-people-grid">
+          {filtered.map((u) => {
+            const selected = String(value) === String(u.id);
+            const initials = userName(u).slice(0, 2).toUpperCase();
+
+            return (
+              <button
+                type="button"
+                key={u.id}
+                className={`tw-person-card ${selected ? "selected" : ""}`}
+                onClick={() => onChange(String(u.id))}
+              >
+                <div className="tw-person-top">
+                  <div>
+                    <div className="tw-person-name">{userName(u)}</div>
+                    <div className="tw-person-sub">{userSubText(u)}</div>
+
+                    <div className="tw-tags">
+                      <span className="tw-tag">#{u.id}</span>
+                      {isFaragOrSoftwareUser(u) && (
+                        <span className="tw-tag software">Software</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="tw-person-avatar">{initials}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function TasksPage() {
   const [view, setView] = useState("ADMIN");
@@ -815,13 +1133,14 @@ export function TasksPage() {
   const [step, setStep] = useState(1);
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [users, setUsers] = useState([]);
   const [devices, setDevices] = useState([]);
   const [gates, setGates] = useState([]);
-
-  const [tasks, setTasks] = useState(loadLocal());
+  const [tasks, setTasks] = useState([]);
 
   const [form, setForm] = useState({
     title: "Global Inspection Task",
@@ -851,24 +1170,22 @@ export function TasksPage() {
     return () => s.remove();
   }, []);
 
-  useEffect(() => {
-    saveLocal(tasks);
-  }, [tasks]);
-
   const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
 
     try {
-      const [u, d, g] = await Promise.all([
+      const [u, d, g, t] = await Promise.all([
         tryPaths(["/users", "/accounts", "/auth/users"]).catch(() => []),
         tryPaths(["/devices"]).catch(() => []),
         tryPaths(["/gates"]).catch(() => []),
+        tryPaths(["/inspection-tasks"]).catch(() => []),
       ]);
 
       setUsers(toArray(u));
       setDevices(toArray(d));
       setGates(toArray(g));
+      setTasks(toArray(t).map(normalizeTask));
     } catch (e) {
       setError(e.message || "Failed to load backend data");
     } finally {
@@ -880,7 +1197,24 @@ export function TasksPage() {
     loadData();
   }, [loadData]);
 
-  const technicians = useMemo(() => users.filter(isTechnician), [users]);
+  const filteredTechnicians = useMemo(() => {
+    return users.filter(isTechnician);
+  }, [users]);
+
+  const technicians = useMemo(() => {
+    const base = filteredTechnicians.length ? filteredTechnicians : users;
+    const map = new Map();
+
+    base.forEach((u) => {
+      if (u?.id !== undefined && u?.id !== null) {
+        map.set(String(u.id), u);
+      }
+    });
+
+    return [...map.values()].sort((a, b) =>
+      userName(a).localeCompare(userName(b), "ar")
+    );
+  }, [filteredTechnicians, users]);
 
   const assets = useMemo(() => {
     const mappedDevices = devices.map((d) => ({
@@ -902,11 +1236,21 @@ export function TasksPage() {
 
   const optionBase = useMemo(() => {
     return assets.filter((a) => {
-      if (filters.assetType !== "ALL" && a.assetType !== filters.assetType) return false;
-      if (filters.ministry !== "ALL" && a.loc.ministry !== filters.ministry) return false;
-      if (filters.cluster !== "ALL" && a.loc.cluster !== filters.cluster) return false;
-      if (filters.building !== "ALL" && a.loc.building !== filters.building) return false;
-      if (filters.zone !== "ALL" && a.loc.zone !== filters.zone) return false;
+      if (filters.assetType !== "ALL" && a.assetType !== filters.assetType) {
+        return false;
+      }
+      if (filters.ministry !== "ALL" && a.loc.ministry !== filters.ministry) {
+        return false;
+      }
+      if (filters.cluster !== "ALL" && a.loc.cluster !== filters.cluster) {
+        return false;
+      }
+      if (filters.building !== "ALL" && a.loc.building !== filters.building) {
+        return false;
+      }
+      if (filters.zone !== "ALL" && a.loc.zone !== filters.zone) {
+        return false;
+      }
       return true;
     });
   }, [assets, filters]);
@@ -943,13 +1287,27 @@ export function TasksPage() {
         .toLowerCase();
 
       if (q && !text.includes(q)) return false;
-      if (filters.assetType !== "ALL" && a.assetType !== filters.assetType) return false;
-      if (filters.ministry !== "ALL" && a.loc.ministry !== filters.ministry) return false;
-      if (filters.cluster !== "ALL" && a.loc.cluster !== filters.cluster) return false;
-      if (filters.building !== "ALL" && a.loc.building !== filters.building) return false;
-      if (filters.zone !== "ALL" && a.loc.zone !== filters.zone) return false;
-      if (filters.direction !== "ALL" && a.loc.direction !== filters.direction) return false;
-      if (filters.type !== "ALL" && a.loc.type !== filters.type) return false;
+      if (filters.assetType !== "ALL" && a.assetType !== filters.assetType) {
+        return false;
+      }
+      if (filters.ministry !== "ALL" && a.loc.ministry !== filters.ministry) {
+        return false;
+      }
+      if (filters.cluster !== "ALL" && a.loc.cluster !== filters.cluster) {
+        return false;
+      }
+      if (filters.building !== "ALL" && a.loc.building !== filters.building) {
+        return false;
+      }
+      if (filters.zone !== "ALL" && a.loc.zone !== filters.zone) {
+        return false;
+      }
+      if (filters.direction !== "ALL" && a.loc.direction !== filters.direction) {
+        return false;
+      }
+      if (filters.type !== "ALL" && a.loc.type !== filters.type) {
+        return false;
+      }
 
       return true;
     });
@@ -960,11 +1318,14 @@ export function TasksPage() {
     [assets, selected]
   );
 
+  const selectedTech = useMemo(() => {
+    return technicians.find((t) => String(t.id) === String(form.technicianId));
+  }, [technicians, form.technicianId]);
+
   const summary = useMemo(() => {
-    const all = tasks.flatMap((t) => t.items);
-    const done = all.filter((i) => i.status === "DONE");
-    const progress = all.filter((i) => i.status === "IN_PROGRESS");
-    const pending = all.filter((i) => i.status === "PENDING");
+    const all = tasks.flatMap((t) => t.items || []);
+    const done = all.filter((i) => statusClass(i.status) === "done");
+    const progress = all.filter((i) => statusClass(i.status) === "progress");
     const devicesAll = all.filter((i) => i.assetType === "DEVICE");
     const gatesAll = all.filter((i) => i.assetType === "GATE");
 
@@ -973,11 +1334,10 @@ export function TasksPage() {
       total: all.length,
       done: done.length,
       progress: progress.length,
-      pending: pending.length,
       remaining: all.length - done.length,
-      devicesDone: devicesAll.filter((i) => i.status === "DONE").length,
+      devicesDone: devicesAll.filter((i) => statusClass(i.status) === "done").length,
       devicesTotal: devicesAll.length,
-      gatesDone: gatesAll.filter((i) => i.status === "DONE").length,
+      gatesDone: gatesAll.filter((i) => statusClass(i.status) === "done").length,
       gatesTotal: gatesAll.length,
       percent: percent(done.length, all.length),
     };
@@ -985,13 +1345,25 @@ export function TasksPage() {
 
   const shownTasks = useMemo(() => {
     if (view === "ADMIN") return tasks;
+
     const techId = form.technicianId || technicians[0]?.id;
+
     return tasks.filter((t) => String(t.technicianId) === String(techId));
   }, [view, tasks, form.technicianId, technicians]);
+
+  const reviewDevices = selectedAssets.filter(
+    (a) => a.assetType === "DEVICE"
+  ).length;
+
+  const reviewGates = selectedAssets.filter(
+    (a) => a.assetType === "GATE"
+  ).length;
 
   function openAddTask() {
     setModalOpen(true);
     setStep(1);
+    setSuccess("");
+    setError("");
   }
 
   function closeAddTask() {
@@ -1040,95 +1412,155 @@ export function TasksPage() {
     setSelected([]);
   }
 
-  function createTask() {
+  async function createBackendTask(assetType, assetIds) {
+    const createdById = getCurrentUserId();
+
+    if (!createdById) {
+      throw new Error("Current admin id not found. Please logout and login again.");
+    }
+
+    const body = {
+      createdById: Number(createdById),
+      assignedToId: Number(form.technicianId),
+      scheduledDate: form.scheduledDate || new Date().toISOString(),
+      priority: form.priority || "MEDIUM",
+      title: form.title || "Global Inspection Task",
+      notes:
+        form.notes ||
+        (selectedTech && isFaragOrSoftwareUser(selectedTech)
+          ? "Software / Morpho assigned task"
+          : null),
+      assetType,
+      ...(assetType === "GATE" ? { gateIds: assetIds } : { deviceIds: assetIds }),
+    };
+
+    return api("/inspection-tasks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  }
+
+  async function createTask() {
     if (!form.technicianId) return alert("اختاري الفني الأول");
     if (!form.scheduledDate) return alert("اختاري ميعاد التاسك");
     if (!selectedAssets.length) return alert("اختاري أجهزة أو بوابات");
 
-    const tech = technicians.find((t) => String(t.id) === String(form.technicianId));
+    const deviceIds = selectedAssets
+      .filter((a) => a.assetType === "DEVICE")
+      .map((a) => Number(a.id))
+      .filter((id) => !Number.isNaN(id));
 
-    const newTask = {
-      id: Date.now(),
-      title: form.title || "Global Inspection Task",
-      technicianId: String(form.technicianId),
-      technicianName: userName(tech),
-      scheduledDate: form.scheduledDate,
-      priority: form.priority,
-      notes: form.notes,
-      createdAt: new Date().toISOString(),
-      items: selectedAssets.map((a) => ({
-        id: `${a.uid}-${Date.now()}-${Math.random()}`,
-        assetUid: a.uid,
-        assetId: a.id,
-        assetType: a.assetType,
-        label: assetTitle(a),
-        loc: a.loc,
-        status: "PENDING",
-        doneAt: null,
-        startedAt: null,
-      })),
-    };
+    const gateIds = selectedAssets
+      .filter((a) => a.assetType === "GATE")
+      .map((a) => Number(a.id))
+      .filter((id) => !Number.isNaN(id));
 
-    setTasks((old) => [newTask, ...old]);
-    setModalOpen(false);
-    setStep(1);
-    setSelected([]);
+    setSaving(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const requests = [];
+
+      if (deviceIds.length) {
+        requests.push(createBackendTask("DEVICE", deviceIds));
+      }
+
+      if (gateIds.length) {
+        requests.push(createBackendTask("GATE", gateIds));
+      }
+
+      await Promise.all(requests);
+
+      setSuccess(
+        selectedTech
+          ? `تم إرسال التاسك إلى ${userName(selectedTech)} وحفظه في الباك إند.`
+          : "تم إرسال التاسك وحفظه في الباك إند."
+      );
+
+      setModalOpen(false);
+      setStep(1);
+      setSelected([]);
+      setForm((old) => ({
+        ...old,
+        title: "Global Inspection Task",
+        notes: "",
+      }));
+
+      await loadData();
+    } catch (e) {
+      setError(e.message || "Failed to create task on backend");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function setItemStatus(taskId, itemId, nextStatus) {
-    setTasks((old) =>
-      old.map((task) => {
-        if (task.id !== taskId) return task;
+  async function setItemStatus(taskId, itemId, nextStatus) {
+    const task = tasks.find((t) => String(t.id) === String(taskId));
+    const item = task?.items?.find((i) => String(i.id) === String(itemId));
 
-        return {
-          ...task,
-          items: task.items.map((item) => {
-            if (item.id !== itemId) return item;
+    if (!task || !item) return;
 
-            return {
-              ...item,
-              status: nextStatus,
-              startedAt:
-                nextStatus === "IN_PROGRESS"
-                  ? item.startedAt || new Date().toISOString()
-                  : item.startedAt,
-              doneAt:
-                nextStatus === "DONE"
-                  ? new Date().toISOString()
-                  : nextStatus === "PENDING"
-                    ? null
-                    : item.doneAt,
-            };
-          }),
-        };
-      })
-    );
+    if (!item.backendItemId) {
+      setError("This item is missing backend item id.");
+      return;
+    }
+
+    const technicianId = Number(task.technicianId || form.technicianId);
+
+    if (!technicianId) {
+      setError("Technician id is missing.");
+      return;
+    }
+
+    try {
+      const inspectionStatus =
+        nextStatus === "DONE"
+          ? "OK"
+          : nextStatus === "NOT_REACHABLE"
+            ? "NOT_REACHABLE"
+            : "NOT_OK";
+
+      await api(`/inspection-tasks/${task.backendId}/complete-item`, {
+        method: "POST",
+        body: JSON.stringify({
+          itemId: Number(item.backendItemId),
+          technicianId,
+          inspectionStatus,
+          notes: `Updated from dashboard as ${nextStatus}`,
+        }),
+      });
+
+      await loadData();
+    } catch (e) {
+      setError(e.message || "Failed to update item status");
+    }
   }
 
-  function markAllDone(taskId) {
-    setTasks((old) =>
-      old.map((task) =>
-        task.id === taskId
-          ? {
-              ...task,
-              items: task.items.map((i) => ({
-                ...i,
-                status: "DONE",
-                doneAt: i.doneAt || new Date().toISOString(),
-              })),
-            }
-          : task
-      )
-    );
+  async function markAllDone(taskId) {
+    const task = tasks.find((t) => String(t.id) === String(taskId));
+    if (!task) return;
+
+    for (const item of task.items || []) {
+      if (statusClass(item.status) !== "done") {
+        await setItemStatus(task.id, item.id, "DONE");
+      }
+    }
   }
 
-  function deleteTask(taskId) {
+  async function deleteTask(taskId) {
     if (!confirm("Delete this task?")) return;
-    setTasks((old) => old.filter((t) => t.id !== taskId));
-  }
 
-  const reviewDevices = selectedAssets.filter((a) => a.assetType === "DEVICE").length;
-  const reviewGates = selectedAssets.filter((a) => a.assetType === "GATE").length;
+    try {
+      await api(`/inspection-tasks/${taskId}`, {
+        method: "DELETE",
+      });
+
+      await loadData();
+    } catch (e) {
+      setError(e.message || "Failed to delete task");
+    }
+  }
 
   return (
     <section className="tasks-wow">
@@ -1136,14 +1568,16 @@ export function TasksPage() {
         <div>
           <h1>Global Task Command Center</h1>
           <p>
-            اختاري فني، حددي أجهزة وبوابات، تابعي Done و Remaining بألوان واضحة.
+            اختاري فني، حددي أجهزة وبوابات، والتاسك هيتحفظ في الباك إند ويظهر
+            للفني في حسابه.
           </p>
         </div>
 
         <div className="tw-actions">
-          <button className="tw-btn white" onClick={loadData}>
+          <button className="tw-btn white" onClick={loadData} disabled={loading}>
             {loading ? "Loading..." : "Refresh Data"}
           </button>
+
           <button className="tw-btn green" onClick={openAddTask}>
             + Add Global Task
           </button>
@@ -1151,6 +1585,7 @@ export function TasksPage() {
       </div>
 
       {error && <div className="tw-alert">{error}</div>}
+      {success && <div className="tw-success">{success}</div>}
 
       <div className="tw-tabs">
         <button
@@ -1159,6 +1594,7 @@ export function TasksPage() {
         >
           Admin Monitor
         </button>
+
         <button
           className={`tw-tab ${view === "TECH" ? "active" : ""}`}
           onClick={() => setView("TECH")}
@@ -1169,25 +1605,30 @@ export function TasksPage() {
 
       <div className="tw-stats">
         <div className="tw-stat">
-          <span>Tasks</span>
+          <span>Backend Tasks</span>
           <strong>{summary.tasks}</strong>
         </div>
+
         <div className="tw-stat">
           <span>Total Items</span>
           <strong>{summary.total}</strong>
         </div>
+
         <div className="tw-stat">
           <span>Done Green</span>
           <strong>{summary.done}</strong>
         </div>
+
         <div className="tw-stat">
           <span>In Progress Blue</span>
           <strong>{summary.progress}</strong>
         </div>
+
         <div className="tw-stat">
           <span>Remaining Red</span>
           <strong>{summary.remaining}</strong>
         </div>
+
         <div className="tw-stat">
           <span>Progress</span>
           <strong>{summary.percent}%</strong>
@@ -1204,24 +1645,29 @@ export function TasksPage() {
             {summary.devicesDone}/{summary.devicesTotal}
           </strong>
         </div>
+
         <div className="tw-stat">
           <span>Gates Done</span>
           <strong>
             {summary.gatesDone}/{summary.gatesTotal}
           </strong>
         </div>
+
         <div className="tw-stat">
           <span>Backend Devices</span>
           <strong>{devices.length}</strong>
         </div>
+
         <div className="tw-stat">
           <span>Backend Gates</span>
           <strong>{gates.length}</strong>
         </div>
+
         <div className="tw-stat">
-          <span>Technicians</span>
+          <span>Technicians Loaded</span>
           <strong>{technicians.length}</strong>
         </div>
+
         <div className="tw-stat">
           <span>Selected</span>
           <strong>{selectedAssets.length}</strong>
@@ -1233,35 +1679,24 @@ export function TasksPage() {
           <div className="tw-panel-head">
             <div>
               <h2>Technician Preview</h2>
-              <p>اختاري الفني علشان تشوفي التاسكات بتاعته وتعملي Done زي الموبايل.</p>
+              <p>اختاري أي فني بشكل كروت واضح ومريح بدل القائمة المزعجة.</p>
             </div>
           </div>
 
-          <div className="tw-field">
-            <label>Technician</label>
-            <select
-              className="tw-select"
-              value={form.technicianId}
-              onChange={(e) => setForm({ ...form, technicianId: e.target.value })}
-            >
-              <option value="">Auto first technician</option>
-              {technicians.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {userName(t)} — TECHNICIAN
-                </option>
-              ))}
-            </select>
-          </div>
+          <TechnicianCardsSelector
+            users={technicians}
+            value={form.technicianId}
+            title="Preview assigned work for"
+            onChange={(id) => setForm({ ...form, technicianId: id })}
+          />
         </div>
       )}
 
       <div className="tw-panel">
         <div className="tw-panel-head">
           <div>
-            <h2>{view === "ADMIN" ? "All Global Tasks" : "My Assigned Tasks"}</h2>
-            <p>
-              الأحمر = لسه، الأزرق = الفني بدأ، الأخضر = Done.
-            </p>
+            <h2>{view === "ADMIN" ? "All Backend Tasks" : "My Assigned Tasks"}</h2>
+            <p>الأحمر = لسه، الأزرق = الفني بدأ، الأخضر = Done.</p>
           </div>
 
           {view === "ADMIN" && (
@@ -1273,17 +1708,26 @@ export function TasksPage() {
 
         {shownTasks.length === 0 ? (
           <div className="tw-empty">
-            No tasks yet. اضغطي Add Global Task وابدئي أول تاسك.
+            No tasks yet. اضغطي Add Global Task وابعتي أول تاسك.
           </div>
         ) : (
           <div className="tw-task-grid">
             {shownTasks.map((task) => {
-              const done = task.items.filter((i) => i.status === "DONE").length;
-              const inProgress = task.items.filter((i) => i.status === "IN_PROGRESS").length;
+              const done = task.items.filter(
+                (i) => statusClass(i.status) === "done"
+              ).length;
+              const inProgress = task.items.filter(
+                (i) => statusClass(i.status) === "progress"
+              ).length;
               const total = task.items.length;
-              const devicesTotal = task.items.filter((i) => i.assetType === "DEVICE").length;
-              const gatesTotal = task.items.filter((i) => i.assetType === "GATE").length;
-              const taskPercent = percent(done, total);
+              const devicesTotal = task.items.filter(
+                (i) => i.assetType === "DEVICE"
+              ).length;
+              const gatesTotal = task.items.filter(
+                (i) => i.assetType === "GATE"
+              ).length;
+              const taskPercent =
+                task.progressPercent || percent(done, total);
 
               return (
                 <article className="tw-task" key={task.id}>
@@ -1291,11 +1735,19 @@ export function TasksPage() {
                     <div>
                       <h3>{task.title}</h3>
                       <div className="tw-mini">
-                        {task.technicianName} • {new Date(task.scheduledDate).toLocaleString()}
+                        {task.technicianName} • {formatDate(task.scheduledDate)}
                       </div>
                     </div>
 
-                    <span className={`tw-tag ${taskPercent === 100 ? "done" : inProgress ? "progress" : "pending"}`}>
+                    <span
+                      className={`tw-tag ${
+                        taskPercent === 100
+                          ? "done"
+                          : inProgress
+                            ? "progress"
+                            : "pending"
+                      }`}
+                    >
                       {taskPercent}%
                     </span>
                   </div>
@@ -1304,6 +1756,9 @@ export function TasksPage() {
                     <span className="tw-tag">Total {total}</span>
                     <span className="tw-tag device">Devices {devicesTotal}</span>
                     <span className="tw-tag gate">Gates {gatesTotal}</span>
+                    <span className={`tw-tag ${statusClass(task.status)}`}>
+                      {task.status}
+                    </span>
                     <span className="tw-tag done">Done {done}</span>
                     <span className="tw-tag progress">Blue {inProgress}</span>
                     <span className="tw-tag pending">Remaining {total - done}</span>
@@ -1316,11 +1771,18 @@ export function TasksPage() {
                   {task.notes && <p>{task.notes}</p>}
 
                   <div className="tw-actions" style={{ marginTop: 12 }}>
-                    <button className="tw-btn green tw-small" onClick={() => markAllDone(task.id)}>
+                    <button
+                      className="tw-btn green tw-small"
+                      onClick={() => markAllDone(task.id)}
+                    >
                       Mark All Done
                     </button>
+
                     {view === "ADMIN" && (
-                      <button className="tw-btn red tw-small" onClick={() => deleteTask(task.id)}>
+                      <button
+                        className="tw-btn red tw-small"
+                        onClick={() => deleteTask(task.id)}
+                      >
                         Delete
                       </button>
                     )}
@@ -1334,46 +1796,59 @@ export function TasksPage() {
                       >
                         <div>
                           <b>{item.label}</b>
+
                           <div className="tw-mini">
                             {item.assetType} • {item.loc?.ministry || "—"} •{" "}
-                            {item.loc?.building || "—"} • {item.loc?.zone || "—"}
+                            {item.loc?.building || "—"} •{" "}
+                            {item.loc?.zone || "—"}
                           </div>
 
                           <div className="tw-tags">
-                            <span className={`tw-tag ${item.assetType === "GATE" ? "gate" : "device"}`}>
+                            <span
+                              className={`tw-tag ${
+                                item.assetType === "GATE" ? "gate" : "device"
+                              }`}
+                            >
                               {item.assetType}
                             </span>
+
                             <span className={`tw-tag ${statusClass(item.status)}`}>
-                              {item.status === "PENDING"
-                                ? "Red Pending"
-                                : item.status === "IN_PROGRESS"
-                                  ? "Blue Started"
-                                  : item.status === "DONE"
-                                    ? "Green Done"
-                                    : item.status}
+                              {item.status}
                             </span>
-                            {item.loc?.direction && <span className="tw-tag">{item.loc.direction}</span>}
+
+                            {item.loc?.direction && (
+                              <span className="tw-tag">{item.loc.direction}</span>
+                            )}
                           </div>
                         </div>
 
                         <div className="tw-item-actions">
                           <button
-                            className="tw-btn blue tw-small"
-                            onClick={() => setItemStatus(task.id, item.id, "IN_PROGRESS")}
-                          >
-                            Start
-                          </button>
-                          <button
                             className="tw-btn green tw-small"
+                            disabled={statusClass(item.status) === "done"}
                             onClick={() => setItemStatus(task.id, item.id, "DONE")}
                           >
                             Done
                           </button>
+
+                          <button
+                            className="tw-btn orange tw-small"
+                            disabled={statusClass(item.status) === "done"}
+                            onClick={() =>
+                              setItemStatus(task.id, item.id, "ISSUE_FOUND")
+                            }
+                          >
+                            Issue
+                          </button>
+
                           <button
                             className="tw-btn white tw-small"
-                            onClick={() => setItemStatus(task.id, item.id, "PENDING")}
+                            disabled={statusClass(item.status) === "done"}
+                            onClick={() =>
+                              setItemStatus(task.id, item.id, "NOT_REACHABLE")
+                            }
                           >
-                            Undo
+                            Not Reachable
                           </button>
                         </div>
                       </div>
@@ -1392,8 +1867,12 @@ export function TasksPage() {
             <div className="tw-modal-head">
               <div>
                 <h2>Dispatch New Global Task</h2>
-                <p>بوكس منظم: اختاري الفني، الفلاتر، الأجهزة والبوابات، ثم إرسال.</p>
+                <p>
+                  اختاري الفني من الكروت، حددي الأجهزة أو البوابات، والتاسك
+                  هيتسجل في الباك إند.
+                </p>
               </div>
+
               <button className="tw-close" onClick={closeAddTask}>
                 ×
               </button>
@@ -1401,78 +1880,95 @@ export function TasksPage() {
 
             <div className="tw-modal-body">
               <div className="tw-stepper">
-                <div className={`tw-step ${step === 1 ? "active" : step > 1 ? "done" : ""}`}>
+                <div
+                  className={`tw-step ${
+                    step === 1 ? "active" : step > 1 ? "done" : ""
+                  }`}
+                >
                   1. Technician & Info
                 </div>
-                <div className={`tw-step ${step === 2 ? "active" : step > 2 ? "done" : ""}`}>
+
+                <div
+                  className={`tw-step ${
+                    step === 2 ? "active" : step > 2 ? "done" : ""
+                  }`}
+                >
                   2. Select Assets
                 </div>
+
                 <div className={`tw-step ${step === 3 ? "active" : ""}`}>
                   3. Review & Dispatch
                 </div>
               </div>
 
               {step === 1 && (
-                <div className="tw-grid-form">
-                  <div className="tw-field">
-                    <label>Technician only</label>
-                    <select
-                      className="tw-select"
-                      value={form.technicianId}
-                      onChange={(e) => setForm({ ...form, technicianId: e.target.value })}
-                    >
-                      <option value="">Select Technician...</option>
-                      {technicians.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {userName(t)} — TECHNICIAN
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <>
+                  <TechnicianCardsSelector
+                    users={technicians}
+                    value={form.technicianId}
+                    title="Select technician"
+                    onChange={(id) => setForm({ ...form, technicianId: id })}
+                  />
 
-                  <div className="tw-field">
-                    <label>Scheduled Date</label>
-                    <input
-                      className="tw-input"
-                      type="datetime-local"
-                      value={form.scheduledDate}
-                      onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })}
-                    />
-                  </div>
+                  <div style={{ height: 16 }} />
 
-                  <div className="tw-field">
-                    <label>Priority</label>
-                    <select
-                      className="tw-select"
-                      value={form.priority}
-                      onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                    >
-                      <option value="LOW">LOW</option>
-                      <option value="MEDIUM">MEDIUM</option>
-                      <option value="HIGH">HIGH</option>
-                      <option value="EMERGENCY">EMERGENCY</option>
-                    </select>
-                  </div>
+                  <div className="tw-grid-form">
+                    <div className="tw-field">
+                      <label>Scheduled Date</label>
 
-                  <div className="tw-field">
-                    <label>Task Title</label>
-                    <input
-                      className="tw-input"
-                      value={form.title}
-                      onChange={(e) => setForm({ ...form, title: e.target.value })}
-                    />
-                  </div>
+                      <input
+                        className="tw-input"
+                        type="datetime-local"
+                        value={form.scheduledDate}
+                        onChange={(e) =>
+                          setForm({ ...form, scheduledDate: e.target.value })
+                        }
+                      />
+                    </div>
 
-                  <div className="tw-field tw-wide">
-                    <label>Instructions</label>
-                    <textarea
-                      className="tw-textarea"
-                      placeholder="تعليمات للفني..."
-                      value={form.notes}
-                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                    />
+                    <div className="tw-field">
+                      <label>Priority</label>
+
+                      <select
+                        className="tw-select"
+                        value={form.priority}
+                        onChange={(e) =>
+                          setForm({ ...form, priority: e.target.value })
+                        }
+                      >
+                        <option value="LOW">LOW</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="EMERGENCY">EMERGENCY</option>
+                      </select>
+                    </div>
+
+                    <div className="tw-field" style={{ gridColumn: "span 2" }}>
+                      <label>Task Title</label>
+
+                      <input
+                        className="tw-input"
+                        value={form.title}
+                        onChange={(e) =>
+                          setForm({ ...form, title: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div className="tw-field tw-wide">
+                      <label>Instructions</label>
+
+                      <textarea
+                        className="tw-textarea"
+                        placeholder="تعليمات للفني..."
+                        value={form.notes}
+                        onChange={(e) =>
+                          setForm({ ...form, notes: e.target.value })
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               {step === 2 && (
@@ -1485,13 +1981,17 @@ export function TasksPage() {
                         className="tw-input"
                         placeholder="Search ministry, building, device, gate..."
                         value={filters.search}
-                        onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, search: e.target.value })
+                        }
                       />
 
                       <select
                         className="tw-select"
                         value={filters.assetType}
-                        onChange={(e) => setFilters({ ...filters, assetType: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, assetType: e.target.value })
+                        }
                       >
                         <option value="ALL">Devices + Gates</option>
                         <option value="DEVICE">Devices Only</option>
@@ -1501,7 +2001,9 @@ export function TasksPage() {
                       <select
                         className="tw-select"
                         value={filters.ministry}
-                        onChange={(e) => setFilters({ ...filters, ministry: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, ministry: e.target.value })
+                        }
                       >
                         <option value="ALL">All Ministries</option>
                         {filterOptions.ministry.map((x) => (
@@ -1512,7 +2014,9 @@ export function TasksPage() {
                       <select
                         className="tw-select"
                         value={filters.building}
-                        onChange={(e) => setFilters({ ...filters, building: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, building: e.target.value })
+                        }
                       >
                         <option value="ALL">All Buildings</option>
                         {filterOptions.building.map((x) => (
@@ -1523,7 +2027,9 @@ export function TasksPage() {
                       <select
                         className="tw-select"
                         value={filters.cluster}
-                        onChange={(e) => setFilters({ ...filters, cluster: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, cluster: e.target.value })
+                        }
                       >
                         <option value="ALL">All Clusters</option>
                         {filterOptions.cluster.map((x) => (
@@ -1534,7 +2040,9 @@ export function TasksPage() {
                       <select
                         className="tw-select"
                         value={filters.zone}
-                        onChange={(e) => setFilters({ ...filters, zone: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, zone: e.target.value })
+                        }
                       >
                         <option value="ALL">All Zones</option>
                         {filterOptions.zone.map((x) => (
@@ -1545,7 +2053,9 @@ export function TasksPage() {
                       <select
                         className="tw-select"
                         value={filters.direction}
-                        onChange={(e) => setFilters({ ...filters, direction: e.target.value })}
+                        onChange={(e) =>
+                          setFilters({ ...filters, direction: e.target.value })
+                        }
                       >
                         <option value="ALL">All Directions</option>
                         {filterOptions.direction.map((x) => (
@@ -1575,7 +2085,9 @@ export function TasksPage() {
                     {filteredAssets.map((a) => (
                       <div
                         key={a.uid}
-                        className={`tw-asset ${selected.includes(a.uid) ? "selected" : ""}`}
+                        className={`tw-asset ${
+                          selected.includes(a.uid) ? "selected" : ""
+                        }`}
                         onClick={() => toggleAsset(a.uid)}
                       >
                         <input
@@ -1587,18 +2099,35 @@ export function TasksPage() {
 
                         <div>
                           <b>{assetTitle(a)}</b>
+
                           <div className="tw-mini">
                             ID: {a.id} {a.deviceCode ? `• ${a.deviceCode}` : ""}
                           </div>
 
                           <div className="tw-tags">
-                            <span className={`tw-tag ${a.assetType === "GATE" ? "gate" : "device"}`}>
+                            <span
+                              className={`tw-tag ${
+                                a.assetType === "GATE" ? "gate" : "device"
+                              }`}
+                            >
                               {a.assetType}
                             </span>
-                            {a.loc.ministry && <span className="tw-tag">{a.loc.ministry}</span>}
-                            {a.loc.building && <span className="tw-tag">{a.loc.building}</span>}
-                            {a.loc.zone && <span className="tw-tag">{a.loc.zone}</span>}
-                            {a.loc.direction && <span className="tw-tag">{a.loc.direction}</span>}
+
+                            {a.loc.ministry && (
+                              <span className="tw-tag">{a.loc.ministry}</span>
+                            )}
+
+                            {a.loc.building && (
+                              <span className="tw-tag">{a.loc.building}</span>
+                            )}
+
+                            {a.loc.zone && (
+                              <span className="tw-tag">{a.loc.zone}</span>
+                            )}
+
+                            {a.loc.direction && (
+                              <span className="tw-tag">{a.loc.direction}</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1611,6 +2140,7 @@ export function TasksPage() {
 
                   <div className="tw-basket">
                     <h3>Selected Basket</h3>
+
                     <div className="tw-task-meta">
                       <span className="tw-tag device">Devices {reviewDevices}</span>
                       <span className="tw-tag gate">Gates {reviewGates}</span>
@@ -1624,11 +2154,17 @@ export function TasksPage() {
                         <div className="tw-basket-card" key={a.uid}>
                           <div>
                             <b>{assetTitle(a)}</b>
+
                             <div className="tw-mini">
-                              {a.assetType} • {a.loc.building || "—"} • {a.loc.zone || "—"}
+                              {a.assetType} • {a.loc.building || "—"} •{" "}
+                              {a.loc.zone || "—"}
                             </div>
                           </div>
-                          <button className="tw-x" onClick={() => removeAsset(a.uid)}>
+
+                          <button
+                            className="tw-x"
+                            onClick={() => removeAsset(a.uid)}
+                          >
                             ×
                           </button>
                         </div>
@@ -1643,20 +2179,19 @@ export function TasksPage() {
                   <div className="tw-review">
                     <div className="tw-review-card">
                       <span>Technician</span>
-                      <strong>
-                        {userName(
-                          technicians.find((t) => String(t.id) === String(form.technicianId))
-                        ) || "—"}
-                      </strong>
+                      <strong>{selectedTech ? userName(selectedTech) : "—"}</strong>
                     </div>
+
                     <div className="tw-review-card">
                       <span>Total Selected</span>
                       <strong>{selectedAssets.length}</strong>
                     </div>
+
                     <div className="tw-review-card">
                       <span>Devices</span>
                       <strong>{reviewDevices}</strong>
                     </div>
+
                     <div className="tw-review-card">
                       <span>Gates</span>
                       <strong>{reviewGates}</strong>
@@ -1668,9 +2203,17 @@ export function TasksPage() {
                     <p>{form.notes || "No notes"}</p>
 
                     <div className="tw-task-meta">
-                      <span className="tw-tag pending">Will start RED pending</span>
-                      <span className="tw-tag progress">Start makes it BLUE</span>
-                      <span className="tw-tag done">Done makes it GREEN</span>
+                      <span className="tw-tag pending">
+                        Will be saved in backend
+                      </span>
+                      <span className="tw-tag progress">
+                        Assigned to {selectedTech ? userName(selectedTech) : "—"}
+                      </span>
+                      {selectedTech && isFaragOrSoftwareUser(selectedTech) && (
+                        <span className="tw-tag software">
+                          Will appear in Software page
+                        </span>
+                      )}
                     </div>
                   </div>
                 </>
@@ -1679,11 +2222,20 @@ export function TasksPage() {
 
             <div className="tw-modal-foot">
               <div className="tw-actions">
-                <button className="tw-btn white" onClick={closeAddTask}>
+                <button
+                  className="tw-btn white"
+                  onClick={closeAddTask}
+                  disabled={saving}
+                >
                   Cancel
                 </button>
+
                 {step > 1 && (
-                  <button className="tw-btn white" onClick={() => setStep(step - 1)}>
+                  <button
+                    className="tw-btn white"
+                    onClick={() => setStep(step - 1)}
+                    disabled={saving}
+                  >
                     Back
                   </button>
                 )}
@@ -1694,17 +2246,30 @@ export function TasksPage() {
                   <button
                     className="tw-btn blue"
                     onClick={() => {
-                      if (step === 1 && !form.technicianId) return alert("اختاري الفني");
-                      if (step === 1 && !form.scheduledDate) return alert("اختاري الميعاد");
-                      if (step === 2 && !selectedAssets.length) return alert("اختاري أجهزة أو بوابات");
+                      if (step === 1 && !form.technicianId) {
+                        return alert("اختاري الفني");
+                      }
+
+                      if (step === 1 && !form.scheduledDate) {
+                        return alert("اختاري الميعاد");
+                      }
+
+                      if (step === 2 && !selectedAssets.length) {
+                        return alert("اختاري أجهزة أو بوابات");
+                      }
+
                       setStep(step + 1);
                     }}
                   >
                     Next
                   </button>
                 ) : (
-                  <button className="tw-btn green" onClick={createTask}>
-                    Dispatch Task To Field
+                  <button
+                    className="tw-btn green"
+                    onClick={createTask}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving to backend..." : "Dispatch Task To Field"}
                   </button>
                 )}
               </div>
@@ -1715,3 +2280,5 @@ export function TasksPage() {
     </section>
   );
 }
+
+export default TasksPage;

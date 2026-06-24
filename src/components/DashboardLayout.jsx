@@ -5,6 +5,7 @@ import smartitLogo from "../assets/smartit-logo-transparent.png";
 const NAV_ITEMS = [
   { key: "home", icon: "🏠", labelKey: "home" },
   { key: "tasks", icon: "📋", labelKey: "tasks" },
+  { key: "software", icon: "💻", labelKey: "software" },
   { key: "technicians", icon: "👷", labelKey: "technicians" },
   { key: "devices", icon: "🔧", labelKey: "devices" },
   { key: "gates", icon: "G", labelKey: "gates" },
@@ -28,7 +29,6 @@ const LUX_NAV_CSS = `
     background: #f5f7fb;
   }
 
-  /* Sidebar */
   .lux-sidebar {
     width: 280px;
     background: #0f172a;
@@ -60,7 +60,6 @@ const LUX_NAV_CSS = `
     background: linear-gradient(180deg, rgba(203, 213, 225, 0.8) 0%, rgba(203, 213, 225, 0) 100%);
   }
 
-  /* Brand */
   .lux-brand {
     padding: 24px 20px 16px;
     display: flex;
@@ -108,7 +107,6 @@ const LUX_NAV_CSS = `
     background: linear-gradient(90deg, transparent, rgba(79, 124, 255, 0.15), transparent);
   }
 
-  /* Nav */
   .lux-nav {
     flex: 1;
     overflow-y: auto;
@@ -187,7 +185,6 @@ const LUX_NAV_CSS = `
     box-shadow: none;
   }
 
-  /* Footer */
   .lux-sidebar-footer {
     padding: 24px 16px;
     border-top: 1px solid rgba(255,255,255,0.05);
@@ -214,6 +211,11 @@ const LUX_NAV_CSS = `
 
   .lux-btn-refresh:hover:not(:disabled) {
     background: rgba(255,255,255,0.1);
+  }
+
+  .lux-btn-refresh:disabled{
+    opacity:.65;
+    cursor:not-allowed;
   }
 
   .lux-btn-lang {
@@ -251,7 +253,6 @@ const LUX_NAV_CSS = `
     color: #172033;
   }
 
-  /* Main */
   .lux-main {
     flex: 1;
     display: flex;
@@ -261,7 +262,6 @@ const LUX_NAV_CSS = `
     position: relative;
   }
 
-  /* Header */
   .lux-header {
     height: 80px;
     padding: 0 32px;
@@ -345,7 +345,6 @@ const LUX_NAV_CSS = `
     color: #ef4444;
   }
 
-  /* Content */
   .lux-content-wrap {
     flex: 1;
     overflow-y: auto;
@@ -356,7 +355,6 @@ const LUX_NAV_CSS = `
     background: #f5f7fb;
   }
 
-  /* Responsive */
   @media (max-width: 992px) {
     .lux-sidebar {
       width: 92px;
@@ -844,6 +842,20 @@ const SMARTIT_LAYOUT_CSS = `
   }
 `;
 
+function getLabel({ tabLabels, t, key, labelKey }) {
+  if (tabLabels?.[key]) return tabLabels[key];
+
+  if (key === "software") {
+    return t?.software || "Software";
+  }
+
+  if (key === "gates") {
+    return t?.gates || "Gates";
+  }
+
+  return t?.[labelKey] || key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 export function DashboardLayout({
   tab,
   tabs = [],
@@ -860,31 +872,43 @@ export function DashboardLayout({
 
   useEffect(() => {
     let el = document.getElementById("lux-nav-css");
+
     if (!el) {
       el = document.createElement("style");
       el.id = "lux-nav-css";
       document.head.appendChild(el);
     }
+
     el.innerHTML = LUX_NAV_CSS + SMARTIT_LAYOUT_CSS;
   }, []);
 
   const navItems = NAV_ITEMS.filter((item) => tabs.includes(item.key));
 
+  const pageTitle =
+    tabLabels[tab] ||
+    (tab === "software"
+      ? t.software || "Software"
+      : tab === "gates"
+        ? t.gates || "Gates"
+        : t[tab] || tab.charAt(0).toUpperCase() + tab.slice(1));
+
   return (
     <div className={`lux-layout-root ${readOnly ? "viewer-mode" : ""}`}>
       <aside className="lux-sidebar">
-
-        {/* ===== BRAND ===== */}
         <div className="lux-brand">
           <div className="lux-brand-row">
             <div className="lux-brand-image-wrap">
-              <img src={smartitLogo} alt="SmartIT logo" className="lux-brand-image" />
+              <img
+                src={smartitLogo}
+                alt="SmartIT logo"
+                className="lux-brand-image"
+              />
             </div>
           </div>
         </div>
+
         <div className="lux-brand-divider" />
 
-        {/* ===== NAV ===== */}
         <nav className="lux-nav">
           <div
             className="lux-menu-title"
@@ -904,28 +928,42 @@ export function DashboardLayout({
           {navItems.map((item) => (
             <button
               key={item.key}
+              type="button"
               className={`lux-nav-item ${tab === item.key ? "active" : ""}`}
               onClick={() => onChangeTab?.(item.key)}
+              aria-current={tab === item.key ? "page" : undefined}
             >
               <span style={{ fontSize: "18px" }}>{item.icon}</span>
+
               <span className="lux-nav-label">
-                {tabLabels[item.key] ||
-                  t[item.labelKey] ||
-                  item.key.charAt(0).toUpperCase() + item.key.slice(1)}
+                {getLabel({
+                  tabLabels,
+                  t,
+                  key: item.key,
+                  labelKey: item.labelKey,
+                })}
               </span>
             </button>
           ))}
         </nav>
 
-        {/* ===== FOOTER ===== */}
         <div className="lux-sidebar-footer">
-          <button className="lux-btn-refresh" onClick={onRefresh} disabled={loading}>
+          <button
+            type="button"
+            className="lux-btn-refresh"
+            onClick={onRefresh}
+            disabled={loading}
+          >
             {loading
-              ? lang === "ar" ? "جاري المزامنة..." : "Syncing..."
-              : lang === "ar" ? "🔄 تحديث البيانات" : "🔄 Refresh Data"}
+              ? lang === "ar"
+                ? "جاري المزامنة..."
+                : "Syncing..."
+              : lang === "ar"
+                ? "🔄 تحديث البيانات"
+                : "🔄 Refresh Data"}
           </button>
 
-          <button className="lux-btn-lang" onClick={toggleLang}>
+          <button type="button" className="lux-btn-lang" onClick={toggleLang}>
             <span className="lux-btn-lang-text">
               {lang === "ar" ? "English Version" : "النسخة العربية"}
             </span>
@@ -936,19 +974,16 @@ export function DashboardLayout({
       <main className="lux-main">
         <header className="lux-header">
           <div>
-            <h2 className="lux-page-title">
-              {tabLabels[tab] ||
-                t[tab] ||
-                (tab.charAt(0).toUpperCase() + tab.slice(1))}
-            </h2>
+            <h2 className="lux-page-title">{pageTitle}</h2>
+
             <p className="lux-page-sub">
               {readOnly
                 ? lang === "ar"
                   ? "وصول مخصص للمتابعة التشغيلية"
                   : "Operational Monitoring Access"
                 : lang === "ar"
-                ? "لوحة تحكم إدارية للنظام"
-                : "System Administrative Control"}
+                  ? "لوحة تحكم إدارية للنظام"
+                  : "System Administrative Control"}
             </p>
           </div>
 
@@ -958,14 +993,22 @@ export function DashboardLayout({
                 <span className="lux-user-name">
                   {currentUser.fullName || currentUser.email || "Admin"}
                 </span>
+
                 <span className="lux-user-role">
                   {readOnly
-                    ? lang === "ar" ? "مراقبة" : "Monitor"
+                    ? lang === "ar"
+                      ? "مراقبة"
+                      : "Monitor"
                     : currentUser?.role?.name || "Admin"}
                 </span>
               </div>
 
-              <button className="lux-logout-btn" onClick={onLogout} title="Logout">
+              <button
+                type="button"
+                className="lux-logout-btn"
+                onClick={onLogout}
+                title="Logout"
+              >
                 <svg
                   width="16"
                   height="16"
@@ -976,9 +1019,9 @@ export function DashboardLayout({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                  <polyline points="16 17 21 12 16 7"></polyline>
-                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
                 </svg>
               </button>
             </div>

@@ -6,9 +6,10 @@ import { ViewerDevicesPage } from "./monitoring/ViewerDevicesPage";
 import { ViewerInspectionsPage } from "./monitoring/ViewerInspectionsPage";
 import { ViewerLocationsPage } from "./monitoring/ViewerLocationsPage";
 import { ViewerAnalyticsPage } from "./monitoring/ViewerAnalyticsPage";
+import SoftwareViewerPage from "./monitoring/SoftwareViewerPage";
 import { GatesPage } from "./GatesPage";
 
-const SNAPSHOT_TABS = ["home", "devices", "gates", "inspections", "locations", "analytics"];
+const SNAPSHOT_TABS = ["home", "devices", "software", "gates", "inspections", "locations", "analytics"];
 
 const COPY = {
   en: {
@@ -141,6 +142,7 @@ const COPY = {
     devicesTab: "الأجهزة",
     gatesTab: "بوابات المشاهد",
     inspectionsTab: "الفحوصات",
+    softwareTab: "السوفتوير",
     locationsTab: "المواقع",
     analyticsTab: "التحليلات",
     noInspectionYet: "لا توجد فحوصات مسجلة حتى الآن.",
@@ -224,6 +226,7 @@ export function OperationsSnapshotPage({
     () => ({
       home: copy.homeTab,
       devices: copy.devicesTab,
+      software: copy.softwareTab,
       gates: copy.gatesTab,
       inspections: copy.inspectionsTab,
       locations: copy.locationsTab,
@@ -495,6 +498,10 @@ export function OperationsSnapshotPage({
           activeStatus={filters.status}
           onStatusClick={(status) => handleFilterChange("status", status)}
         />
+      ) : null}
+
+      {tab === "software" ? (
+        <SoftwareViewerPage />
       ) : null}
 
       {tab === "gates" ? (

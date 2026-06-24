@@ -3,6 +3,7 @@ import { useLang } from "../context/LanguageContext";
 const NAV_ITEMS = [
   { key: "home", icon: "🏠", labelKey: "home" },
   { key: "tasks", icon: "📋", labelKey: "tasks" },
+  { key: "software", icon: "💻", labelKey: "software" },
   { key: "technicians", icon: "👷", labelKey: "technicians" },
   { key: "devices", icon: "🔧", labelKey: "devices" },
   { key: "gates", icon: "🚧", labelKey: "gates" },
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
 const PAGE_ICONS = {
   home: "🏠",
   tasks: "📋",
+  software: "💻",
   technicians: "👷",
   devices: "🔧",
   gates: "🚧",
@@ -21,6 +23,12 @@ const PAGE_ICONS = {
   analytics: "📊",
   locations: "📍",
 };
+
+function getPageLabel(t, key, labelKey) {
+  if (key === "gates") return t.gates || "Gates";
+  if (key === "software") return t.software || "Software";
+  return t[labelKey || key] || key;
+}
 
 const layoutStyles = `
 .app-shell{
@@ -98,7 +106,7 @@ const layoutStyles = `
 
 .tab-btn{
   width:100%;
-  height:48px;
+  min-height:48px;
   border:0;
   border-radius:15px;
   background:transparent;
@@ -138,10 +146,17 @@ const layoutStyles = `
   border-radius:10px;
   background:rgba(255,255,255,.12);
   font-size:15px;
+  flex-shrink:0;
 }
 
 .tab-btn.active .tab-icon{
   background:rgba(20,115,148,.12);
+}
+
+.tab-label{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
 .sidebar-footer{
@@ -156,7 +171,7 @@ const layoutStyles = `
 .refresh-btn,
 .lang-btn{
   width:100%;
-  height:44px;
+  min-height:44px;
   border-radius:14px;
   border:1px solid rgba(255,255,255,.16);
   background:rgba(255,255,255,.10);
@@ -213,6 +228,7 @@ const layoutStyles = `
   display:flex;
   align-items:center;
   gap:14px;
+  min-width:0;
 }
 
 .page-title-icon{
@@ -226,6 +242,7 @@ const layoutStyles = `
   justify-content:center;
   font-size:20px;
   box-shadow:0 12px 24px rgba(20,115,148,.22);
+  flex-shrink:0;
 }
 
 .page-title-group h2{
@@ -245,22 +262,28 @@ const layoutStyles = `
   background:#f7fbfd;
   border:1px solid #dcebf2;
   box-shadow:0 8px 20px rgba(15,23,42,.04);
+  flex-shrink:0;
 }
 
 .user-chip-info{
   display:flex;
   flex-direction:column;
   line-height:1.2;
+  min-width:0;
 }
 
 .user-chip-info strong{
   font-size:13px;
   font-weight:900;
   color:#172331;
+  max-width:220px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
 .link-btn{
-  height:36px;
+  min-height:36px;
   padding:0 14px;
   border:0;
   border-radius:999px;
@@ -286,11 +309,20 @@ const layoutStyles = `
     width:100%;
     min-height:auto;
     position:relative;
+    padding:18px;
+  }
+
+  .brand-wrap{
+    margin-bottom:18px;
   }
 
   .side-nav{
     display:grid;
     grid-template-columns:repeat(2,1fr);
+  }
+
+  .tab-btn:hover{
+    transform:none;
   }
 
   .content{
@@ -312,9 +344,18 @@ const layoutStyles = `
     align-items:flex-start;
   }
 
+  .page-title-group h2{
+    font-size:20px;
+  }
+
   .user-chip{
     width:100%;
     justify-content:space-between;
+    border-radius:18px;
+  }
+
+  .user-chip-info strong{
+    max-width:180px;
   }
 }
 `;
@@ -333,6 +374,13 @@ export function PageLayout({
 
   const navItems = NAV_ITEMS.filter((item) => tabs.includes(item.key));
 
+  const currentPageLabel =
+    tab === "software"
+      ? t.software || "Software"
+      : tab === "gates"
+        ? t.gates || "Gates"
+        : t[tab] || "Dashboard";
+
   return (
     <>
       <style>{layoutStyles}</style>
@@ -341,10 +389,7 @@ export function PageLayout({
         <aside className="sidebar">
           <div className="brand-wrap">
             <div className="brand-icon">
-              <img
-                src="/favicon.svg"
-                alt="SmartIT logo"
-              />
+              <img src="/favicon.svg" alt="SmartIT logo" />
             </div>
 
             <div className="brand-text">
@@ -357,15 +402,14 @@ export function PageLayout({
             {navItems.map((item) => (
               <button
                 key={item.key}
+                type="button"
                 className={`tab-btn${tab === item.key ? " active" : ""}`}
                 onClick={() => onChangeTab?.(item.key)}
                 aria-current={tab === item.key ? "page" : undefined}
               >
                 <span className="tab-icon">{item.icon}</span>
-                <span>
-                  {item.key === "gates"
-                    ? t.gates || "Gates"
-                    : t[item.labelKey] || item.key}
+                <span className="tab-label">
+                  {getPageLabel(t, item.key, item.labelKey)}
                 </span>
               </button>
             ))}
@@ -395,11 +439,7 @@ export function PageLayout({
               <div className="page-title-icon">{PAGE_ICONS[tab] || "📌"}</div>
 
               <div>
-                <h2>
-                  {tab === "gates"
-                    ? t.gates || "Gates"
-                    : t[tab] || "Dashboard"}
-                </h2>
+                <h2>{currentPageLabel}</h2>
               </div>
             </div>
 

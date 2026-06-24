@@ -1,9 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 
-/* ═══════════════════════════════════════════
-   ViewerInspectionsPage
-   - Removed Partial / Not Reachable summary boxes
-═══════════════════════════════════════════ */
 const INSPECTIONS_CSS = `
 .insp-root *, .insp-root *::before, .insp-root *::after {
   box-sizing: border-box;
@@ -14,9 +10,10 @@ const INSPECTIONS_CSS = `
 .insp-root {
   --primary: #4f46e5;
   --success: #10b981;
-  --warning: #f59e0b;
   --danger: #ef4444;
-  --slate: #64748b;
+  --warning: #f59e0b;
+  --week: #8b5cf6;
+  --year: #14b8a6;
   --surface: #ffffff;
   --surface2: #f7f8fa;
   --border: rgba(0,0,0,0.07);
@@ -30,7 +27,6 @@ const INSPECTIONS_CSS = `
   min-height: 100vh;
 }
 
-/* Top bar */
 .insp-topbar {
   display: flex;
   justify-content: space-between;
@@ -38,19 +34,6 @@ const INSPECTIONS_CSS = `
   gap: 12px;
   flex-wrap: wrap;
   margin-bottom: 16px;
-}
-
-.insp-topbar__title {
-  font-size: 20px;
-  font-weight: 900;
-  color: var(--text);
-  letter-spacing: -0.02em;
-}
-
-.insp-topbar__sub {
-  font-size: 12px;
-  color: var(--faint);
-  margin-top: 4px;
 }
 
 .insp-actions {
@@ -83,7 +66,6 @@ const INSPECTIONS_CSS = `
   transform: none;
 }
 
-/* Alerts */
 .insp-alert {
   margin-bottom: 14px;
   border-radius: 12px;
@@ -98,7 +80,6 @@ const INSPECTIONS_CSS = `
   border-color: #fecdd3;
 }
 
-/* Filter */
 .insp-filter-card {
   background:
     linear-gradient(180deg, rgba(255,255,255,0.98), rgba(255,255,255,0.94)),
@@ -163,7 +144,7 @@ const INSPECTIONS_CSS = `
 
 .insp-filter-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 2fr) repeat(5, minmax(135px, 1fr));
+  grid-template-columns: minmax(280px, 2fr) repeat(6, minmax(130px, 1fr));
   gap: 12px;
   align-items: end;
 }
@@ -299,10 +280,9 @@ const INSPECTIONS_CSS = `
   box-shadow: 0 10px 20px rgba(79, 70, 229, 0.24);
 }
 
-/* Summary - only 3 boxes */
 .insp-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -315,6 +295,17 @@ const INSPECTIONS_CSS = `
   position: relative;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.insp-summary-tile--clickable {
+  cursor: pointer;
+  transition: 0.18s ease;
+}
+
+.insp-summary-tile--clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15,23,42,0.08);
+  border-color: rgba(79, 70, 229, 0.25);
 }
 
 .insp-summary-tile__bar {
@@ -341,40 +332,13 @@ const INSPECTIONS_CSS = `
   font-weight: 800;
 }
 
-/* View */
-.insp-view-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 14px;
-}
-
-.insp-view-toggle {
-  display: flex;
-  gap: 3px;
-  padding: 3px;
-  background: var(--surface);
-  border: 0.5px solid var(--border);
-  border-radius: 10px;
-}
-
-.insp-view-btn {
-  padding: 6px 14px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  font-size: 12px;
+.insp-summary-tile__note {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--faint);
   font-weight: 700;
-  color: var(--muted);
-  cursor: pointer;
 }
 
-.insp-view-btn--active {
-  background: var(--surface2);
-  color: var(--text);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-}
-
-/* Panel */
 .insp-panel {
   background: var(--surface);
   border: 0.5px solid var(--border);
@@ -415,7 +379,6 @@ const INSPECTIONS_CSS = `
   padding: 5px 12px;
 }
 
-/* Table */
 .insp-table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -425,7 +388,7 @@ const INSPECTIONS_CSS = `
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
-  min-width: 980px;
+  min-width: 1180px;
 }
 
 .insp-table th {
@@ -440,15 +403,11 @@ const INSPECTIONS_CSS = `
   border-bottom: 0.5px solid var(--border);
 }
 
-.insp-root[dir="rtl"] .insp-table th {
-  text-align: right;
-}
-
 .insp-table td {
   padding: 12px 16px;
   border-bottom: 0.5px solid var(--border);
   color: var(--muted);
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .insp-table tr:last-child td {
@@ -472,28 +431,19 @@ const INSPECTIONS_CSS = `
   margin-top: 3px;
 }
 
-.insp-notes {
-  font-size: 12px;
-  color: var(--faint);
-  max-width: 360px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .insp-locline {
   font-size: 12px;
   color: var(--muted);
+  line-height: 1.55;
 }
 
-/* Badges */
 .badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  font-weight: 800;
-  padding: 4px 10px;
+  font-weight: 900;
+  padding: 5px 11px;
   border-radius: 999px;
   white-space: nowrap;
   letter-spacing: .2px;
@@ -504,100 +454,71 @@ const INSPECTIONS_CSS = `
   color: #0f6e56;
 }
 
-.badge--att {
-  background: #fff4e0;
-  color: #854f0b;
-}
-
-.badge--maint {
+.badge--not-ok {
   background: #fdecea;
   color: #a32d2d;
 }
 
-.badge--oos {
-  background: #f1f3f5;
-  color: #475569;
+.problem-preview {
+  max-width: 520px;
 }
 
-/* Timeline */
-.insp-timeline {
-  padding: 8px 20px;
+.problem-preview-box {
+  border: 1px solid #fecaca;
+  background: #fff7f7;
+  color: #991b1b;
+  border-radius: 14px;
+  padding: 10px 12px;
 }
 
-.insp-tl-item {
-  display: flex;
-  gap: 14px;
-  padding: 14px 0;
-  border-bottom: 0.5px solid var(--border);
+.problem-preview-title {
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: #ef4444;
+  margin-bottom: 6px;
 }
 
-.insp-tl-item:last-child {
-  border-bottom: none;
-}
-
-.insp-tl-line {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 18px;
-  flex-shrink: 0;
-}
-
-.insp-tl-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  margin-top: 4px;
-}
-
-.insp-tl-connector {
-  width: 1px;
-  flex: 1;
-  background: var(--border);
-  margin-top: 5px;
-  min-height: 16px;
-}
-
-.insp-tl-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.insp-tl-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
-  flex-wrap: wrap;
-}
-
-.insp-tl-dev {
-  font-size: 13px;
-  font-weight: 900;
-  color: var(--primary);
-}
-
-.insp-tl-loc {
+.problem-preview-text {
   font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 4px;
+  font-weight: 750;
+  line-height: 1.6;
+  color: #7f1d1d;
+  word-break: break-word;
+  max-height: 58px;
+  overflow: hidden;
 }
 
-.insp-tl-meta {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
+.problem-preview-empty {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  border-radius: 14px;
+  padding: 10px 12px;
 }
 
-.insp-tl-time,
-.insp-tl-note {
+.problem-preview-empty .problem-preview-title,
+.problem-preview-empty .problem-preview-text {
+  color: #94a3b8;
+}
+
+.problem-details-btn {
+  margin-top: 8px;
+  border: 0;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 999px;
+  padding: 7px 12px;
   font-size: 11px;
-  color: var(--faint);
+  font-weight: 900;
+  cursor: pointer;
 }
 
-/* Empty / Loading */
+.problem-details-btn:hover {
+  background: #4f46e5;
+}
+
 .insp-empty,
 .insp-loading {
   padding: 40px;
@@ -620,16 +541,500 @@ const INSPECTIONS_CSS = `
   to { transform: rotate(360deg); }
 }
 
-/* Responsive */
+.insp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(7px);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.insp-modal {
+  width: min(1280px, 100%);
+  max-height: 94vh;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 26px;
+  box-shadow: 0 34px 100px rgba(15,23,42,0.32);
+  display: flex;
+  flex-direction: column;
+}
+
+.insp-modal-head {
+  padding: 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(79, 70, 229, 0.10), transparent 36%),
+    radial-gradient(circle at 90% 5%, rgba(14, 165, 233, 0.10), transparent 35%),
+    #ffffff;
+}
+
+.insp-modal-title {
+  font-size: 22px;
+  font-weight: 950;
+  color: var(--text);
+  margin-bottom: 5px;
+  letter-spacing: -0.025em;
+}
+
+.insp-modal-sub {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 1.6;
+}
+
+.insp-modal-close {
+  border: none;
+  background: #f1f5f9;
+  color: var(--text);
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 22px;
+  transition: 0.16s ease;
+}
+
+.insp-modal-close:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.insp-modal-body {
+  padding: 20px;
+  overflow: auto;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.insp-modal-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.insp-modal-stat {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 8px 18px rgba(15,23,42,0.03);
+  position: relative;
+  overflow: hidden;
+}
+
+.insp-modal-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--stat-color, #4f46e5);
+}
+
+.insp-modal-stat-label {
+  font-size: 10px;
+  font-weight: 950;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 8px;
+}
+
+.insp-modal-stat-value {
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.history-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.history-group {
+  background: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 10px 24px rgba(15,23,42,0.04);
+}
+
+.history-group-head {
+  padding: 14px 16px;
+  background:
+    linear-gradient(180deg, rgba(248,250,252,.98), rgba(255,255,255,.98));
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.history-group-title {
+  font-size: 15px;
+  font-weight: 950;
+  color: #0f172a;
+}
+
+.history-group-count {
+  font-size: 12px;
+  font-weight: 950;
+  color: #4f46e5;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.16);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.history-list {
+  display: grid;
+}
+
+.history-record {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.6fr);
+  gap: 16px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.75);
+  align-items: start;
+}
+
+.history-record:last-child {
+  border-bottom: none;
+}
+
+.history-device-code {
+  font-size: 15px;
+  font-weight: 950;
+  color: #4f46e5;
+  word-break: break-word;
+}
+
+.history-device-name {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.history-meta {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.history-meta-line {
+  font-size: 12px;
+  color: #475569;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.history-meta-line span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  margin-right: 6px;
+}
+
+.problem-list {
+  display: grid;
+  gap: 10px;
+}
+
+.problem-item {
+  background: #fff7f7;
+  border: 1px solid #fecaca;
+  border-radius: 16px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+}
+
+.problem-number {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #ef4444;
+  color: #fff;
+  font-weight: 950;
+  font-size: 13px;
+}
+
+.problem-content {
+  min-width: 0;
+}
+
+.problem-content-title {
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 950;
+  margin-bottom: 7px;
+  word-break: break-word;
+}
+
+.problem-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.problem-detail {
+  background: #ffffff;
+  border: 1px solid rgba(252,165,165,.5);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+
+.problem-detail-label {
+  font-size: 9px;
+  font-weight: 950;
+  color: #ef4444;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 4px;
+}
+
+.problem-detail-text {
+  color: #7f1d1d;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.problem-done-ids {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.problem-done-id {
+  font-size: 10px;
+  font-weight: 950;
+  color: #7f1d1d;
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+.no-problems {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 12px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+
+/* Better Box/List view */
+.insp-panel-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.insp-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 4px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+.insp-view-btn {
+  border: 0;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 10px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+  transition: .16s ease;
+}
+
+.insp-view-btn:hover {
+  color: #4f46e5;
+}
+
+.insp-view-btn.active {
+  background: #0f172a;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(15,23,42,.18);
+}
+
+.insp-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 16px;
+  background: linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
+}
+
+.insp-box-card {
+  border: 1px solid rgba(226,232,240,.95);
+  border-top: 4px solid var(--box-color, #4f46e5);
+  background:
+    radial-gradient(circle at top right, rgba(79,70,229,.06), transparent 32%),
+    #fff;
+  border-radius: 22px;
+  padding: 15px;
+  box-shadow: 0 12px 28px rgba(15,23,42,.05);
+  transition: .18s ease;
+}
+
+.insp-box-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 42px rgba(15,23,42,.09);
+  border-color: rgba(79,70,229,.22);
+}
+
+.insp-box-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.insp-box-device {
+  min-width: 0;
+}
+
+.insp-box-code {
+  color: #4f46e5;
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.insp-box-name {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  margin-top: 5px;
+  word-break: break-word;
+}
+
+.insp-box-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.insp-box-mini {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 15px;
+  padding: 10px;
+  min-width: 0;
+}
+
+.insp-box-mini span {
+  display: block;
+  color: #94a3b8;
+  font-size: 9px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 5px;
+}
+
+.insp-box-mini strong {
+  display: block;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.insp-box-problem {
+  margin-top: 12px;
+}
+
+.insp-box-actions {
+  margin-top: 11px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.insp-ip-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: #eaf8ff;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.insp-table-ip {
+  color: #0369a1;
+  font-weight: 900;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+}
+
 @media (max-width: 1450px) {
+  .insp-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .insp-filter-grid {
     grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(150px, 1fr));
+  }
+
+  .insp-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 1100px) {
   .insp-summary {
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .insp-modal-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .history-record {
+    grid-template-columns: 1fr;
+  }
+
+  .problem-detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -639,6 +1044,10 @@ const INSPECTIONS_CSS = `
   }
 
   .insp-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .insp-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -660,20 +1069,29 @@ const INSPECTIONS_CSS = `
 }
 
 @media (max-width: 620px) {
+  .insp-card-grid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .insp-box-info {
+    grid-template-columns: 1fr;
+  }
+
+  .insp-panel-tools {
+    width: 100%;
+  }
+
+  .insp-view-toggle {
+    width: 100%;
+  }
+
+  .insp-view-btn {
+    flex: 1;
+  }
+
   .insp-root {
     padding: 14px 10px;
-  }
-
-  .insp-topbar {
-    align-items: stretch;
-  }
-
-  .insp-topbar__title {
-    font-size: 20px;
-  }
-
-  .insp-summary {
-    grid-template-columns: 1fr;
   }
 
   .insp-filter-card {
@@ -694,6 +1112,10 @@ const INSPECTIONS_CSS = `
     grid-template-columns: 1fr;
   }
 
+  .insp-summary {
+    grid-template-columns: 1fr;
+  }
+
   .insp-filter-footer {
     align-items: stretch;
   }
@@ -705,18 +1127,6 @@ const INSPECTIONS_CSS = `
 
   .insp-filter-btn {
     width: 100%;
-  }
-
-  .insp-view-row {
-    justify-content: stretch;
-  }
-
-  .insp-view-toggle {
-    width: 100%;
-  }
-
-  .insp-view-btn {
-    flex: 1;
   }
 
   .insp-records {
@@ -749,9 +1159,9 @@ const INSPECTIONS_CSS = `
     border-bottom: none;
     padding: 8px 0;
     display: grid;
-    grid-template-columns: 118px 1fr;
+    grid-template-columns: 120px 1fr;
     gap: 10px;
-    align-items: center;
+    align-items: start;
   }
 
   .insp-table td::before {
@@ -762,85 +1172,66 @@ const INSPECTIONS_CSS = `
     color: var(--faint);
   }
 
-  .insp-notes {
-    max-width: none;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-    line-height: 1.5;
+  .insp-modal-backdrop {
+    padding: 0;
+    align-items: end;
   }
 
-  .insp-timeline {
-    padding: 6px 14px;
+  .insp-modal {
+    border-radius: 22px 22px 0 0;
+    max-height: 92vh;
   }
 
-  .insp-tl-item {
-    gap: 10px;
+  .insp-modal-head {
+    padding: 16px;
   }
 
-  .insp-tl-meta {
-    display: grid;
-    gap: 5px;
+  .insp-modal-body {
+    padding: 14px;
   }
-}
 
-@media (max-width: 420px) {
-  .insp-table td {
-    grid-template-columns: 100px 1fr;
+  .insp-modal-stats {
+    grid-template-columns: 1fr;
   }
 }
 `;
-
-/* ═══════════════════════════════════════════
-   CONSTANTS
-═══════════════════════════════════════════ */
-const BADGE_MAP = {
-  OK: { label: "OK", cls: "badge--ok" },
-  NOT_OK: { label: "Not OK", cls: "badge--maint" },
-  PARTIAL: { label: "Partial", cls: "badge--att" },
-  NOT_REACHABLE: { label: "Not Reachable", cls: "badge--oos" },
-};
-
-const BADGE_MAP_AR = {
-  OK: { label: "سليم", cls: "badge--ok" },
-  NOT_OK: { label: "غير سليم", cls: "badge--maint" },
-  PARTIAL: { label: "جزئي", cls: "badge--att" },
-  NOT_REACHABLE: { label: "غير متاح", cls: "badge--oos" },
-};
-
-const DOT_COLORS = {
-  OK: "#10b981",
-  NOT_OK: "#ef4444",
-  PARTIAL: "#f59e0b",
-  NOT_REACHABLE: "#64748b",
-};
 
 const TILE_COLORS = {
   total: "#4f46e5",
   ok: "#10b981",
   notOk: "#ef4444",
+  today: "#0ea5e9",
+  week: "#8b5cf6",
+  month: "#f59e0b",
+  year: "#14b8a6",
 };
 
 const DEFAULT_FILTERS = {
   search: "",
-  status: "ALL",
+  result: "ALL",
+  period: "ALL",
+  monthKey: "",
+  year: "ALL",
   cluster: "ALL",
   building: "ALL",
   zone: "ALL",
   direction: "ALL",
 };
 
-const STATUS_OPTIONS = [
-  { key: "ALL", en: "All statuses", ar: "كل الحالات" },
-  { key: "OK", en: "OK", ar: "سليم" },
-  { key: "NOT_OK", en: "Not OK", ar: "غير سليم" },
-  { key: "PARTIAL", en: "Partial", ar: "جزئي" },
-  { key: "NOT_REACHABLE", en: "Not Reachable", ar: "غير متاح" },
+const RESULT_OPTIONS = [
+  { key: "ALL", label: "All results" },
+  { key: "OK", label: "OK" },
+  { key: "NOT_OK", label: "Not OK" },
 ];
 
-/* ═══════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════ */
+const PERIOD_OPTIONS = [
+  { key: "ALL", label: "All time" },
+  { key: "TODAY", label: "Today" },
+  { key: "WEEK", label: "This week" },
+  { key: "MONTH", label: "Selected month" },
+  { key: "YEAR", label: "Selected year" },
+];
+
 function fmt(iso) {
   if (!iso) return "—";
 
@@ -874,6 +1265,38 @@ function fmtTime(iso) {
   }
 }
 
+function fmtMonthKey(monthKey) {
+  if (!monthKey || !monthKey.includes("-")) return "Selected Month";
+
+  const [year, month] = monthKey.split("-").map(Number);
+  const d = new Date(year, month - 1, 1);
+
+  return d.toLocaleDateString("en-GB", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function fmtHistoryGroup(dateValue, mode) {
+  const d = dateValue ? new Date(dateValue) : new Date();
+
+  if (Number.isNaN(d.getTime())) return "No date";
+
+  if (mode === "YEAR") {
+    return d.toLocaleDateString("en-GB", {
+      month: "long",
+      year: "numeric",
+    });
+  }
+
+  return d.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function pickToken() {
   return (
     localStorage.getItem("token") ||
@@ -891,6 +1314,8 @@ function pickBaseUrl(propBaseUrl) {
   const fromLocal =
     localStorage.getItem("apiBaseUrl") ||
     localStorage.getItem("baseUrl") ||
+    localStorage.getItem("dashboard_api_base_url") ||
+    localStorage.getItem("api_base_url") ||
     sessionStorage.getItem("apiBaseUrl") ||
     sessionStorage.getItem("baseUrl");
 
@@ -917,52 +1342,575 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-function normalizeStatus(value) {
+function parseMaybeJson(value) {
+  if (!value) return null;
+  if (typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function cleanText(value) {
+  let text = String(value || "").trim();
+
+  if (!text) return "";
+
+  text = text
+    .replace(/\[\[INSPECTION_SYSTEM_META\]\]\s*\{[\s\S]*?\}\s*$/gi, "")
+    .replace(/\[\[INSPECTION_SYSTEM_META\]\][\s\S]*$/gi, "")
+    .replace(/technician\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/technicianName\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/performedBy\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/createdBy\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/الفني\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/اسم\s*الفني\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/المهندس\s*[:：-]?\s*[^,|؛\n]+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text;
+}
+
+function removeStatusNoise(text) {
+  return cleanText(text)
+    .replace(/Final\s+Device\s+Condition\s*:\s*(OK|NOT_OK|PARTIAL|NOT_REACHABLE|GOOD|BAD)/gi, "")
+    .replace(/beforeDeviceStatus\s*:\s*"?[^,}"]+"?/gi, "")
+    .replace(/afterDeviceStatus\s*:\s*"?[^,}"]+"?/gi, "")
+    .replace(/حالة الجهاز في البداية\s*[:：-]?\s*[^:]+?(?=حالة الجهاز بعد الحل|الحل|$)/gi, "")
+    .replace(/حالة الجهاز بعد الحل\s*[:：-]?\s*[^:]+?(?=الحل|$)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanOptions(list) {
+  return [
+    ...new Set(
+      list
+        .filter(Boolean)
+        .map((v) => String(v).trim())
+        .filter(Boolean)
+    ),
+  ].sort((a, b) => a.localeCompare(b, "ar"));
+}
+
+function normalizeResult(value) {
   const raw = String(value || "")
     .trim()
     .toUpperCase()
     .replace(/[\s-]+/g, "_");
 
-  if (raw === "OK" || raw === "GOOD" || raw === "VALID") return "OK";
-  if (raw === "NOT_OK" || raw === "BAD" || raw === "FAILED" || raw === "FAIL") return "NOT_OK";
-  if (raw === "PARTIAL" || raw === "PARTLY") return "PARTIAL";
-  if (raw === "NOT_REACHABLE" || raw === "UNREACHABLE" || raw === "OFFLINE") return "NOT_REACHABLE";
+  if (
+    raw === "OK" ||
+    raw === "GOOD" ||
+    raw === "VALID" ||
+    raw === "PASSED" ||
+    raw === "PASS" ||
+    raw === "SUCCESS" ||
+    raw === "DONE"
+  ) {
+    return "OK";
+  }
 
-  return raw || "NOT_REACHABLE";
+  return "NOT_OK";
 }
 
-function cleanOptions(list) {
-  return [...new Set(list.filter(Boolean).map((v) => String(v).trim()).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "ar"));
+function extractValue(source, labelRegex, stopRegex) {
+  const text = String(source || "");
+  const labelMatch = text.match(labelRegex);
+
+  if (!labelMatch || labelMatch.index === undefined) return "";
+
+  const start = labelMatch.index + labelMatch[0].length;
+  const rest = text.slice(start);
+  const stopMatch = rest.match(stopRegex);
+  const end = stopMatch && stopMatch.index !== undefined ? stopMatch.index : rest.length;
+
+  return removeStatusNoise(rest.slice(0, end));
 }
 
-function cleanInspectionText(value) {
-  let text = String(value || "").trim();
+function extractDoneIds(text) {
+  const ids = [];
 
-  if (!text) return "";
+  String(text || "").replace(/Completed\s+Steps?\s+IDs?\s*[:：]\s*([0-9,\s]+)/gi, (_, group) => {
+    String(group)
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .forEach((id) => ids.push(id));
+    return "";
+  });
 
-  text = text.replace(/\[\[INSPECTION_SYSTEM_META\]\]\s*\{[\s\S]*?\}\s*$/gi, "").trim();
-  text = text.replace(/\[\[INSPECTION_SYSTEM_META\]\][\s\S]*$/gi, "").trim();
-  text = text.replace(/Final\s+Device\s+Condition\s*:\s*(OK|NOT_OK|PARTIAL|NOT_REACHABLE|GOOD|BAD)/gi, "").trim();
-  text = text.replace(/beforeDeviceStatus\s*:\s*"?[^,}"]+"?/gi, "").trim();
-  text = text.replace(/afterDeviceStatus\s*:\s*"?[^,}"]+"?/gi, "").trim();
-  text = text.replace(/^في\s+البداية\s+حالة\s+الجهاز\s*/gi, "").trim();
-  text = text.replace(/^حالة\s+الجهاز\s*/gi, "").trim();
-  text = text.replace(/^good$/gi, "").trim();
-  text = text.replace(/^ok$/gi, "").trim();
-  text = text.replace(/\s+/g, " ").trim();
+  String(text || "").replace(/completedStepIds?\s*[:：]\s*\[?([0-9,\s]+)\]?/gi, (_, group) => {
+    String(group)
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .forEach((id) => ids.push(id));
+    return "";
+  });
 
-  if (!text) return "";
-  if (/^(good|ok|سليم)$/i.test(text)) return "";
-
-  return text;
+  return [...new Set(ids)];
 }
 
-function getCleanNote(item) {
-  const issue = cleanInspectionText(item.issueReason || item.reason || item.issue || "");
-  const notes = cleanInspectionText(item.notes || item.note || item.comment || item.comments || "");
+function problemFromText(text) {
+  const cleaned = removeStatusNoise(text)
+    .replace(/Completed\s+Steps?\s+IDs?\s*[:：]\s*[0-9,\s]+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  return issue || notes || "";
+  if (!cleaned) return null;
+
+  const stop =
+    /(?:وصف المشكلة|المشكلة المختارة|تصنيف المشكلة|كود المشكلة المختارة|الحل|Problem Description|Selected Problem|Problem Code|Category|Classification|Solution|Completed Steps)/i;
+
+  const description =
+    extractValue(
+      cleaned,
+      /(?:وصف المشكلة|Problem Description|Issue Description|Description)\s*[:：]\s*/i,
+      stop
+    ) ||
+    extractValue(
+      cleaned,
+      /(?:المشكلة|Problem|Issue)\s*[:：]\s*/i,
+      stop
+    );
+
+  const selectedProblem =
+    extractValue(
+      cleaned,
+      /(?:المشكلة المختارة|Selected Problem|Selected Issue)\s*[:：]\s*/i,
+      stop
+    );
+
+  const category =
+    extractValue(
+      cleaned,
+      /(?:تصنيف المشكلة|Category|Classification|Problem Type)\s*[:：]\s*/i,
+      stop
+    );
+
+  const code =
+    extractValue(
+      cleaned,
+      /(?:كود المشكلة المختارة|Problem Code|Issue Code|Code)\s*[:：]\s*/i,
+      stop
+    );
+
+  const solution =
+    extractValue(
+      cleaned,
+      /(?:الحل|Solution|Fix|Action Taken)\s*[:：]\s*/i,
+      stop
+    );
+
+  const doneIds = extractDoneIds(text);
+
+  const title =
+    selectedProblem ||
+    description ||
+    category ||
+    code ||
+    cleaned;
+
+  return {
+    title: title || "Problem",
+    description: description || selectedProblem || cleaned,
+    category,
+    code,
+    solution,
+    doneIds,
+  };
+}
+
+function problemFromObject(obj) {
+  if (!obj || typeof obj !== "object") return null;
+
+  const title = cleanText(
+    obj.title ||
+      obj.name ||
+      obj.label ||
+      obj.problemTitle ||
+      obj.issueTitle ||
+      obj.selectedProblem ||
+      obj.problem ||
+      obj.issue ||
+      obj.description ||
+      obj.text ||
+      obj.reason ||
+      ""
+  );
+
+  const description = cleanText(
+    obj.description ||
+      obj.details ||
+      obj.problemDescription ||
+      obj.issueDescription ||
+      obj.problem ||
+      obj.issue ||
+      obj.reason ||
+      obj.note ||
+      obj.notes ||
+      obj.comment ||
+      ""
+  );
+
+  const category = cleanText(
+    obj.category ||
+      obj.classification ||
+      obj.type ||
+      obj.problemType ||
+      obj.issueType ||
+      ""
+  );
+
+  const code = cleanText(
+    obj.code ||
+      obj.problemCode ||
+      obj.issueCode ||
+      obj.selectedCode ||
+      obj.stepId ||
+      obj.id ||
+      ""
+  );
+
+  const solution = cleanText(
+    obj.solution ||
+      obj.fix ||
+      obj.action ||
+      obj.actionTaken ||
+      obj.afterSolution ||
+      ""
+  );
+
+  const doneIds = [
+    ...extractDoneIds(JSON.stringify(obj)),
+    ...(Array.isArray(obj.completedStepIds) ? obj.completedStepIds.map(String) : []),
+  ];
+
+  if (!title && !description && !category && !code && !solution) return null;
+
+  return {
+    title: title || description || category || code || "Problem",
+    description: description || title || "No description provided.",
+    category,
+    code,
+    solution,
+    doneIds: [...new Set(doneIds)],
+  };
+}
+
+function asArray(value) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) return value;
+
+  const parsed = parseMaybeJson(value);
+
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") return [parsed];
+
+  if (typeof value === "string") return [value];
+
+  if (typeof value === "object") return [value];
+
+  return [];
+}
+
+function collectProblemCandidates(source) {
+  if (!source) return [];
+
+  const meta =
+    parseMaybeJson(source.metadata) ||
+    parseMaybeJson(source.extra) ||
+    parseMaybeJson(source.completionMetadata) ||
+    source.metadata ||
+    source.extra ||
+    source.completionMetadata ||
+    {};
+
+  const candidates = [
+    source.problemReasons,
+    source.problems,
+    source.selectedProblems,
+    source.selectedIssues,
+    source.completedProblems,
+    source.completedSolutions,
+    source.completedStepObjects,
+    source.completedSteps,
+    source.steps,
+    source.checklist,
+    source.checklistItems,
+    source.items,
+    source.answers,
+    source.responses,
+    source.problemReason,
+    source.issueReason,
+    source.reason,
+    source.issue,
+    source.problem,
+    source.notes,
+    source.note,
+    source.comment,
+    source.comments,
+    source.description,
+    source.details,
+
+    meta.problemReasons,
+    meta.problems,
+    meta.selectedProblems,
+    meta.selectedIssues,
+    meta.completedProblems,
+    meta.completedSolutions,
+    meta.completedStepObjects,
+    meta.completedSteps,
+    meta.steps,
+    meta.checklist,
+    meta.checklistItems,
+    meta.items,
+    meta.answers,
+    meta.responses,
+    meta.problemReason,
+    meta.issueReason,
+    meta.reason,
+    meta.issue,
+    meta.problem,
+    meta.notes,
+    meta.comment,
+    meta.description,
+    meta.details,
+  ];
+
+  if (Array.isArray(source.activityLogs)) {
+    source.activityLogs.forEach((log) => {
+      candidates.push(log.problemReasons);
+      candidates.push(log.problems);
+      candidates.push(log.completedProblems);
+      candidates.push(log.completedSolutions);
+      candidates.push(log.steps);
+      candidates.push(log.notes);
+      candidates.push(log.description);
+
+      const logMeta = parseMaybeJson(log.metadata) || log.metadata || {};
+      candidates.push(logMeta.problemReasons);
+      candidates.push(logMeta.problems);
+      candidates.push(logMeta.completedProblems);
+      candidates.push(logMeta.completedSolutions);
+      candidates.push(logMeta.steps);
+      candidates.push(logMeta.notes);
+      candidates.push(logMeta.description);
+    });
+  }
+
+  return candidates;
+}
+
+function getProblemList(item = {}) {
+  const rawProblems = [];
+
+  collectProblemCandidates(item).forEach((candidate) => {
+    asArray(candidate).forEach((entry) => {
+      if (typeof entry === "string") {
+        const text = cleanText(entry);
+        if (!text) return;
+
+        const chunks = text
+          .split(/(?=وصف المشكلة\s*[:：]|Problem Description\s*[:：]|Selected Problem\s*[:：]|المشكلة المختارة\s*[:：])/gi)
+          .map((x) => x.trim())
+          .filter(Boolean);
+
+        (chunks.length ? chunks : [text]).forEach((chunk) => {
+          const p = problemFromText(chunk);
+          if (p) rawProblems.push(p);
+        });
+      } else if (entry && typeof entry === "object") {
+        const p = problemFromObject(entry);
+        if (p) rawProblems.push(p);
+      }
+    });
+  });
+
+  const fullText = cleanText(
+    [
+      item.problemReason,
+      item.issueReason,
+      item.reason,
+      item.issue,
+      item.problem,
+      item.notes,
+      item.note,
+      item.comment,
+      item.comments,
+      item.description,
+      item.details,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  if (fullText) {
+    const p = problemFromText(fullText);
+    if (p) rawProblems.push(p);
+  }
+
+  const dedup = [];
+  const seen = new Set();
+
+  rawProblems.forEach((p) => {
+    const key = normalizeSearchText(
+      [p.title, p.description, p.category, p.code, p.solution].join(" ")
+    );
+
+    if (!key || seen.has(key)) return;
+
+    seen.add(key);
+    dedup.push(p);
+  });
+
+  return dedup.slice(0, 30);
+}
+
+function getMainProblemReason(item) {
+  const problems = getProblemList(item);
+
+  if (problems.length) {
+    return problems[0].description || problems[0].title;
+  }
+
+  return cleanText(
+    item.problemReason ||
+      item.issueReason ||
+      item.reason ||
+      item.issue ||
+      item.problem ||
+      item.notes ||
+      item.note ||
+      item.comment ||
+      item.comments ||
+      item.description ||
+      item.details ||
+      ""
+  );
+}
+
+function getInspectionDateValue(ins) {
+  return ins?.inspectedAt || ins?.createdAt || ins?.updatedAt || null;
+}
+
+function startOfToday(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function startOfWeek(now = new Date()) {
+  const d = startOfToday(now);
+  const day = d.getDay();
+  const daysFromSaturday = (day + 1) % 7;
+  d.setDate(d.getDate() - daysFromSaturday);
+  return d;
+}
+
+function monthKeyFromDate(value) {
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return "";
+
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function yearFromDate(value) {
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return "";
+
+  return String(d.getFullYear());
+}
+
+function isInPeriod(dateValue, period, filters = DEFAULT_FILTERS, now = new Date()) {
+  if (!dateValue) return false;
+
+  const d = new Date(dateValue);
+
+  if (Number.isNaN(d.getTime())) return false;
+
+  if (period === "TODAY") {
+    const start = startOfToday(now);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return d >= start && d < end;
+  }
+
+  if (period === "WEEK") {
+    const start = startOfWeek(now);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return d >= start && d < end;
+  }
+
+  if (period === "MONTH") {
+    return monthKeyFromDate(dateValue) === filters.monthKey;
+  }
+
+  if (period === "YEAR") {
+    return yearFromDate(dateValue) === filters.year;
+  }
+
+  return true;
+}
+
+function historyGroupKey(dateValue, mode) {
+  const d = new Date(dateValue);
+
+  if (Number.isNaN(d.getTime())) return "No date";
+
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+
+  if (mode === "YEAR") return `${y}-${m}`;
+
+  return `${y}-${m}-${day}`;
+}
+
+function buildHistoryGroups(records, mode) {
+  const map = new Map();
+
+  records.forEach((record) => {
+    const dateValue = getInspectionDateValue(record);
+    const key = historyGroupKey(dateValue, mode);
+
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        dateValue,
+        records: [],
+        ok: 0,
+        notOk: 0,
+      });
+    }
+
+    const group = map.get(key);
+    group.records.push(record);
+
+    if (record.result === "OK") {
+      group.ok += 1;
+    } else {
+      group.notOk += 1;
+    }
+  });
+
+  return Array.from(map.values())
+    .map((group) => ({
+      ...group,
+      records: [...group.records].sort(
+        (a, b) =>
+          new Date(getInspectionDateValue(b) || 0) -
+          new Date(getInspectionDateValue(a) || 0)
+      ),
+    }))
+    .sort((a, b) => new Date(b.dateValue || 0) - new Date(a.dateValue || 0));
 }
 
 function normalizeInspection(item = {}) {
@@ -1021,14 +1969,18 @@ function normalizeInspection(item = {}) {
     item.code ||
     item.barcode ||
     item.serial ||
-    `#${item.deviceId || item.id || ""}`;
+    item.gateNo ||
+    item.gateCode ||
+    `#${item.deviceId || item.gateId || item.id || ""}`;
 
   const deviceName =
     device.deviceName ||
     device.name ||
     item.deviceName ||
     item.name ||
-    "Unknown device";
+    item.gateName ||
+    (item.gateId ? `Gate ${item.gateId}` : "") ||
+    "Unknown asset";
 
   const serialNumber =
     device.serialNumber ||
@@ -1037,21 +1989,41 @@ function normalizeInspection(item = {}) {
     item.serial ||
     "";
 
-  const cleanNote = getCleanNote(item);
+  const ipAddress =
+    device.ipAddress ||
+    device.ip ||
+    item.ipAddress ||
+    item.deviceIp ||
+    item.ip ||
+    item.ip_address ||
+    "";
+
+  const result = normalizeResult(
+    item.inspectionStatus ||
+      item.status ||
+      item.result ||
+      item.condition ||
+      item.finalStatus ||
+      item.finalResult
+  );
+
+  const problems = result === "NOT_OK" ? getProblemList(item) : [];
+  const problemReason =
+    result === "NOT_OK" ? getMainProblemReason(item) : "";
 
   return {
     id: item.id,
-    deviceId: item.deviceId || device.id,
+    deviceId: item.deviceId || device.id || null,
+    gateId: item.gateId || null,
 
-    inspectionStatus: normalizeStatus(
-      item.inspectionStatus ||
-      item.status ||
-      item.result ||
-      item.condition
-    ),
+    result,
+    problemReason,
+    problems,
+    raw: item,
 
-    issueReason: cleanNote,
-    notes: cleanNote,
+    inspectedAt: item.inspectedAt || item.createdAt || item.updatedAt || null,
+    createdAt: item.createdAt || item.inspectedAt || item.updatedAt || null,
+    updatedAt: item.updatedAt || item.createdAt || item.inspectedAt || null,
 
     locationText:
       item.locationText ||
@@ -1065,14 +2037,12 @@ function normalizeInspection(item = {}) {
         .filter(Boolean)
         .join(" · "),
 
-    inspectedAt: item.inspectedAt || item.createdAt || item.updatedAt || null,
-    createdAt: item.createdAt || item.inspectedAt || item.updatedAt || null,
-
     device: {
-      id: device.id || item.deviceId,
+      id: device.id || item.deviceId || item.gateId,
       deviceCode,
       deviceName,
       serialNumber,
+      ipAddress,
       location: cleanLocation,
     },
   };
@@ -1085,14 +2055,16 @@ function buildInspectionSearchText(ins) {
     [
       ins.id,
       ins.deviceId,
-      ins.inspectionStatus,
-      ins.issueReason,
-      ins.notes,
+      ins.gateId,
+      ins.result,
+      ins.problemReason,
+      ins.problems?.map((p) => [p.title, p.description, p.category, p.code, p.solution].join(" ")).join(" "),
       ins.locationText,
       ins.device?.id,
       ins.device?.deviceCode,
       ins.device?.deviceName,
       ins.device?.serialNumber,
+      ins.device?.ipAddress,
       loc.cluster,
       loc.building,
       loc.zone,
@@ -1157,25 +2129,393 @@ async function fetchInspectionsFromApi(baseUrl, token) {
   throw lastError || new Error("No working inspections endpoint found.");
 }
 
-function StatusBadge({ value, lang }) {
-  const map = lang === "ar" ? BADGE_MAP_AR : BADGE_MAP;
-  const b = map[value] || { label: value || "Unknown", cls: "badge--oos" };
+function ResultBadge({ value }) {
+  if (value === "OK") {
+    return <span className="badge badge--ok">OK</span>;
+  }
 
-  return <span className={`badge ${b.cls}`}>{b.label}</span>;
+  return <span className="badge badge--not-ok">Not OK</span>;
 }
 
-/* ═══════════════════════════════════════════
-   COMPONENT
-═══════════════════════════════════════════ */
+function ProblemList({ problems }) {
+  const list = Array.isArray(problems) ? problems : [];
+
+  if (!list.length) {
+    return (
+      <div className="no-problems">
+        No organized problem data was provided from backend.
+      </div>
+    );
+  }
+
+  return (
+    <div className="problem-list">
+      {list.map((problem, index) => (
+        <div className="problem-item" key={`${problem.title}-${index}`}>
+          <div className="problem-number">{index + 1}</div>
+
+          <div className="problem-content">
+            <div className="problem-content-title">
+              {problem.title || "Problem"}
+            </div>
+
+            <div className="problem-detail-grid">
+              <div className="problem-detail">
+                <div className="problem-detail-label">Problem Description</div>
+                <div className="problem-detail-text">
+                  {problem.description || "No description provided."}
+                </div>
+              </div>
+
+              <div className="problem-detail">
+                <div className="problem-detail-label">Problem Category</div>
+                <div className="problem-detail-text">
+                  {problem.category || "—"}
+                </div>
+              </div>
+
+              <div className="problem-detail">
+                <div className="problem-detail-label">Problem Code</div>
+                <div className="problem-detail-text">
+                  {problem.code || "—"}
+                </div>
+              </div>
+
+              <div className="problem-detail">
+                <div className="problem-detail-label">Technician Selected / Action</div>
+                <div className="problem-detail-text">
+                  {problem.solution || problem.title || "—"}
+                </div>
+              </div>
+            </div>
+
+            {problem.doneIds?.length ? (
+              <div className="problem-done-ids">
+                {problem.doneIds.map((id) => (
+                  <span className="problem-done-id" key={id}>
+                    Done Step ID: {id}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProblemPreview({ inspection, onOpen }) {
+  if (inspection.result === "OK") {
+    return (
+      <div className="problem-preview-empty">
+        <div className="problem-preview-title">Problem Reason</div>
+        <div className="problem-preview-text">No problem detected.</div>
+      </div>
+    );
+  }
+
+  const count = inspection.problems?.length || 0;
+
+  return (
+    <div className="problem-preview">
+      <div className="problem-preview-box">
+        <div className="problem-preview-title">
+          Problem Reason {count ? `(${count})` : ""}
+        </div>
+
+        <div className="problem-preview-text">
+          {inspection.problemReason || "No problem reason was provided from backend."}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="problem-details-btn"
+        onClick={() => onOpen(inspection)}
+      >
+        View organized problems
+      </button>
+    </div>
+  );
+}
+
+function RecordProblemsModal({ inspection, onClose }) {
+  if (!inspection) return null;
+
+  const loc = inspection.device?.location || {};
+  const dateValue = getInspectionDateValue(inspection);
+
+  return (
+    <div className="insp-modal-backdrop" onMouseDown={onClose}>
+      <div className="insp-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="insp-modal-head">
+          <div>
+            <div className="insp-modal-title">
+              Organized Problem Details
+            </div>
+
+            <div className="insp-modal-sub">
+              {inspection.device?.deviceCode || `#${inspection.deviceId || inspection.gateId || ""}`} ·{" "}
+              {fmt(dateValue)} {fmtTime(dateValue)}
+            </div>
+          </div>
+
+          <button
+            className="insp-modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="insp-modal-body">
+          <div className="history-record" style={{ borderBottom: "none", padding: 0 }}>
+            <div>
+              <div className="history-device-code">
+                {inspection.device?.deviceCode || `#${inspection.deviceId || inspection.gateId || ""}`}
+              </div>
+
+              <div className="history-device-name">
+                {inspection.device?.deviceName || "Unknown asset"}
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <ResultBadge value={inspection.result} />
+              </div>
+
+              <div className="history-meta">
+                <div className="history-meta-line">
+                  <span>Date</span>
+                  {fmt(dateValue)} {fmtTime(dateValue)}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>Cluster</span>
+                  {loc.cluster || "—"}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>Building</span>
+                  {loc.building || "—"}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>Zone</span>
+                  {loc.zone || "—"}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>Direction</span>
+                  {loc.direction || "—"}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>Serial</span>
+                  {inspection.device?.serialNumber || "—"}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>IP</span>
+                  {inspection.device?.ipAddress || "—"}
+                </div>
+              </div>
+            </div>
+
+            <ProblemList problems={inspection.problems} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HistoryModal({ title, subtitle, records, mode, onClose, onOpenRecord }) {
+  const groups = useMemo(() => buildHistoryGroups(records, mode), [records, mode]);
+
+  const counts = useMemo(() => {
+    const c = {
+      total: records.length,
+      ok: 0,
+      notOk: 0,
+      problems: 0,
+    };
+
+    records.forEach((record) => {
+      if (record.result === "OK") {
+        c.ok += 1;
+      } else {
+        c.notOk += 1;
+        c.problems += record.problems?.length || 0;
+      }
+    });
+
+    return c;
+  }, [records]);
+
+  return (
+    <div className="insp-modal-backdrop" onMouseDown={onClose}>
+      <div className="insp-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="insp-modal-head">
+          <div>
+            <div className="insp-modal-title">{title}</div>
+            <div className="insp-modal-sub">{subtitle}</div>
+          </div>
+
+          <button
+            className="insp-modal-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="insp-modal-body">
+          <div className="insp-modal-stats">
+            <div className="insp-modal-stat" style={{ "--stat-color": TILE_COLORS.total }}>
+              <div className="insp-modal-stat-label">Total</div>
+              <div className="insp-modal-stat-value" style={{ color: TILE_COLORS.total }}>
+                {counts.total}
+              </div>
+            </div>
+
+            <div className="insp-modal-stat" style={{ "--stat-color": TILE_COLORS.ok }}>
+              <div className="insp-modal-stat-label">OK</div>
+              <div className="insp-modal-stat-value" style={{ color: TILE_COLORS.ok }}>
+                {counts.ok}
+              </div>
+            </div>
+
+            <div className="insp-modal-stat" style={{ "--stat-color": TILE_COLORS.notOk }}>
+              <div className="insp-modal-stat-label">Not OK</div>
+              <div className="insp-modal-stat-value" style={{ color: TILE_COLORS.notOk }}>
+                {counts.notOk}
+              </div>
+            </div>
+
+            <div className="insp-modal-stat" style={{ "--stat-color": TILE_COLORS.month }}>
+              <div className="insp-modal-stat-label">Total Problems</div>
+              <div className="insp-modal-stat-value" style={{ color: TILE_COLORS.month }}>
+                {counts.problems}
+              </div>
+            </div>
+          </div>
+
+          {groups.length ? (
+            <div className="history-groups">
+              {groups.map((group) => (
+                <div className="history-group" key={group.key}>
+                  <div className="history-group-head">
+                    <div>
+                      <div className="history-group-title">
+                        {fmtHistoryGroup(group.dateValue, mode)}
+                      </div>
+
+                      <div style={{ marginTop: 5, fontSize: 11, color: "#94a3b8", fontWeight: 800 }}>
+                        OK: {group.ok} · Not OK: {group.notOk}
+                      </div>
+                    </div>
+
+                    <div className="history-group-count">
+                      {group.records.length} inspections
+                    </div>
+                  </div>
+
+                  <div className="history-list">
+                    {group.records.map((record) => {
+                      const loc = record.device?.location || {};
+                      const dateValue = getInspectionDateValue(record);
+
+                      return (
+                        <div
+                          className="history-record"
+                          key={record.id || `${record.deviceId}-${record.gateId}-${dateValue}`}
+                        >
+                          <div>
+                            <div className="history-device-code">
+                              {record.device?.deviceCode || `#${record.deviceId || record.gateId || ""}`}
+                            </div>
+
+                            <div className="history-device-name">
+                              {record.device?.deviceName || "Unknown asset"}
+                            </div>
+
+                            <div style={{ marginTop: 10 }}>
+                              <ResultBadge value={record.result} />
+                            </div>
+
+                            <div className="history-meta">
+                              <div className="history-meta-line">
+                                <span>Date</span>
+                                {fmt(dateValue)} {fmtTime(dateValue)}
+                              </div>
+
+                              <div className="history-meta-line">
+                                <span>Location</span>
+                                {[loc.cluster, loc.building, loc.zone, loc.direction]
+                                  .filter(Boolean)
+                                  .join(" · ") || "—"}
+                              </div>
+
+                              <div className="history-meta-line">
+                                <span>Serial</span>
+                                {record.device?.serialNumber || "—"}
+                              </div>
+
+                              <div className="history-meta-line">
+                                <span>IP</span>
+                                {record.device?.ipAddress || "—"}
+                              </div>
+                            </div>
+                          </div>
+
+                          {record.result === "OK" ? (
+                            <div className="no-problems">
+                              No problem detected for this inspection.
+                            </div>
+                          ) : (
+                            <div>
+                              <ProblemList problems={record.problems} />
+
+                              <button
+                                type="button"
+                                className="problem-details-btn"
+                                onClick={() => onOpenRecord(record)}
+                              >
+                                Open full details
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="insp-empty">No inspections found in this period.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ViewerInspectionsPage({
   inspections: inspectionsProp = null,
-  lang = "en",
   apiBaseUrl = "",
 }) {
-  const [view, setView] = useState("table");
-
   const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
+
+  const [historyMode, setHistoryMode] = useState(null);
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [view, setView] = useState("box");
 
   const [inspections, setInspections] = useState(
     Array.isArray(inspectionsProp)
@@ -1186,12 +2526,19 @@ export function ViewerInspectionsPage({
   const [loading, setLoading] = useState(!Array.isArray(inspectionsProp));
   const [error, setError] = useState("");
 
-  const t = (en, ar) => (lang === "ar" ? ar : en);
   const baseUrl = useMemo(() => pickBaseUrl(apiBaseUrl), [apiBaseUrl]);
 
   async function loadInspections() {
     if (Array.isArray(inspectionsProp)) {
-      setInspections(inspectionsProp.map(normalizeInspection));
+      const sortedProp = inspectionsProp
+        .map(normalizeInspection)
+        .sort(
+          (a, b) =>
+            new Date(getInspectionDateValue(b) || 0) -
+            new Date(getInspectionDateValue(a) || 0)
+        );
+
+      setInspections(sortedProp);
       setLoading(false);
       setError("");
       return;
@@ -1206,8 +2553,8 @@ export function ViewerInspectionsPage({
 
       const sorted = [...result.items].sort(
         (a, b) =>
-          new Date(b.inspectedAt || b.createdAt || 0) -
-          new Date(a.inspectedAt || a.createdAt || 0)
+          new Date(getInspectionDateValue(b) || 0) -
+          new Date(getInspectionDateValue(a) || 0)
       );
 
       setInspections(sorted);
@@ -1223,7 +2570,61 @@ export function ViewerInspectionsPage({
   useEffect(() => {
     loadInspections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl]);
+  }, [baseUrl, Array.isArray(inspectionsProp) ? inspectionsProp.length : 0]);
+
+  const monthOptions = useMemo(() => {
+    const keys = cleanOptions(
+      inspections
+        .map((ins) => monthKeyFromDate(getInspectionDateValue(ins)))
+        .filter(Boolean)
+    ).reverse();
+
+    const current = monthKeyFromDate(new Date());
+
+    return cleanOptions([current, ...keys]).reverse();
+  }, [inspections]);
+
+  const yearOptions = useMemo(() => {
+    const years = cleanOptions(
+      inspections
+        .map((ins) => yearFromDate(getInspectionDateValue(ins)))
+        .filter(Boolean)
+    ).reverse();
+
+    const current = yearFromDate(new Date());
+
+    return cleanOptions([current, ...years]).reverse();
+  }, [inspections]);
+
+  useEffect(() => {
+    setDraftFilters((prev) => {
+      const next = { ...prev };
+
+      if (!next.monthKey && monthOptions.length) {
+        next.monthKey = monthOptions[0];
+      }
+
+      if ((!next.year || next.year === "ALL") && yearOptions.length) {
+        next.year = yearOptions[0];
+      }
+
+      return next;
+    });
+
+    setFilters((prev) => {
+      const next = { ...prev };
+
+      if (!next.monthKey && monthOptions.length) {
+        next.monthKey = monthOptions[0];
+      }
+
+      if ((!next.year || next.year === "ALL") && yearOptions.length) {
+        next.year = yearOptions[0];
+      }
+
+      return next;
+    });
+  }, [monthOptions, yearOptions]);
 
   const options = useMemo(() => {
     const clusters = [];
@@ -1253,8 +2654,13 @@ export function ViewerInspectionsPage({
 
     return inspections.filter((ins) => {
       const loc = ins.device?.location || {};
+      const dateValue = getInspectionDateValue(ins);
 
-      if (filters.status !== "ALL" && ins.inspectionStatus !== filters.status) {
+      if (filters.result !== "ALL" && ins.result !== filters.result) {
+        return false;
+      }
+
+      if (filters.period !== "ALL" && !isInPeriod(dateValue, filters.period, filters)) {
         return false;
       }
 
@@ -1283,18 +2689,35 @@ export function ViewerInspectionsPage({
     });
   }, [inspections, filters]);
 
-  const filteredCounts = useMemo(() => {
+  const periodLists = useMemo(() => {
+    return {
+      TODAY: inspections.filter((ins) =>
+        isInPeriod(getInspectionDateValue(ins), "TODAY", filters)
+      ),
+      WEEK: inspections.filter((ins) =>
+        isInPeriod(getInspectionDateValue(ins), "WEEK", filters)
+      ),
+      MONTH: inspections.filter((ins) =>
+        isInPeriod(getInspectionDateValue(ins), "MONTH", filters)
+      ),
+      YEAR: inspections.filter((ins) =>
+        isInPeriod(getInspectionDateValue(ins), "YEAR", filters)
+      ),
+    };
+  }, [inspections, filters]);
+
+  const counts = useMemo(() => {
     const c = {
-      ALL: filtered.length,
-      OK: 0,
-      NOT_OK: 0,
+      total: filtered.length,
+      ok: 0,
+      notOk: 0,
     };
 
-    filtered.forEach((i) => {
-      if (i.inspectionStatus === "OK") {
-        c.OK += 1;
+    filtered.forEach((ins) => {
+      if (ins.result === "OK") {
+        c.ok += 1;
       } else {
-        c.NOT_OK += 1;
+        c.notOk += 1;
       }
     });
 
@@ -1304,21 +2727,53 @@ export function ViewerInspectionsPage({
   const tiles = [
     {
       key: "total",
-      label: t("Total", "الإجمالي"),
-      val: filteredCounts.ALL || 0,
+      label: "Total",
+      val: counts.total,
       color: TILE_COLORS.total,
     },
     {
       key: "ok",
-      label: t("OK", "سليم"),
-      val: filteredCounts.OK || 0,
+      label: "OK",
+      val: counts.ok,
       color: TILE_COLORS.ok,
     },
     {
       key: "notOk",
-      label: t("Not OK", "غير سليم"),
-      val: filteredCounts.NOT_OK || 0,
+      label: "Not OK",
+      val: counts.notOk,
       color: TILE_COLORS.notOk,
+    },
+    {
+      key: "TODAY",
+      label: "Today",
+      val: periodLists.TODAY.length,
+      color: TILE_COLORS.today,
+      note: "Open history",
+      clickable: true,
+    },
+    {
+      key: "WEEK",
+      label: "This Week",
+      val: periodLists.WEEK.length,
+      color: TILE_COLORS.week,
+      note: "Open history",
+      clickable: true,
+    },
+    {
+      key: "MONTH",
+      label: fmtMonthKey(filters.monthKey),
+      val: periodLists.MONTH.length,
+      color: TILE_COLORS.month,
+      note: "Open month history",
+      clickable: true,
+    },
+    {
+      key: "YEAR",
+      label: filters.year || "This Year",
+      val: periodLists.YEAR.length,
+      color: TILE_COLORS.year,
+      note: "Open year history",
+      clickable: true,
     },
   ];
 
@@ -1334,8 +2789,14 @@ export function ViewerInspectionsPage({
   };
 
   const resetFilters = () => {
-    setDraftFilters(DEFAULT_FILTERS);
-    setFilters(DEFAULT_FILTERS);
+    const next = {
+      ...DEFAULT_FILTERS,
+      monthKey: monthOptions[0] || "",
+      year: yearOptions[0] || "ALL",
+    };
+
+    setDraftFilters(next);
+    setFilters(next);
   };
 
   const locationParts = (ins) => ({
@@ -1345,15 +2806,37 @@ export function ViewerInspectionsPage({
     direction: ins.device?.location?.direction || "",
   });
 
+  function getHistoryRecords(mode) {
+    if (mode === "TODAY") return periodLists.TODAY;
+    if (mode === "WEEK") return periodLists.WEEK;
+    if (mode === "MONTH") return periodLists.MONTH;
+    if (mode === "YEAR") return periodLists.YEAR;
+    return [];
+  }
+
+  function getHistoryTitle(mode) {
+    if (mode === "TODAY") return "Today Inspection History";
+    if (mode === "WEEK") return "This Week Inspection History";
+    if (mode === "MONTH") return `${fmtMonthKey(filters.monthKey)} Inspection History`;
+    if (mode === "YEAR") return `${filters.year} Inspection History`;
+    return "Inspection History";
+  }
+
+  function getHistorySubtitle(mode) {
+    const records = getHistoryRecords(mode);
+    const notOk = records.filter((r) => r.result === "NOT_OK").length;
+    const problems = records.reduce((sum, r) => sum + (r.problems?.length || 0), 0);
+
+    return `${records.length} inspections · ${notOk} not OK · ${problems} organized problems`;
+  }
+
   return (
     <>
       <style>{INSPECTIONS_CSS}</style>
 
-      <div className="insp-root" dir={lang === "ar" ? "rtl" : "ltr"}>
+      <div className="insp-root">
         <div className="insp-topbar">
-          <div>
-        
-          </div>
+          <div></div>
 
           <div className="insp-actions">
             <button
@@ -1361,15 +2844,14 @@ export function ViewerInspectionsPage({
               onClick={loadInspections}
               disabled={loading}
             >
-              {loading ? t("Loading...", "جارٍ التحميل...") : t("Refresh", "تحديث")}
+              {loading ? "Loading..." : "Refresh"}
             </button>
           </div>
         </div>
 
         {!!error && (
           <div className="insp-alert insp-alert--error">
-            {t("Backend connection error: ", "خطأ في الاتصال بالباك إند: ")}
-            {error}
+            Backend connection error: {error}
           </div>
         )}
 
@@ -1380,25 +2862,24 @@ export function ViewerInspectionsPage({
 
               <div>
                 <div className="insp-filter-title-text">
-                  {t("Advanced Inspection Filter", "فلتر الفحوصات المتقدم")}
+                  Advanced Inspection Filter
                 </div>
+
                 <div className="insp-filter-title-sub">
-                  {t(
-                    "Filter inspections by status, location, or search text",
-                    "فلتر الفحوصات بالحالة أو الموقع أو البحث"
-                  )}
+                  OK / Not OK results with organized problem reasons from backend
                 </div>
               </div>
             </div>
 
             <div className="insp-filter-result">
-              {filtered.length} / {inspections.length} {t("records", "سجل")}
+              {filtered.length} / {inspections.length} records
             </div>
           </div>
 
           <div className="insp-filter-grid">
             <div className="insp-filter-field">
-              <label>{t("Search", "بحث")}</label>
+              <label>Search</label>
+
               <input
                 className="insp-filter-input"
                 value={draftFilters.search}
@@ -1406,36 +2887,84 @@ export function ViewerInspectionsPage({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") applyFilters();
                 }}
-                placeholder={t(
-                  "Code, name, serial, building, zone...",
-                  "الكود، الاسم، السيريال، المبنى، الزون..."
-                )}
+                placeholder="Code, name, serial, building, zone, reason..."
               />
             </div>
 
             <div className="insp-filter-field">
-              <label>{t("Status", "الحالة")}</label>
+              <label>Result</label>
+
               <select
                 className="insp-filter-select"
-                value={draftFilters.status}
-                onChange={(e) => updateDraft("status", e.target.value)}
+                value={draftFilters.result}
+                onChange={(e) => updateDraft("result", e.target.value)}
               >
-                {STATUS_OPTIONS.map((option) => (
+                {RESULT_OPTIONS.map((option) => (
                   <option key={option.key} value={option.key}>
-                    {option[lang] || option.en}
+                    {option.label}
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="insp-filter-field">
-              <label>{t("Cluster", "المجموعة")}</label>
+              <label>Period</label>
+
+              <select
+                className="insp-filter-select"
+                value={draftFilters.period}
+                onChange={(e) => updateDraft("period", e.target.value)}
+              >
+                {PERIOD_OPTIONS.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="insp-filter-field">
+              <label>Month</label>
+
+              <select
+                className="insp-filter-select"
+                value={draftFilters.monthKey}
+                onChange={(e) => updateDraft("monthKey", e.target.value)}
+              >
+                {monthOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {fmtMonthKey(value)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="insp-filter-field">
+              <label>Year</label>
+
+              <select
+                className="insp-filter-select"
+                value={draftFilters.year}
+                onChange={(e) => updateDraft("year", e.target.value)}
+              >
+                {yearOptions.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="insp-filter-field">
+              <label>Cluster</label>
+
               <select
                 className="insp-filter-select"
                 value={draftFilters.cluster}
                 onChange={(e) => updateDraft("cluster", e.target.value)}
               >
-                <option value="ALL">{t("All clusters", "كل المجموعات")}</option>
+                <option value="ALL">All clusters</option>
+
                 {options.clusters.map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -1445,13 +2974,15 @@ export function ViewerInspectionsPage({
             </div>
 
             <div className="insp-filter-field">
-              <label>{t("Building", "المبنى")}</label>
+              <label>Building</label>
+
               <select
                 className="insp-filter-select"
                 value={draftFilters.building}
                 onChange={(e) => updateDraft("building", e.target.value)}
               >
-                <option value="ALL">{t("All buildings", "كل المباني")}</option>
+                <option value="ALL">All buildings</option>
+
                 {options.buildings.map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -1461,13 +2992,15 @@ export function ViewerInspectionsPage({
             </div>
 
             <div className="insp-filter-field">
-              <label>{t("Zone", "المنطقة")}</label>
+              <label>Zone</label>
+
               <select
                 className="insp-filter-select"
                 value={draftFilters.zone}
                 onChange={(e) => updateDraft("zone", e.target.value)}
               >
-                <option value="ALL">{t("All zones", "كل المناطق")}</option>
+                <option value="ALL">All zones</option>
+
                 {options.zones.map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -1477,13 +3010,15 @@ export function ViewerInspectionsPage({
             </div>
 
             <div className="insp-filter-field">
-              <label>{t("Direction", "الاتجاه")}</label>
+              <label>Direction</label>
+
               <select
                 className="insp-filter-select"
                 value={draftFilters.direction}
                 onChange={(e) => updateDraft("direction", e.target.value)}
               >
-                <option value="ALL">{t("All directions", "كل الاتجاهات")}</option>
+                <option value="ALL">All directions</option>
+
                 {options.directions.map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -1495,10 +3030,7 @@ export function ViewerInspectionsPage({
 
           <div className="insp-filter-footer">
             <div className="insp-filter-hint">
-              {t(
-                "Tip: press Enter inside search to apply quickly.",
-                "معلومة: اضغطي Enter داخل البحث للتطبيق بسرعة."
-              )}
+              Choose a month/year, then click the month or year card to open organized history.
             </div>
 
             <div className="insp-filter-actions">
@@ -1507,7 +3039,7 @@ export function ViewerInspectionsPage({
                 className="insp-filter-btn insp-filter-btn-reset"
                 onClick={resetFilters}
               >
-                {t("Reset", "إعادة ضبط")}
+                Reset
               </button>
 
               <button
@@ -1515,7 +3047,7 @@ export function ViewerInspectionsPage({
                 className="insp-filter-btn insp-filter-btn-ok"
                 onClick={applyFilters}
               >
-                {t("Apply", "تطبيق")}
+                Apply
               </button>
             </div>
           </div>
@@ -1523,7 +3055,17 @@ export function ViewerInspectionsPage({
 
         <div className="insp-summary">
           {tiles.map((tile) => (
-            <div key={tile.key} className="insp-summary-tile">
+            <div
+              key={tile.key}
+              className={`insp-summary-tile${tile.clickable ? " insp-summary-tile--clickable" : ""}`}
+              onClick={() => {
+                if (tile.clickable) {
+                  setHistoryMode(tile.key);
+                }
+              }}
+              role={tile.clickable ? "button" : undefined}
+              tabIndex={tile.clickable ? 0 : undefined}
+            >
               <div
                 className="insp-summary-tile__bar"
                 style={{ background: tile.color }}
@@ -1537,214 +3079,252 @@ export function ViewerInspectionsPage({
               </div>
 
               <div className="insp-summary-tile__label">{tile.label}</div>
+
+              {tile.note ? (
+                <div className="insp-summary-tile__note">{tile.note}</div>
+              ) : null}
             </div>
           ))}
-        </div>
-
-        <div className="insp-view-row">
-          <div className="insp-view-toggle">
-            <button
-              type="button"
-              className={`insp-view-btn${view === "table" ? " insp-view-btn--active" : ""}`}
-              onClick={() => setView("table")}
-            >
-              {t("Table", "جدول")}
-            </button>
-
-            <button
-              type="button"
-              className={`insp-view-btn${view === "timeline" ? " insp-view-btn--active" : ""}`}
-              onClick={() => setView("timeline")}
-            >
-              {t("Timeline", "تسلسل")}
-            </button>
-          </div>
         </div>
 
         <div className="insp-panel">
           <div className="insp-panel__head">
             <div>
               <div className="insp-panel__title">
-                {t("Inspections Log", "سجل الفحوصات")}
+                Inspections Result Log
               </div>
 
               <div className="insp-panel__sub">
-                {t("All recorded inspections", "جميع الفحوصات المسجلة")}
+                OK / Not OK with organized backend problem reasons
               </div>
             </div>
 
-            <div className="insp-records">
-              {filtered.length} {t("records", "سجل")}
+            <div className="insp-panel-tools">
+              <div className="insp-view-toggle" aria-label="Choose view">
+                <button
+                  type="button"
+                  className={`insp-view-btn ${view === "box" ? "active" : ""}`}
+                  onClick={() => setView("box")}
+                >
+                  Box
+                </button>
+
+                <button
+                  type="button"
+                  className={`insp-view-btn ${view === "list" ? "active" : ""}`}
+                  onClick={() => setView("list")}
+                >
+                  List
+                </button>
+              </div>
+
+              <div className="insp-records">
+                {filtered.length} records
+              </div>
             </div>
           </div>
 
           {loading ? (
             <div className="insp-loading">
               <div className="insp-loading-spinner" />
-              {t(
-                "Loading inspections from backend...",
-                "جارٍ تحميل الفحوصات من الباك إند..."
-              )}
+              Loading inspections from backend...
             </div>
-          ) : view === "table" ? (
-            filtered.length ? (
-              <div className="insp-table-wrap">
-                <table className="insp-table">
-                  <thead>
-                    <tr>
-                      <th>{t("Device", "الجهاز")}</th>
-                      <th>{t("Status", "الحالة")}</th>
-                      <th>{t("Cluster", "المجموعة")}</th>
-                      <th>{t("Building", "المبنى")}</th>
-                      <th>{t("Zone", "المنطقة")}</th>
-                      <th>{t("Direction", "الاتجاه")}</th>
-                      <th>{t("Notes", "ملاحظات")}</th>
-                      <th>{t("Date", "التاريخ")}</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {filtered.map((ins) => {
-                      const loc = locationParts(ins);
-                      const cleanNote = ins.issueReason || ins.notes || "—";
-
-                      return (
-                        <tr key={ins.id || `${ins.deviceId}-${ins.createdAt}`}>
-                          <td data-label={t("Device", "الجهاز")}>
-                            <div className="insp-dev-code">
-                              {ins.device?.deviceCode || `#${ins.deviceId}`}
-                            </div>
-
-                            <div className="insp-dev-name">
-                              {ins.device?.deviceName || t("Unknown", "غير معروف")}
-                            </div>
-                          </td>
-
-                          <td data-label={t("Status", "الحالة")}>
-                            <StatusBadge
-                              value={ins.inspectionStatus}
-                              lang={lang}
-                            />
-                          </td>
-
-                          <td data-label={t("Cluster", "المجموعة")}>
-                            <div className="insp-locline">
-                              {loc.cluster || "—"}
-                            </div>
-                          </td>
-
-                          <td data-label={t("Building", "المبنى")}>
-                            <div className="insp-locline">
-                              {loc.building || "—"}
-                            </div>
-                          </td>
-
-                          <td data-label={t("Zone", "المنطقة")}>
-                            <div className="insp-locline">
-                              {loc.zone || "—"}
-                            </div>
-                          </td>
-
-                          <td data-label={t("Direction", "الاتجاه")}>
-                            <div className="insp-locline">
-                              {loc.direction || "—"}
-                            </div>
-                          </td>
-
-                          <td data-label={t("Notes", "ملاحظات")} className="insp-notes">
-                            {cleanNote}
-                          </td>
-
-                          <td data-label={t("Date", "التاريخ")} style={{ fontSize: 12, color: "var(--faint)" }}>
-                            {fmt(ins.inspectedAt || ins.createdAt)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="insp-empty">
-                {t(
-                  "No inspections match the selected filters.",
-                  "لا توجد فحوصات مطابقة للفلاتر."
-                )}
-              </div>
-            )
           ) : filtered.length ? (
-            <div className="insp-timeline">
-              {filtered.map((ins, idx) => {
-                const loc = locationParts(ins);
+            view === "box" ? (
+              <div className="insp-card-grid">
+                {filtered.map((ins) => {
+                  const loc = locationParts(ins);
+                  const dateValue = getInspectionDateValue(ins);
 
-                const locStr =
-                  [
-                    loc.cluster,
-                    loc.building,
-                    loc.zone,
-                    loc.direction,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || t("Unknown", "غير معروف");
+                  return (
+                    <article
+                      className="insp-box-card"
+                      key={ins.id || `${ins.deviceId}-${ins.gateId}-${dateValue}`}
+                      style={{ "--box-color": ins.result === "OK" ? TILE_COLORS.ok : TILE_COLORS.notOk }}
+                    >
+                      <div className="insp-box-head">
+                        <div className="insp-box-device">
+                          <div className="insp-box-code">
+                            {ins.device?.deviceCode || `#${ins.deviceId || ins.gateId || ""}`}
+                          </div>
 
-                const cleanNote = ins.issueReason || ins.notes || "";
+                          <div className="insp-box-name">
+                            {ins.device?.deviceName || "Unknown asset"}
+                          </div>
+                        </div>
 
-                return (
-                  <div
-                    className="insp-tl-item"
-                    key={ins.id || `${ins.deviceId}-${ins.createdAt}`}
-                  >
-                    <div className="insp-tl-line">
-                      <div
-                        className="insp-tl-dot"
-                        style={{
-                          background:
-                            DOT_COLORS[ins.inspectionStatus] || "#4f46e5",
-                        }}
-                      />
+                        <ResultBadge value={ins.result} />
+                      </div>
 
-                      {idx < filtered.length - 1 && (
-                        <div className="insp-tl-connector" />
-                      )}
-                    </div>
+                      <div className="insp-box-info">
+                        <div className="insp-box-mini">
+                          <span>IP Address</span>
+                          <strong>
+                            <span className="insp-ip-chip">{ins.device?.ipAddress || "—"}</span>
+                          </strong>
+                        </div>
 
-                    <div className="insp-tl-body">
-                      <div className="insp-tl-head">
-                        <span className="insp-tl-dev">
-                          {ins.device?.deviceCode || `#${ins.deviceId}`}
-                        </span>
+                        <div className="insp-box-mini">
+                          <span>Serial</span>
+                          <strong>{ins.device?.serialNumber || "—"}</strong>
+                        </div>
 
-                        <StatusBadge
-                          value={ins.inspectionStatus}
-                          lang={lang}
+                        <div className="insp-box-mini">
+                          <span>Cluster</span>
+                          <strong>{loc.cluster || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
+                          <span>Building</span>
+                          <strong>{loc.building || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
+                          <span>Zone</span>
+                          <strong>{loc.zone || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
+                          <span>Direction</span>
+                          <strong>{loc.direction || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
+                          <span>Date</span>
+                          <strong>{fmt(dateValue)} {fmtTime(dateValue)}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
+                          <span>Problems</span>
+                          <strong>{ins.problems?.length || 0}</strong>
+                        </div>
+                      </div>
+
+                      <div className="insp-box-problem">
+                        <ProblemPreview
+                          inspection={ins}
+                          onOpen={setSelectedRecord}
                         />
                       </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+            <div className="insp-table-wrap">
+              <table className="insp-table">
+                <thead>
+                  <tr>
+                    <th>Device</th>
+                    <th>IP</th>
+                    <th>Result</th>
+                    <th>Problem Reason</th>
+                    <th>Cluster</th>
+                    <th>Building</th>
+                    <th>Zone</th>
+                    <th>Direction</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
 
-                      <div className="insp-tl-loc">{locStr}</div>
+                <tbody>
+                  {filtered.map((ins) => {
+                    const loc = locationParts(ins);
+                    const dateValue = getInspectionDateValue(ins);
 
-                      <div className="insp-tl-meta">
-                        <span className="insp-tl-time">
-                          {fmt(ins.inspectedAt || ins.createdAt)}{" "}
-                          {fmtTime(ins.inspectedAt || ins.createdAt)}
-                        </span>
+                    return (
+                      <tr key={ins.id || `${ins.deviceId}-${ins.gateId}-${dateValue}`}>
+                        <td data-label="Device">
+                          <div className="insp-dev-code">
+                            {ins.device?.deviceCode || `#${ins.deviceId || ins.gateId || ""}`}
+                          </div>
 
-                        {cleanNote && (
-                          <span className="insp-tl-note">
-                            {cleanNote}
+                          <div className="insp-dev-name">
+                            {ins.device?.deviceName || "Unknown asset"}
+                          </div>
+
+                          {ins.device?.serialNumber ? (
+                            <div className="insp-dev-name">
+                              Serial: {ins.device.serialNumber}
+                            </div>
+                          ) : null}
+                        </td>
+
+                        <td data-label="IP">
+                          <span className="insp-table-ip">
+                            {ins.device?.ipAddress || "—"}
                           </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                        </td>
+
+                        <td data-label="Result">
+                          <ResultBadge value={ins.result} />
+                        </td>
+
+                        <td data-label="Problem Reason">
+                          <ProblemPreview
+                            inspection={ins}
+                            onOpen={setSelectedRecord}
+                          />
+                        </td>
+
+                        <td data-label="Cluster">
+                          <div className="insp-locline">
+                            {loc.cluster || "—"}
+                          </div>
+                        </td>
+
+                        <td data-label="Building">
+                          <div className="insp-locline">
+                            {loc.building || "—"}
+                          </div>
+                        </td>
+
+                        <td data-label="Zone">
+                          <div className="insp-locline">
+                            {loc.zone || "—"}
+                          </div>
+                        </td>
+
+                        <td data-label="Direction">
+                          <div className="insp-locline">
+                            {loc.direction || "—"}
+                          </div>
+                        </td>
+
+                        <td data-label="Date" style={{ fontSize: 12, color: "var(--faint)" }}>
+                          {fmt(dateValue)} {fmtTime(dateValue)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
+            )
           ) : (
             <div className="insp-empty">
-              {t("No inspections found.", "لا توجد فحوصات.")}
+              No inspections match the selected filters.
             </div>
           )}
         </div>
+
+        {historyMode ? (
+          <HistoryModal
+            title={getHistoryTitle(historyMode)}
+            subtitle={getHistorySubtitle(historyMode)}
+            mode={historyMode}
+            records={getHistoryRecords(historyMode)}
+            onClose={() => setHistoryMode(null)}
+            onOpenRecord={setSelectedRecord}
+          />
+        ) : null}
+
+        {selectedRecord ? (
+          <RecordProblemsModal
+            inspection={selectedRecord}
+            onClose={() => setSelectedRecord(null)}
+          />
+        ) : null}
       </div>
     </>
   );
