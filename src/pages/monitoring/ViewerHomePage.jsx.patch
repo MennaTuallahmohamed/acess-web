@@ -1,0 +1,50 @@
+*** Begin Patch
+*** Update File: c:\acess web\dashboard-react\src\pages\monitoring\ViewerHomePage.jsx
+@@
+-  async function loadHomeData() {
+-    if (
+-      !loadingProp &&
+-      currentUserProp &&
+-      kpisProp &&
+-      Array.isArray(locationRowsProp) &&
+-      Array.isArray(recentInspectionsProp) &&
+-      Array.isArray(weeklyDataProp)
+-    ) {
+-      setCurrentUser(currentUserProp);
+-      setKpis(kpisProp);
+-      setLocationRows(locationRowsProp);
+-      setRecentInspections(recentInspectionsProp);
+-      setWeeklyData(weeklyDataProp);
+-      setLoading(false);
+-      setError("");
+-      return;
+-    }
+-    const startTime = Date.now();
++  async function loadHomeData() {
++    const startTime = Date.now();
++
++    if (
++      !loadingProp &&
++      currentUserProp &&
++      kpisProp &&
++      Array.isArray(locationRowsProp) &&
++      Array.isArray(recentInspectionsProp) &&
++      Array.isArray(weeklyDataProp)
++    ) {
++      setCurrentUser(currentUserProp);
++      setKpis(kpisProp);
++      setLocationRows(locationRowsProp);
++      setRecentInspections(recentInspectionsProp);
++      setWeeklyData(weeklyDataProp);
++      setError("");
++
++      try {
++        const elapsed = Date.now() - startTime;
++        const wait = Math.max(0, MIN_HOMELOAD_MS - elapsed);
++        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
++      } catch {}
++
++      setLoading(false);
++      return;
++    }
+*** End Patch
