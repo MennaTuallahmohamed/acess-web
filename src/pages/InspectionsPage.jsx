@@ -1,4 +1,4 @@
-import {
+{}import {
   useCallback,
   useDeferredValue,
   useEffect,
@@ -21,14 +21,15 @@ import {
    - List and Grid Box views show the first image lazily.
    - Full image gallery is available inside inspection details.
    - Weekday filtering supports one day, several days, or all days.
-   - Pagination keeps the page fast with large datasets.
+   - There is no artificial backend record cap; records stream page-by-page.
+   - There are no visible page limits or numbered pagination controls.
+   - Off-screen records and images stay lightweight through browser lazy rendering.
 ========================================================= */
 
 const DEFAULT_API_BASE = "https://acess-backend-production-8856.up.railway.app";
 const CACHE_KEY = "smartit_exact_backend_inspections_cache_v3";
-const DEFAULT_PAGE_SIZE = 50;
-const SERVER_PAGE_SIZE = 200;
-const MAX_SERVER_PAGES = 600;
+const SERVER_PAGE_SIZE = 250;
+const PAGE_FETCH_CONCURRENCY = 4;
 
 // JavaScript Date.getDay(): Sunday = 0 ... Saturday = 6.
 // Values are strings because the shared MultiSelectFilter compares exact values.
@@ -223,6 +224,8 @@ const CSS = `
 .si-grid-card {
   position: relative;
   overflow: hidden;
+  content-visibility: auto;
+  contain-intrinsic-size: 520px;
   border: 1px solid #dce5ec;
   border-radius: 19px;
   background: #fff;
@@ -430,6 +433,8 @@ const CSS = `
 .si-list-item {
   position: relative;
   display: grid;
+  content-visibility: auto;
+  contain-intrinsic-size: 230px;
   grid-template-columns: 230px minmax(0,1fr) auto;
   min-height: 210px;
   overflow: hidden;
@@ -860,22 +865,53 @@ function inspectionIdentity(record = {}, index = 0) {
   return fingerprint ? `fp:${fingerprint}` : `unknown:${index}`;
 }
 
-function mergeUniqueInspectionPages(pages) {
-  const map = new Map();
-  let index = 0;
-  pages.flat().forEach((item) => {
-    const key = inspectionIdentity(item, index);
-    index += 1;
+function addInspectionRowsToMap(map, rows, indexRef = { value: 0 }) {
+  let added = 0;
+
+  rows.forEach((item) => {
+    const key = inspectionIdentity(item, indexRef.value);
+    indexRef.value += 1;
+
     const normalized = normalizeInspection(item);
-    const old = map.get(key);
-    map.set(key, old ? mergeInspection(old, normalized) : normalized);
+    const previous = map.get(key);
+
+    if (!previous) added += 1;
+    map.set(key, previous ? mergeInspection(previous, normalized) : normalized);
   });
+
+  return added;
+}
+
+function sortedInspectionMap(map) {
   return Array.from(map.values()).sort((a, b) =>
-    (toDate(b.inspectedAt)?.getTime() || 0) - (toDate(a.inspectedAt)?.getTime() || 0)
+    (toDate(b.inspectedAt)?.getTime() || 0) -
+    (toDate(a.inspectedAt)?.getTime() || 0)
   );
 }
 
-async function loadAllBackendInspections(base, onProgress = () => {}) {
+async function runWithConcurrency(items, concurrency, worker) {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  async function runWorker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      await worker(items[index], index);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: workerCount }, () => runWorker())
+  );
+}
+
+async function loadAllBackendInspections(
+  base,
+  onProgress = () => {},
+  onPartial = () => {}
+) {
   const endpoints = [
     "/inspections",
     "/api/inspections",
@@ -890,101 +926,289 @@ async function loadAllBackendInspections(base, onProgress = () => {}) {
   for (const endpoint of endpoints) {
     try {
       onProgress(`Connecting to backend: ${endpoint}`);
-      const firstPath = appendQuery(endpoint, { page: 1, limit: SERVER_PAGE_SIZE });
-      const firstPayload = await requestJson(base, firstPath);
+
+      const firstPayload = await requestJson(
+        base,
+        appendQuery(endpoint, { page: 1, limit: SERVER_PAGE_SIZE })
+      );
       const firstPage = collectInspections(firstPayload);
       if (!firstPage.length) continue;
 
-      const declaredTotal = backendTotalFromPayload(firstPayload, firstPage.length);
-      const reliableTotal = declaredTotal !== null && declaredTotal > firstPage.length;
+      const declaredTotal = backendTotalFromPayload(
+        firstPayload,
+        firstPage.length
+      );
       const detectedPageSize = Math.max(1, firstPage.length);
-      const pageGroups = [firstPage];
-      let loaded = firstPage.length;
+      const reliableTotal =
+        declaredTotal !== null && declaredTotal >= firstPage.length;
+
+      const recordMap = new Map();
+      const indexRef = { value: 0 };
+      addInspectionRowsToMap(recordMap, firstPage, indexRef);
+
       let pagesLoaded = 1;
       let pageModeWorked = false;
 
-      onProgress(`Backend page 1 loaded: ${loaded}${declaredTotal ? ` / ${declaredTotal}` : ""}`);
+      const emitPartial = (complete = false) => {
+        const records = sortedInspectionMap(recordMap);
+        onPartial({
+          records,
+          endpoint,
+          backendTotal: Math.max(declaredTotal || 0, records.length),
+          pagesLoaded,
+          serverPageSize: detectedPageSize,
+          complete,
+        });
+      };
 
-      for (let page = 2; page <= MAX_SERVER_PAGES; page += 1) {
-        if (reliableTotal && loaded >= declaredTotal) break;
-        const payload = await requestJson(base, appendQuery(endpoint, { page, limit: SERVER_PAGE_SIZE }));
-        const rows = collectInspections(payload);
-        if (!rows.length) break;
+      // First paint happens immediately after the first backend page.
+      emitPartial(
+        reliableTotal
+          ? recordMap.size >= declaredTotal
+          : firstPage.length < SERVER_PAGE_SIZE
+      );
 
-        const before = mergeUniqueInspectionPages(pageGroups).length;
-        pageGroups.push(rows);
-        const after = mergeUniqueInspectionPages(pageGroups).length;
-        const newRows = after - before;
-        if (newRows <= 0) {
-          pageGroups.pop();
-          break;
+      onProgress(
+        `Loaded ${recordMap.size}${declaredTotal ? ` / ${declaredTotal}` : ""} inspection(s)`
+      );
+
+      const shouldTryMore =
+        reliableTotal
+          ? recordMap.size < declaredTotal
+          : firstPage.length >= detectedPageSize;
+
+      if (shouldTryMore) {
+        // Probe page 2 first. This prevents hundreds of duplicate calls when
+        // an endpoint silently ignores the page query parameter.
+        const secondPayload = await requestJson(
+          base,
+          appendQuery(endpoint, { page: 2, limit: SERVER_PAGE_SIZE })
+        );
+        const secondRows = collectInspections(secondPayload);
+        const secondAdded = addInspectionRowsToMap(
+          recordMap,
+          secondRows,
+          indexRef
+        );
+
+        if (secondRows.length && secondAdded > 0) {
+          pageModeWorked = true;
+          pagesLoaded = 2;
+          emitPartial(false);
+
+          if (reliableTotal) {
+            const totalPages = Math.ceil(
+              declaredTotal / detectedPageSize
+            );
+            const remainingPages = Array.from(
+              { length: Math.max(0, totalPages - 2) },
+              (_, index) => index + 3
+            );
+
+            let finishedPages = 0;
+
+            await runWithConcurrency(
+              remainingPages,
+              PAGE_FETCH_CONCURRENCY,
+              async (pageNumber) => {
+                const payload = await requestJson(
+                  base,
+                  appendQuery(endpoint, {
+                    page: pageNumber,
+                    limit: SERVER_PAGE_SIZE,
+                  })
+                );
+                const rows = collectInspections(payload);
+
+                if (rows.length) {
+                  addInspectionRowsToMap(recordMap, rows, indexRef);
+                }
+
+                finishedPages += 1;
+                pagesLoaded += 1;
+
+                if (
+                  finishedPages % PAGE_FETCH_CONCURRENCY === 0 ||
+                  finishedPages === remainingPages.length
+                ) {
+                  onProgress(
+                    `Loading backend records: ${recordMap.size} / ${declaredTotal}`
+                  );
+                  emitPartial(recordMap.size >= declaredTotal);
+                }
+              }
+            );
+          } else {
+            // No total was returned. Continue until the API returns an empty,
+            // short, or duplicate page. There is no artificial record cap.
+            let pageNumber = 3;
+
+            while (true) {
+              const payload = await requestJson(
+                base,
+                appendQuery(endpoint, {
+                  page: pageNumber,
+                  limit: SERVER_PAGE_SIZE,
+                })
+              );
+              const rows = collectInspections(payload);
+              if (!rows.length) break;
+
+              const added = addInspectionRowsToMap(
+                recordMap,
+                rows,
+                indexRef
+              );
+              if (added <= 0) break;
+
+              pagesLoaded += 1;
+              onProgress(
+                `Loading backend records: ${recordMap.size}`
+              );
+
+              if (pagesLoaded % PAGE_FETCH_CONCURRENCY === 0) {
+                emitPartial(false);
+              }
+
+              if (rows.length < detectedPageSize) break;
+              pageNumber += 1;
+            }
+          }
         }
-
-        pageModeWorked = true;
-        loaded = after;
-        pagesLoaded = page;
-        onProgress(`Loading backend pages: ${loaded}${declaredTotal ? ` / ${declaredTotal}` : ""}`);
-
-        if (!declaredTotal && rows.length < detectedPageSize) break;
       }
 
-      let merged = mergeUniqueInspectionPages(pageGroups);
+      let bestRecords = sortedInspectionMap(recordMap);
+      let bestPagesLoaded = pagesLoaded;
 
-      // Some Nest/Prisma APIs ignore page but support offset/skip.
-      if ((!pageModeWorked || (reliableTotal && merged.length < declaredTotal)) && merged.length) {
+      // Fallback for APIs that ignore page but support offset or skip.
+      if (
+        (!pageModeWorked ||
+          (reliableTotal && bestRecords.length < declaredTotal)) &&
+        bestRecords.length
+      ) {
         for (const mode of ["offset", "skip"]) {
-          const groups = [firstPage];
-          let current = firstPage.length;
+          const candidateMap = new Map();
+          const candidateIndexRef = { value: 0 };
+          addInspectionRowsToMap(
+            candidateMap,
+            firstPage,
+            candidateIndexRef
+          );
+
+          let pageIndex = 1;
+          let candidatePages = 1;
           let modeWorked = false;
 
-          for (let pageIndex = 1; pageIndex < MAX_SERVER_PAGES; pageIndex += 1) {
-            if (reliableTotal && current >= declaredTotal) break;
-            const start = pageIndex * detectedPageSize;
-            const params = mode === "offset"
-              ? { offset: start, limit: SERVER_PAGE_SIZE }
-              : { skip: start, take: SERVER_PAGE_SIZE, limit: SERVER_PAGE_SIZE };
-            const payload = await requestJson(base, appendQuery(endpoint, params));
-            const rows = collectInspections(payload);
-            if (!rows.length) break;
-
-            const before = mergeUniqueInspectionPages(groups).length;
-            groups.push(rows);
-            const after = mergeUniqueInspectionPages(groups).length;
-            if (after <= before) {
-              groups.pop();
+          while (true) {
+            if (
+              reliableTotal &&
+              candidateMap.size >= declaredTotal
+            ) {
               break;
             }
 
+            const start = pageIndex * detectedPageSize;
+            const params =
+              mode === "offset"
+                ? {
+                    offset: start,
+                    limit: SERVER_PAGE_SIZE,
+                  }
+                : {
+                    skip: start,
+                    take: SERVER_PAGE_SIZE,
+                    limit: SERVER_PAGE_SIZE,
+                  };
+
+            const payload = await requestJson(
+              base,
+              appendQuery(endpoint, params)
+            );
+            const rows = collectInspections(payload);
+            if (!rows.length) break;
+
+            const added = addInspectionRowsToMap(
+              candidateMap,
+              rows,
+              candidateIndexRef
+            );
+            if (added <= 0) break;
+
             modeWorked = true;
-            current = after;
-            onProgress(`Loading backend records: ${current}${declaredTotal ? ` / ${declaredTotal}` : ""}`);
-            if (!declaredTotal && rows.length < detectedPageSize) break;
+            candidatePages += 1;
+            pageIndex += 1;
+
+            onProgress(
+              `Loading backend records: ${candidateMap.size}${declaredTotal ? ` / ${declaredTotal}` : ""}`
+            );
+
+            if (rows.length < detectedPageSize) break;
           }
 
-          const candidate = mergeUniqueInspectionPages(groups);
-          if (modeWorked && candidate.length > merged.length) {
-            merged = candidate;
-            pagesLoaded = Math.ceil(candidate.length / detectedPageSize);
+          const candidateRecords =
+            sortedInspectionMap(candidateMap);
+
+          if (
+            modeWorked &&
+            candidateRecords.length > bestRecords.length
+          ) {
+            bestRecords = candidateRecords;
+            bestPagesLoaded = candidatePages;
+
+            onPartial({
+              records: bestRecords,
+              endpoint,
+              backendTotal: Math.max(
+                declaredTotal || 0,
+                bestRecords.length
+              ),
+              pagesLoaded: bestPagesLoaded,
+              serverPageSize: detectedPageSize,
+              complete:
+                !reliableTotal ||
+                bestRecords.length >= declaredTotal,
+            });
           }
-          if (!reliableTotal || merged.length >= declaredTotal) break;
+
+          if (
+            !reliableTotal ||
+            bestRecords.length >= declaredTotal
+          ) {
+            break;
+          }
         }
       }
 
+      const complete =
+        !reliableTotal || bestRecords.length >= declaredTotal;
+
       return {
-        records: merged,
+        records: bestRecords,
         endpoint,
-        backendTotal: Math.max(declaredTotal || 0, merged.length),
-        pagesLoaded,
+        backendTotal: Math.max(
+          declaredTotal || 0,
+          bestRecords.length
+        ),
+        pagesLoaded: bestPagesLoaded,
         serverPageSize: detectedPageSize,
-        complete: !reliableTotal || merged.length >= declaredTotal,
+        complete,
       };
     } catch (error) {
       lastError = error;
-      console.warn("Backend pagination endpoint failed:", endpoint, error);
+      console.warn(
+        "Backend pagination endpoint failed:",
+        endpoint,
+        error
+      );
     }
   }
 
-  throw lastError || new Error("No inspections endpoint returned backend records.");
+  throw (
+    lastError ||
+    new Error(
+      "No inspections endpoint returned backend records."
+    )
+  );
 }
 
 function first(...values) {
@@ -1197,11 +1421,54 @@ function getImages(item = {}) {
   return Array.from(unique.values());
 }
 
-function getImagePath(image) {
-  if (!image) return "";
-  if (typeof image === "string") return image;
-  return first(
+function looksLikeImageValue(value = "") {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  return (
+    /^(https?:|data:image\/|blob:)/i.test(text) ||
+    /(?:^|[\\/])uploads(?:[\\/]|$)/i.test(text) ||
+    /\.(?:avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)(?:\?.*)?$/i.test(text)
+  );
+}
+
+function collectImagePathValues(value, depth = 0, keyName = "") {
+  if (value === undefined || value === null || depth > 5) return [];
+
+  if (typeof value === "string") {
+    const keyLooksRelevant = /(image|photo|picture|file|url|uri|path|name|key|storage|object)/i.test(keyName);
+    return keyLooksRelevant || looksLikeImageValue(value) ? [value] : [];
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectImagePathValues(item, depth + 1, keyName));
+  }
+
+  if (typeof value !== "object") return [];
+
+  return Object.entries(value).flatMap(([key, nested]) =>
+    collectImagePathValues(nested, depth + 1, key)
+  );
+}
+
+function getImageRawPaths(image) {
+  if (!image) return [];
+  if (typeof image === "string") return [image];
+
+  const preferred = [
     image.imageUrl,
+    image.imageURL,
+    image.imagePath,
+    image.photoUrl,
+    image.photoURL,
+    image.photoPath,
+    image.fileUrl,
+    image.fileURL,
+    image.storageUrl,
+    image.storagePath,
+    image.relativePath,
+    image.objectKey,
+    image.storageKey,
+    image.key,
     image.url,
     image.secureUrl,
     image.publicUrl,
@@ -1214,21 +1481,139 @@ function getImagePath(image) {
     image.fullPath,
     image.file?.url,
     image.file?.path,
+    image.file?.name,
+    image.file?.filename,
+    image.metadata?.url,
+    image.metadata?.path,
+    image.metadata?.fileName,
+    image.metadata?.filename,
     image.filename,
-    image.fileName
+    image.fileName,
+    image.name,
+  ].filter(Boolean);
+
+  return uniqueStrings([
+    ...preferred,
+    ...collectImagePathValues(image),
+  ]);
+}
+
+function getImagePath(image) {
+  return getImageRawPaths(image)[0] || "";
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.filter(Boolean).map((value) => String(value)))];
+}
+
+function imagePathCandidates(path, base) {
+  if (!path) return [];
+
+  const cleanBaseUrl = cleanBase(base);
+  const value = String(path).trim().replace(/\\/g, "/");
+  if (!value) return [];
+
+  if (/^(data:|blob:)/i.test(value)) return [value];
+
+  const output = [];
+
+  const add = (candidate) => {
+    if (!candidate) return;
+    const normalized = String(candidate).replace(/([^:]\/)\/+/g, "$1");
+    if (!output.includes(normalized)) output.push(normalized);
+  };
+
+  const addUploadFallback = (pathname) => {
+    const normalizedPath = String(pathname || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/^file:\/\//i, "");
+
+    const uploadsMatch = normalizedPath.match(/(?:^|\/)uploads\/(.+)$/i);
+    if (uploadsMatch?.[1]) {
+      add(`${cleanBaseUrl}/uploads/${uploadsMatch[1]}`);
+      add(`${cleanBaseUrl}/api/uploads/${uploadsMatch[1]}`);
+    }
+
+    const fileName = normalizedPath.split("/").filter(Boolean).pop();
+    if (fileName && /\.(?:avif|bmp|gif|heic|heif|jpe?g|png|svg|webp)(?:\?.*)?$/i.test(fileName)) {
+      add(`${cleanBaseUrl}/uploads/${fileName}`);
+      add(`${cleanBaseUrl}/api/uploads/${fileName}`);
+    }
+  };
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value);
+      const current = new URL(cleanBaseUrl);
+      const isLocal =
+        ["localhost", "127.0.0.1", "0.0.0.0"].includes(parsed.hostname);
+
+      if (isLocal) {
+        add(`${cleanBaseUrl}${parsed.pathname}${parsed.search}`);
+      } else {
+        add(value);
+      }
+
+      // Old Railway/local absolute URLs and server filesystem paths can still
+      // be recovered when the public file is exposed under /uploads/.
+      addUploadFallback(`${parsed.pathname}${parsed.search}`);
+
+      if (parsed.origin !== current.origin && parsed.pathname.startsWith("/uploads/")) {
+        add(`${cleanBaseUrl}${parsed.pathname}${parsed.search}`);
+      }
+    } catch {
+      add(value);
+    }
+
+    return output;
+  }
+
+  addUploadFallback(value);
+
+  if (value.startsWith("/")) {
+    add(`${cleanBaseUrl}${value}`);
+  } else {
+    // Bare filenames are most commonly stored under the public uploads route.
+    if (!value.includes("/")) add(`${cleanBaseUrl}/uploads/${value}`);
+    add(`${cleanBaseUrl}/${value}`);
+  }
+
+  return output;
+}
+
+function imageUrlCandidates(image, base) {
+  return uniqueStrings(
+    getImageRawPaths(image).flatMap((path) =>
+      imagePathCandidates(path, base)
+    )
   );
 }
 
 function fixFileUrl(path, base) {
-  if (!path) return "";
-  let value = String(path).trim().replace(/\\/g, "/");
-  value = value
-    .replace("http://localhost:3000", base)
-    .replace("https://localhost:3000", base)
-    .replace("http://127.0.0.1:3000", base)
-    .replace("https://127.0.0.1:3000", base);
-  if (/^(https?:|data:|blob:)/i.test(value)) return value;
-  return value.startsWith("/") ? `${base}${value}` : `${base}/${value}`;
+  return imagePathCandidates(path, base)[0] || "";
+}
+
+function firstImageCandidates(record, base) {
+  const recordLevelImages = [
+    record?.image,
+    record?.photo,
+    record?.imageUrl,
+    record?.imagePath,
+    record?.photoUrl,
+    record?.photoPath,
+    record?.fileUrl,
+    record?.filePath,
+    record?.taskItem?.image,
+    record?.taskItem?.imageUrl,
+    record?.taskItem?.imagePath,
+  ].filter(Boolean);
+
+  return uniqueStrings(
+    [...asArray(record?.images), ...recordLevelImages].flatMap((image) =>
+      imageUrlCandidates(image, base)
+    )
+  );
 }
 
 function getIssues(item = {}) {
@@ -1479,8 +1864,8 @@ function downloadBlob(blob, fileName) {
 }
 
 function imageUrls(record, base) {
-  return record.images
-    .map((image) => fixFileUrl(getImagePath(image), base))
+  return asArray(record?.images)
+    .map((image) => imageUrlCandidates(image, base)[0] || "")
     .filter(Boolean);
 }
 
@@ -1873,49 +2258,144 @@ function locationLine(record) {
   ].filter(Boolean).join(" · ") || "—";
 }
 
-function InspectionMedia({ record, base, mode = "grid" }) {
-  const urls = imageUrls(record, base);
-  const [broken, setBroken] = useState(false);
-  const firstUrl = urls[0];
+function InspectionMedia({
+  record,
+  base,
+  mode = "grid",
+  onNeedImageData,
+}) {
+  const mediaRef = useRef(null);
+  const requestedRef = useRef(false);
+  const candidates = useMemo(
+    () => firstImageCandidates(record, base),
+    [record, base]
+  );
+  const candidatesKey = candidates.join("||");
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [pathLookupDone, setPathLookupDone] = useState(false);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+    setPathLookupDone(false);
+    requestedRef.current = false;
+  }, [record.id, candidatesKey]);
+
+  useEffect(() => {
+    if (
+      candidates.length ||
+      !record.images.length ||
+      !onNeedImageData ||
+      requestedRef.current
+    ) {
+      return undefined;
+    }
+
+    const node = mediaRef.current;
+    if (!node) return undefined;
+
+    const requestImageDetails = () => {
+      if (requestedRef.current) return;
+      requestedRef.current = true;
+      Promise.resolve(onNeedImageData(record)).finally(() => {
+        setPathLookupDone(true);
+      });
+    };
+
+    if (!("IntersectionObserver" in window)) {
+      requestImageDetails();
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          requestImageDetails();
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "500px 0px" }
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [candidates.length, onNeedImageData, record]);
+
+  const currentUrl = candidates[candidateIndex] || "";
+  const hasFailedAll = candidates.length > 0 && !currentUrl;
+  const isResolvingPath =
+    record.images.length > 0 &&
+    candidates.length === 0 &&
+    !pathLookupDone;
+  const hasNoWorkingPath =
+    record.images.length > 0 &&
+    candidates.length === 0 &&
+    pathLookupDone;
 
   return (
-    <div className={`si-media ${mode}`}>
+    <div className={`si-media ${mode}`} ref={mediaRef}>
       <span className={`si-badge ${statusBadgeClass(record.status)} si-media-status`}>
         {statusLabel(record.status)}
       </span>
 
-      {firstUrl && !broken ? (
-        <a href={firstUrl} target="_blank" rel="noreferrer" title="Open the original inspection image">
+      {currentUrl ? (
+        <a
+          href={currentUrl}
+          target="_blank"
+          rel="noreferrer"
+          title="Open the original inspection image"
+        >
           <img
             className="si-media-image"
-            src={firstUrl}
+            src={currentUrl}
             alt={`Inspection ${safe(record.id)} — ${safe(first(record.device.code, record.device.name))}`}
             loading="lazy"
             decoding="async"
-            onError={() => setBroken(true)}
+            fetchPriority="low"
+            onError={() =>
+              setCandidateIndex((current) => current + 1)
+            }
           />
         </a>
       ) : (
         <div className="si-media-placeholder">
           <div>
-            <div className="si-media-placeholder-icon">▧</div>
-            <b>{urls.length ? "Image could not be loaded" : "No inspection image"}</b>
-            <span>{safe(first(record.device.code, record.device.name, record.id))}</span>
+            <div className="si-media-placeholder-icon">
+              {isResolvingPath ? "…" : "▧"}
+            </div>
+            <b>
+              {isResolvingPath
+                ? "Loading image path..."
+                : hasFailedAll || hasNoWorkingPath
+                  ? "Image file is unavailable on the server"
+                  : "No inspection image"}
+            </b>
+            <span>
+              {safe(
+                first(
+                  record.device.code,
+                  record.device.name,
+                  record.id
+                )
+              )}
+            </span>
           </div>
         </div>
       )}
 
-      <div className="si-media-count">▣ {urls.length} image{urls.length === 1 ? "" : "s"}</div>
+      <div className="si-media-count">
+        ▣ {record.images.length} image
+        {record.images.length === 1 ? "" : "s"}
+      </div>
     </div>
   );
 }
 
-function InspectionGridCard({ record, base, onOpen }) {
+function InspectionGridCard({ record, base, onOpen, onNeedImageData }) {
   const accent = inspectionAccent(record);
 
   return (
     <article className="si-grid-card" style={{ "--accent": accent }}>
-      <InspectionMedia record={record} base={base} mode="grid" />
+      <InspectionMedia record={record} base={base} mode="grid" onNeedImageData={onNeedImageData} />
 
       <div className="si-grid-card-body">
         <div className="si-card-title-row">
@@ -1972,12 +2452,12 @@ function InspectionGridCard({ record, base, onOpen }) {
   );
 }
 
-function InspectionListItem({ record, base, onOpen }) {
+function InspectionListItem({ record, base, onOpen, onNeedImageData }) {
   const accent = inspectionAccent(record);
 
   return (
     <article className="si-list-item" style={{ "--accent": accent }}>
-      <InspectionMedia record={record} base={base} mode="list" />
+      <InspectionMedia record={record} base={base} mode="list" onNeedImageData={onNeedImageData} />
 
       <div className="si-list-body">
         <div className="si-list-top">
@@ -2132,7 +2612,7 @@ function DetailsModal({ selected, base, onClose }) {
                   </a>
                 ))}
               </div>
-            ) : <div className="si-sub-text">No inspection image paths were returned by the API.</div>}
+            ) : <div className="si-sub-text">No working inspection image path was returned by the API.</div>}
           </div>
         </div>
       </div>
@@ -2147,7 +2627,7 @@ function DetailsModal({ selected, base, onClose }) {
 export function InspectionsPage({ apiBaseUrl = "" }) {
   const base = useMemo(() => getApiBase(apiBaseUrl), [apiBaseUrl]);
   const detailCacheRef = useRef(new Map());
-  const previewHydratedRef = useRef(new Set());
+  const imageHydrationInFlightRef = useRef(new Set());
 
   // Backend is the only source of truth. Old browser cache is never counted.
   const [records, setRecords] = useState([]);
@@ -2182,8 +2662,6 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
   const [sortOrder, setSortOrder] = useState("DESC");
 
   const [viewMode, setViewMode] = useState("LIST");
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [page, setPage] = useState(1);
 
   const [exportScope, setExportScope] = useState("FILTERED");
   const [exportDetailMode, setExportDetailMode] = useState("FAST");
@@ -2199,11 +2677,26 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
     setRecords([]);
     setBackendInfo({ total: 0, loaded: 0, pages: 0, pageSize: 0, complete: false });
     detailCacheRef.current.clear();
-    previewHydratedRef.current.clear();
+    imageHydrationInFlightRef.current.clear();
     sessionStorage.removeItem(CACHE_KEY);
 
     try {
-      const response = await loadAllBackendInspections(base, setLoadProgress);
+      const response = await loadAllBackendInspections(
+        base,
+        setLoadProgress,
+        (partial) => {
+          setRecords(partial.records);
+          setEndpoint(partial.endpoint);
+          setBackendInfo({
+            total: partial.backendTotal,
+            loaded: partial.records.length,
+            pages: partial.pagesLoaded,
+            pageSize: partial.serverPageSize,
+            complete: partial.complete,
+          });
+        }
+      );
+
       setRecords(response.records);
       setEndpoint(response.endpoint);
       setBackendInfo({
@@ -2318,25 +2811,6 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
     sortOrder,
   ]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    deferredSearch,
-    technicianFilters,
-    typeFilters,
-    statusFilters,
-    resultFilters,
-    clusterFilters,
-    buildingFilters,
-    zoneFilters,
-    weekdayFilters,
-    dateFrom,
-    dateTo,
-    timeFrom,
-    timeTo,
-    sortOrder,
-    pageSize,
-  ]);
 
   const stats = useMemo(() => {
     const today = localDateKey(new Date());
@@ -2350,20 +2824,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
     };
   }, [filtered]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const safePage = Math.min(page, pageCount);
-  const visibleRecords = useMemo(() => {
-    const startIndex = (safePage - 1) * pageSize;
-    return filtered.slice(startIndex, startIndex + pageSize);
-  }, [filtered, safePage, pageSize]);
-
-  const pageNumbers = useMemo(() => {
-    const result = [];
-    const startNumber = Math.max(1, safePage - 2);
-    const endNumber = Math.min(pageCount, safePage + 2);
-    for (let number = startNumber; number <= endNumber; number += 1) result.push(number);
-    return result;
-  }, [safePage, pageCount]);
+  const visibleRecords = filtered;
 
   const resetFilters = () => {
     setSearch("");
@@ -2406,59 +2867,31 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
     }
   }, [base]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const hydrateMissingImageData = useCallback(async (record) => {
+    if (!record?.id || !record.images?.length) return;
+    if (firstImageCandidates(record, base).length) return;
 
-    const targets = visibleRecords.filter((record) => {
-      if (!record?.id) return false;
-      const key = String(record.id);
-      if (previewHydratedRef.current.has(key)) return false;
-      previewHydratedRef.current.add(key);
-      return true;
-    });
+    const key = String(record.id);
+    if (imageHydrationInFlightRef.current.has(key)) return;
+    imageHydrationInFlightRef.current.add(key);
 
-    if (!targets.length) return undefined;
-
-    async function hydrateVisiblePreviews() {
-      const hydrated = [];
-      let nextIndex = 0;
-      const workersCount = Math.min(4, targets.length);
-
-      async function worker() {
-        while (!cancelled) {
-          const index = nextIndex;
-          nextIndex += 1;
-          if (index >= targets.length) return;
-
-          const original = targets[index];
-          const detail = await fetchDetail(original);
-          hydrated.push(detail);
-        }
-      }
-
-      await Promise.all(Array.from({ length: workersCount }, () => worker()));
-      if (cancelled || !hydrated.length) return;
-
-      const hydratedMap = new Map(
-        hydrated
-          .filter((record) => record?.id)
-          .map((record) => [String(record.id), record])
-      );
-
+    try {
+      const detailedRecord = await fetchDetail(record);
       setRecords((current) =>
-        current.map((record) => {
-          const detail = hydratedMap.get(String(record.id));
-          return detail ? mergeInspection(record, detail) : record;
-        })
+        current.map((item) =>
+          String(item.id) === key
+            ? mergeInspection(item, detailedRecord)
+            : item
+        )
       );
+    } finally {
+      imageHydrationInFlightRef.current.delete(key);
     }
+  }, [base, fetchDetail]);
 
-    hydrateVisiblePreviews();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [visibleRecords, fetchDetail]);
+  // Full details are fetched only when the user opens a record, or when a
+  // visible card has image metadata but the list endpoint omitted its path.
+  // This avoids 25–100 extra API calls every time a page is displayed.
 
   const openDetails = async (record) => {
     setSelected({ record, loading: true, error: "" });
@@ -2792,10 +3225,11 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
           </div>
         </header>
 
+        {loading && loadProgress ? <div className="si-alert info">{loadProgress}</div> : null}
         {error ? <div className="si-alert error">{error}</div> : null}
         {exportProgress ? <div className={`si-alert ${exportProgress.includes("failed") ? "error" : exportProgress.includes("successfully") || exportProgress.includes("ready") ? "success" : "info"}`}>{exportProgress}</div> : null}
         <div className={`si-alert ${backendInfo.complete ? "success" : "info"}`}>
-          Backend source: {safe(endpoint, "waiting for backend")} · Loaded {backendInfo.loaded} of {backendInfo.total || backendInfo.loaded} unique inspection(s) from {backendInfo.pages || 1} backend page(s) · Server page size detected: {backendInfo.pageSize || "—"}. Browser cache is not counted.
+          Loaded {backendInfo.loaded} inspection(s) directly from the backend. All matching records are shown without numbered pages.
         </div>
 
         <section className="si-kpis">
@@ -2941,17 +3375,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
             <div className="si-filter-note">
               Choose one weekday or several weekdays together, such as Sunday, Monday and Tuesday. Date and time boundaries are inclusive and compared against the exact backend inspection timestamp.
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <div className="si-field" style={{ minWidth: 130 }}>
-                <label>Rows Per Page</label>
-                <select className="si-select" value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-              </div>
-              <button type="button" className="si-btn" onClick={resetFilters}>Clear All Filters</button>
-            </div>
+            <button type="button" className="si-btn" onClick={resetFilters}>Clear All Filters</button>
           </div>
         </section>
 
@@ -2960,7 +3384,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
             <div>
               <div className="si-panel-title">Inspection Records</div>
               <div className="si-sub-text">
-                Showing {visibleRecords.length} inspection(s) on page {safePage} of {pageCount}
+                Showing all {visibleRecords.length} matching inspection(s)
               </div>
             </div>
 
@@ -2994,6 +3418,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
                   record={record}
                   base={base}
                   onOpen={openDetails}
+                  onNeedImageData={hydrateMissingImageData}
                 />
               ))}
             </div>
@@ -3005,21 +3430,13 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
                   record={record}
                   base={base}
                   onOpen={openDetails}
+                  onNeedImageData={hydrateMissingImageData}
                 />
               ))}
             </div>
           )}
 
-          <div className="si-pagination">
-            <div className="si-filter-note">Records {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length}</div>
-            <div className="si-pages">
-              <button className="si-page-btn" type="button" disabled={safePage <= 1} onClick={() => setPage(1)}>«</button>
-              <button className="si-page-btn" type="button" disabled={safePage <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>‹</button>
-              {pageNumbers.map((number) => <button className={`si-page-btn ${number === safePage ? "active" : ""}`} type="button" key={number} onClick={() => setPage(number)}>{number}</button>)}
-              <button className="si-page-btn" type="button" disabled={safePage >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))}>›</button>
-              <button className="si-page-btn" type="button" disabled={safePage >= pageCount} onClick={() => setPage(pageCount)}>»</button>
-            </div>
-          </div>
+
         </section>
       </div>
 

@@ -1,19 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 
-const CONFIGURED_API_BASE_URL = String(
+const DEFAULT_API_BASE_URL =
+  "https://acess-backend-production-8856.up.railway.app";
+
+const API_BASE_URL = String(
   import.meta.env.VITE_API_URL ||
     import.meta.env.VITE_BACKEND_URL ||
-    "",
+    DEFAULT_API_BASE_URL,
 )
   .trim()
   .replace(/\/+$/, "");
-
-// In local development, always call NestJS on port 3000.
-// This prevents requests from going to the Vite server on port 5173.
-const API_BASE_URL = import.meta.env.DEV
-  ? "http://localhost:3000"
-  : CONFIGURED_API_BASE_URL;
 
 const TICKETS_API = `${API_BASE_URL}/issues/tickets`;
 

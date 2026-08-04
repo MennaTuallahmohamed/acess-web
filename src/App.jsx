@@ -17,7 +17,7 @@ import { TechniciansDetailPage } from "./pages/TechniciansDetailPage";
 import { OperationsSnapshotPage } from "./pages/OperationsSnapshotPage";
 import { SoftwarePage } from "./pages/SoftwarePage";
 import SoftwareProblemPage from "./pages/SoftwareProblemPage";
-import { SoftwareAdminPage } from "./pages/SoftwareAdminPage";
+import SoftwareAdminPage from "./pages/SoftwareAdminPage";
 import TroubleshootingManagement from "./pages/TroubleshootingManagement";
 import GlassesAdminPage from "./pages/GlassesAdminPage.jsx";
 
