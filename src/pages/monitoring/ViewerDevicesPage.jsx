@@ -1781,14 +1781,14 @@ export function ViewerDevicesPage({ devices: devicesProp = null, inspections: in
             {/* Filter */}
             <div className="vd-filter-box">
               <div className="vd-filter-header">
-                <div className="vd-filter-title">🔍 Advanced Device Filter <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>Search by result, status, location, serial, IP, or text</span></div>
+                <div className="vd-filter-title">🔍 Advanced Device Filter <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}></span></div>
                 <div className="vd-filter-count">🔵 {filtered.length} / {realRows.length} records</div>
               </div>
 
               <div className="vd-filter-grid">
                 <div className="vd-field">
-                  <label>Search</label>
-                  <input className="vd-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Code, name, serial, barcode, building..." />
+                  <label>Serial &amp; IP</label>
+                  <input className="vd-input" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Enter serial number or IP address..." />
                 </div>
                 <div className="vd-field">
                   <label>Result</label>

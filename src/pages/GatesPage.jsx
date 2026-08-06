@@ -1265,6 +1265,8 @@ function normalizeGate(item = {}) {
     gateCode: item.gateCode || item.code || `Gate ${gateNo}`,
     gateName: item.gateName || item.name || item.building || `Gate ${gateNo}`,
     secretCode: item.secretCode || item.secret || "",
+    serialNumber: item.serialNumber || item.serial || item.deviceSerial || item.deviceSerialNumber || "",
+    ipAddress: item.ipAddress || item.ip || item.ip_address || item.deviceIp || item.deviceIP || "",
     excelId: item.excelId || "",
     currentStatus: mapStatus(rawStatus, inspectionsCount),
     status: String(item.status || item.currentStatus || "ACTIVE").toUpperCase(),
@@ -1326,6 +1328,8 @@ function buildGateSearchText(gate) {
       gate.gateCode,
       gate.gateName,
       gate.secretCode,
+      gate.serialNumber,
+      gate.ipAddress,
       gate.excelId,
       gate.status,
       gate.currentStatus,
@@ -2160,7 +2164,7 @@ export function GatesPage({
               <div>
                 <div className="gate-filter-title-text">{t("Advanced Gate Filter", "فلتر البوابات المتقدم")}</div>
                 <div className="gate-filter-title-sub">
-                  {t("Search gates by result, status, inspection, location, or text", "فلتر البوابات حسب النتيجة أو الحالة أو الفحص أو الموقع أو البحث")}
+                  {t("Search gates by result, status, inspection, location, IP & serial", "فلتر البوابات حسب النتيجة أو الحالة أو الفحص أو الموقع أو IP و serial")}
                 </div>
               </div>
             </div>
@@ -2179,7 +2183,7 @@ export function GatesPage({
                 value={draftFilters.search}
                 onChange={(e) => updateDraft("search", e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") applyFilters(); }}
-                placeholder={t("Gate no, secret code, building, zone...", "رقم بوابة، سيكريت كود، مبنى، منطقة...")}
+                placeholder={t("Gate no, secret code, IP & serial, building, zone...", "رقم بوابة، سيكريت كود، IP و serial، مبنى، منطقة...")}
               />
             </div>
 
