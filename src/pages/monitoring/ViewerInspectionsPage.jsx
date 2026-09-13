@@ -1931,90 +1931,177 @@ function buildHistoryGroups(records, mode) {
     .sort((a, b) => new Date(b.dateValue || 0) - new Date(a.dateValue || 0));
 }
 
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (text) return value;
+  }
+  return "";
+}
+
+function normalizeAssetId(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function normalizeInspection(item = {}) {
-  const device = item.device || {};
+  const nestedDevice = item.device || {};
+  const nestedGate = item.gate || {};
+
+  const assetTypeRaw = String(
+    item.assetType ||
+      item.asset?.type ||
+      item.type ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
+
+  const isGate =
+    Boolean(item.gateId || nestedGate?.id) ||
+    assetTypeRaw === "GATE";
+
+  const asset = isGate ? nestedGate : nestedDevice;
 
   const location =
-    device.location ||
+    asset.location ||
     item.location ||
     item.deviceLocation ||
+    item.gateLocation ||
     item.place ||
     {};
 
+  const building = firstNonEmpty(
+    location.building,
+    location.buildingName,
+    location.ministry,
+    location.ministryName,
+    item.building,
+    item.buildingName,
+    item.ministry,
+    item.ministryName,
+    asset.building,
+    asset.buildingName,
+    asset.ministry,
+    asset.ministryName
+  );
+
+  const ministry = firstNonEmpty(
+    location.ministry,
+    location.ministryName,
+    item.ministry,
+    item.ministryName,
+    asset.ministry,
+    asset.ministryName,
+    building
+  );
+
   const cleanLocation = {
-    cluster:
-      location.cluster ||
-      item.cluster ||
-      device.cluster ||
-      location.clusterName ||
-      item.clusterName ||
-      device.clusterName ||
-      "",
+    cluster: firstNonEmpty(
+      location.cluster,
+      location.clusterName,
+      item.cluster,
+      item.clusterName,
+      asset.cluster,
+      asset.clusterName
+    ),
 
-    building:
-      location.building ||
-      item.building ||
-      device.building ||
-      location.buildingName ||
-      item.buildingName ||
-      device.buildingName ||
-      "",
+    ministry,
 
-    zone:
-      location.zone ||
-      item.zone ||
-      device.zone ||
-      location.zoneName ||
-      item.zoneName ||
-      device.zoneName ||
-      "",
+    building,
 
-    direction:
-      location.direction ||
-      item.direction ||
-      device.direction ||
-      location.side ||
-      item.side ||
-      device.side ||
-      "",
+    zone: firstNonEmpty(
+      location.zone,
+      location.zoneName,
+      item.zone,
+      item.zoneName,
+      asset.zone,
+      asset.zoneName
+    ),
+
+    direction: firstNonEmpty(
+      location.direction,
+      location.side,
+      item.direction,
+      item.side,
+      asset.direction,
+      asset.side
+    ),
+
+    lane: firstNonEmpty(
+      location.lane,
+      item.lane,
+      asset.lane
+    ),
   };
 
-  const deviceCode =
-    device.deviceCode ||
-    device.code ||
-    device.barcode ||
-    item.deviceCode ||
-    item.code ||
-    item.barcode ||
-    item.serial ||
-    item.gateNo ||
-    item.gateCode ||
-    `#${item.deviceId || item.gateId || item.id || ""}`;
+  const gateNo = firstNonEmpty(
+    nestedGate.gateNo,
+    nestedGate.gateNumber,
+    item.gateNo,
+    item.gateNumber
+  );
 
-  const deviceName =
-    device.deviceName ||
-    device.name ||
-    item.deviceName ||
-    item.name ||
-    item.gateName ||
-    (item.gateId ? `Gate ${item.gateId}` : "") ||
-    "Unknown asset";
+  const deviceCode = isGate
+    ? firstNonEmpty(
+        nestedGate.gateCode,
+        nestedGate.code,
+        gateNo,
+        item.gateCode,
+        item.code,
+        `Gate ${item.gateId || nestedGate.id || ""}`
+      )
+    : firstNonEmpty(
+        nestedDevice.deviceCode,
+        nestedDevice.code,
+        nestedDevice.barcode,
+        item.deviceCode,
+        item.code,
+        item.barcode,
+        item.serial,
+        `#${item.deviceId || nestedDevice.id || item.id || ""}`
+      );
 
-  const serialNumber =
-    device.serialNumber ||
-    device.serial ||
-    item.serialNumber ||
-    item.serial ||
-    "";
+  const deviceName = isGate
+    ? firstNonEmpty(
+        nestedGate.gateName,
+        nestedGate.name,
+        nestedGate.building,
+        item.gateName,
+        cleanLocation.ministry,
+        cleanLocation.building,
+        `Gate ${gateNo || item.gateId || ""}`
+      )
+    : firstNonEmpty(
+        nestedDevice.deviceName,
+        nestedDevice.name,
+        item.deviceName,
+        item.name,
+        cleanLocation.ministry,
+        cleanLocation.building,
+        "Unknown asset"
+      );
 
-  const ipAddress =
-    device.ipAddress ||
-    device.ip ||
-    item.ipAddress ||
-    item.deviceIp ||
-    item.ip ||
-    item.ip_address ||
-    "";
+  const serialNumber = firstNonEmpty(
+    asset.serialNumber,
+    asset.serial,
+    asset.deviceSerial,
+    asset.deviceSerialNumber,
+    item.serialNumber,
+    item.serial
+  );
+
+  const ipAddress = firstNonEmpty(
+    asset.ipAddress,
+    asset.ip,
+    asset.ip_address,
+    asset.deviceIp,
+    asset.deviceIP,
+    item.ipAddress,
+    item.deviceIp,
+    item.ip,
+    item.ip_address
+  );
 
   const result = normalizeResult(
     item.inspectionStatus ||
@@ -2031,8 +2118,9 @@ function normalizeInspection(item = {}) {
 
   return {
     id: item.id,
-    deviceId: item.deviceId || device.id || null,
-    gateId: item.gateId || null,
+    assetType: isGate ? "GATE" : "DEVICE",
+    deviceId: item.deviceId || nestedDevice.id || null,
+    gateId: item.gateId || nestedGate.id || null,
 
     result,
     problemReason,
@@ -2048,20 +2136,312 @@ function normalizeInspection(item = {}) {
       item.locationName ||
       [
         cleanLocation.cluster,
-        cleanLocation.building,
+        cleanLocation.ministry || cleanLocation.building,
         cleanLocation.zone,
         cleanLocation.direction,
+        cleanLocation.lane ? `Lane ${cleanLocation.lane}` : "",
       ]
         .filter(Boolean)
         .join(" · "),
 
     device: {
-      id: device.id || item.deviceId || item.gateId,
+      id: asset.id || item.deviceId || item.gateId,
       deviceCode,
       deviceName,
       serialNumber,
       ipAddress,
+      deviceType: firstNonEmpty(
+        asset.deviceType?.name,
+        asset.deviceType,
+        asset.type?.name,
+        asset.type,
+        item.assetType
+      ),
+      gateNo,
+      assetType: isGate ? "GATE" : "DEVICE",
       location: cleanLocation,
+    },
+  };
+}
+
+function extractArrayPayload(payload, keys = []) {
+  if (Array.isArray(payload)) return payload;
+
+  const bags = [
+    payload,
+    payload?.data,
+    payload?.result,
+    payload?.results,
+    payload?.payload,
+    payload?.response,
+  ].filter(Boolean);
+
+  for (const bag of bags) {
+    if (Array.isArray(bag)) return bag;
+
+    for (const key of keys) {
+      if (Array.isArray(bag?.[key])) return bag[key];
+    }
+
+    if (Array.isArray(bag?.data)) return bag.data;
+    if (Array.isArray(bag?.items)) return bag.items;
+    if (Array.isArray(bag?.rows)) return bag.rows;
+    if (Array.isArray(bag?.records)) return bag.records;
+  }
+
+  return [];
+}
+
+async function fetchJsonCandidatesForInspection(candidates, token) {
+  let lastError = null;
+
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (!response.ok) {
+        lastError = new Error(`${response.status} ${response.statusText} @ ${url}`);
+        continue;
+      }
+
+      const data = await response.json();
+      return { sourceUrl: url, data };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error("No working endpoint found.");
+}
+
+function normalizeCatalogAsset(item = {}, assetType = "DEVICE") {
+  const location =
+    item.location ||
+    item.parsedLoc ||
+    item.locationData ||
+    {};
+
+  const building = firstNonEmpty(
+    location.building,
+    location.buildingName,
+    location.ministry,
+    location.ministryName,
+    item.building,
+    item.buildingName,
+    item.ministry,
+    item.ministryName
+  );
+
+  const ministry = firstNonEmpty(
+    location.ministry,
+    location.ministryName,
+    item.ministry,
+    item.ministryName,
+    building
+  );
+
+  const isGate = assetType === "GATE";
+
+  return {
+    id: item.id,
+    assetType,
+    code: isGate
+      ? firstNonEmpty(
+          item.gateCode,
+          item.code,
+          item.gateNo,
+          item.gateNumber,
+          item.no,
+          `Gate ${item.id || ""}`
+        )
+      : firstNonEmpty(
+          item.deviceCode,
+          item.code,
+          item.barcode,
+          `#${item.id || ""}`
+        ),
+    name: isGate
+      ? firstNonEmpty(
+          item.gateName,
+          item.name,
+          ministry,
+          building,
+          `Gate ${item.gateNo || item.id || ""}`
+        )
+      : firstNonEmpty(
+          item.deviceName,
+          item.name,
+          ministry,
+          building,
+          "Unknown device"
+        ),
+    gateNo: firstNonEmpty(item.gateNo, item.gateNumber, item.no),
+    serialNumber: firstNonEmpty(
+      item.serialNumber,
+      item.serial,
+      item.deviceSerial,
+      item.deviceSerialNumber
+    ),
+    deviceType: firstNonEmpty(
+      item.deviceType?.name,
+      item.deviceType,
+      item.type?.name,
+      item.type,
+      item.assetType
+    ),
+    ipAddress: firstNonEmpty(
+      item.ipAddress,
+      item.ip,
+      item.ip_address,
+      item.deviceIp,
+      item.deviceIP
+    ),
+    secretCode: firstNonEmpty(item.secretCode, item.secret, item.barcode),
+    location: {
+      cluster: firstNonEmpty(location.cluster, location.clusterName, item.cluster, item.clusterName),
+      ministry,
+      building,
+      zone: firstNonEmpty(location.zone, location.zoneName, item.zone, item.zoneName),
+      direction: firstNonEmpty(location.direction, location.side, item.direction, item.side),
+      lane: firstNonEmpty(location.lane, item.lane),
+    },
+  };
+}
+
+async function fetchDevicesCatalog(baseUrl, token) {
+  const result = await fetchJsonCandidatesForInspection(
+    [
+      `${baseUrl}/devices?page=1&limit=5000`,
+      `${baseUrl}/devices`,
+      `${baseUrl}/api/devices?page=1&limit=5000`,
+      `${baseUrl}/api/devices`,
+      `${baseUrl}/viewer/devices?page=1&limit=5000`,
+      `${baseUrl}/viewer/devices`,
+      `${baseUrl}/dashboard/devices?page=1&limit=5000`,
+      `${baseUrl}/dashboard/devices`,
+      `${baseUrl}/dashboard/viewer/devices?page=1&limit=5000`,
+      `${baseUrl}/dashboard/viewer/devices`,
+    ],
+    token
+  );
+
+  return extractArrayPayload(result.data, ["devices"]).map((item) =>
+    normalizeCatalogAsset(item, "DEVICE")
+  );
+}
+
+async function fetchGatesCatalog(baseUrl, token) {
+  const result = await fetchJsonCandidatesForInspection(
+    [
+      `${baseUrl}/gates?page=1&limit=5000`,
+      `${baseUrl}/gates`,
+      `${baseUrl}/api/gates?page=1&limit=5000`,
+      `${baseUrl}/api/gates`,
+      `${baseUrl}/viewer/gates?page=1&limit=5000`,
+      `${baseUrl}/viewer/gates`,
+      `${baseUrl}/viewer-gates?page=1&limit=5000`,
+      `${baseUrl}/viewer-gates`,
+      `${baseUrl}/dashboard/gates?page=1&limit=5000`,
+      `${baseUrl}/dashboard/gates`,
+      `${baseUrl}/dashboard/viewer/gates?page=1&limit=5000`,
+      `${baseUrl}/dashboard/viewer/gates`,
+    ],
+    token
+  );
+
+  return extractArrayPayload(result.data, ["gates"]).map((item) =>
+    normalizeCatalogAsset(item, "GATE")
+  );
+}
+
+function buildAssetCatalogMap(items = []) {
+  const map = new Map();
+
+  items.forEach((item) => {
+    const key = normalizeAssetId(item?.id);
+    if (key) map.set(key, item);
+  });
+
+  return map;
+}
+
+function enrichInspectionWithCatalog(inspection, deviceMap, gateMap) {
+  const isGate =
+    inspection.assetType === "GATE" ||
+    Boolean(inspection.gateId);
+
+  const lookupId = isGate
+    ? normalizeAssetId(inspection.gateId)
+    : normalizeAssetId(inspection.deviceId);
+
+  const catalogAsset = isGate
+    ? gateMap.get(lookupId)
+    : deviceMap.get(lookupId);
+
+  if (!catalogAsset) return inspection;
+
+  const oldDevice = inspection.device || {};
+  const oldLoc = oldDevice.location || {};
+  const newLoc = catalogAsset.location || {};
+
+  const mergedLocation = {
+    cluster: firstNonEmpty(oldLoc.cluster, newLoc.cluster),
+    ministry: firstNonEmpty(oldLoc.ministry, newLoc.ministry, oldLoc.building, newLoc.building),
+    building: firstNonEmpty(oldLoc.building, newLoc.building, oldLoc.ministry, newLoc.ministry),
+    zone: firstNonEmpty(oldLoc.zone, newLoc.zone),
+    direction: firstNonEmpty(oldLoc.direction, newLoc.direction),
+    lane: firstNonEmpty(oldLoc.lane, newLoc.lane),
+  };
+
+  const genericGateName =
+    isGate &&
+    /^gate\s*\d*$/i.test(String(oldDevice.deviceName || "").trim());
+
+  const genericCode =
+    !oldDevice.deviceCode ||
+    /^#\d+$/.test(String(oldDevice.deviceCode).trim()) ||
+    /^gate\s*\d+$/i.test(String(oldDevice.deviceCode).trim());
+
+  const deviceCode = genericCode
+    ? firstNonEmpty(catalogAsset.code, oldDevice.deviceCode)
+    : firstNonEmpty(oldDevice.deviceCode, catalogAsset.code);
+
+  const deviceName = genericGateName || !oldDevice.deviceName || oldDevice.deviceName === "Unknown asset"
+    ? firstNonEmpty(catalogAsset.name, mergedLocation.ministry, mergedLocation.building, oldDevice.deviceName)
+    : firstNonEmpty(oldDevice.deviceName, catalogAsset.name);
+
+  return {
+    ...inspection,
+    assetType: catalogAsset.assetType || inspection.assetType,
+    locationText: [
+      mergedLocation.cluster,
+      mergedLocation.ministry || mergedLocation.building,
+      mergedLocation.zone,
+      mergedLocation.direction,
+      mergedLocation.lane ? `Lane ${mergedLocation.lane}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · "),
+    device: {
+      ...oldDevice,
+      id: firstNonEmpty(oldDevice.id, catalogAsset.id),
+      deviceCode,
+      deviceName,
+      serialNumber: firstNonEmpty(oldDevice.serialNumber, catalogAsset.serialNumber),
+      deviceType: firstNonEmpty(oldDevice.deviceType, catalogAsset.deviceType),
+      ipAddress: firstNonEmpty(oldDevice.ipAddress, catalogAsset.ipAddress),
+      secretCode: firstNonEmpty(oldDevice.secretCode, catalogAsset.secretCode),
+      gateNo: firstNonEmpty(oldDevice.gateNo, catalogAsset.gateNo),
+      assetType: catalogAsset.assetType || oldDevice.assetType || inspection.assetType,
+      location: mergedLocation,
     },
   };
 }
@@ -2084,9 +2464,11 @@ function buildInspectionSearchText(ins) {
       ins.device?.serialNumber,
       ins.device?.ipAddress,
       loc.cluster,
+      loc.ministry,
       loc.building,
       loc.zone,
       loc.direction,
+      loc.lane,
       fmt(ins.inspectedAt || ins.createdAt),
       fmtTime(ins.inspectedAt || ins.createdAt),
     ]
@@ -2096,55 +2478,28 @@ function buildInspectionSearchText(ins) {
 }
 
 async function fetchInspectionsFromApi(baseUrl, token) {
-  const candidates = [
-    `${baseUrl}/inspections`,
-    `${baseUrl}/api/inspections`,
-    `${baseUrl}/viewer/inspections`,
-    `${baseUrl}/dashboard/inspections`,
-    `${baseUrl}/dashboard/viewer/inspections`,
-  ];
+  const result = await fetchJsonCandidatesForInspection(
+    [
+      `${baseUrl}/inspections?page=1&limit=5000`,
+      `${baseUrl}/inspections`,
+      `${baseUrl}/api/inspections?page=1&limit=5000`,
+      `${baseUrl}/api/inspections`,
+      `${baseUrl}/viewer/inspections?page=1&limit=5000`,
+      `${baseUrl}/viewer/inspections`,
+      `${baseUrl}/dashboard/inspections?page=1&limit=5000`,
+      `${baseUrl}/dashboard/inspections`,
+      `${baseUrl}/dashboard/viewer/inspections?page=1&limit=5000`,
+      `${baseUrl}/dashboard/viewer/inspections`,
+    ],
+    token
+  );
 
-  let lastError = null;
+  const rawList = extractArrayPayload(result.data, ["inspections"]);
 
-  for (const url of candidates) {
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      if (!response.ok) {
-        lastError = new Error(`${response.status} ${response.statusText}`);
-        continue;
-      }
-
-      const data = await response.json();
-
-      const rawList =
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data?.data)
-          ? data.data
-          : Array.isArray(data?.inspections)
-          ? data.inspections
-          : Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data?.results)
-          ? data.results
-          : [];
-
-      return {
-        items: rawList.map(normalizeInspection),
-      };
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error("No working inspections endpoint found.");
+  return {
+    sourceUrl: result.sourceUrl,
+    items: rawList.map((item) => normalizeInspection(item)),
+  };
 }
 
 function ResultBadge({ value }) {
@@ -2316,8 +2671,13 @@ function RecordProblemsModal({ inspection, onClose }) {
                 </div>
 
                 <div className="history-meta-line">
-                  <span>Building</span>
-                  {loc.building || "—"}
+                  <span>Ministry / Building</span>
+                  {loc.ministry || loc.building || "—"}
+                </div>
+
+                <div className="history-meta-line">
+                  <span>Lane</span>
+                  {loc.lane || "—"}
                 </div>
 
                 <div className="history-meta-line">
@@ -2474,7 +2834,13 @@ function HistoryModal({ title, subtitle, records, mode, onClose, onOpenRecord })
 
                               <div className="history-meta-line">
                                 <span>Location</span>
-                                {[loc.cluster, loc.building, loc.zone, loc.direction]
+                                {[
+                                  loc.cluster,
+                                  loc.ministry || loc.building,
+                                  loc.zone,
+                                  loc.direction,
+                                  loc.lane ? `Lane ${loc.lane}` : "",
+                                ]
                                   .filter(Boolean)
                                   .join(" · ") || "—"}
                               </div>
@@ -2775,13 +3141,29 @@ function flattenInspectionForExport(inspection = {}) {
     "Time": fmtTimePrecise(when),
     "Day": fmtDayName(when),
     "Cluster": location.cluster || "—",
-    "Building": location.building || "—",
+    "Ministry / Building":
+      location.ministry ||
+      location.ministryName ||
+      location.building ||
+      "—",
+    "Building":
+      location.building ||
+      location.ministry ||
+      location.ministryName ||
+      "—",
     "Zone": location.zone || "—",
+    "Lane": location.lane || "—",
     "Direction": location.direction || location.side || "—",
     "Location Text":
       inspection.locationText ||
       raw.locationText ||
-      [location.cluster, location.building, location.zone, location.direction]
+      [
+        location.cluster,
+        location.ministry || location.ministryName || location.building,
+        location.zone,
+        location.direction,
+        location.lane ? `Lane ${location.lane}` : "",
+      ]
         .filter(Boolean)
         .join(" · "),
     "Notes":
@@ -2908,7 +3290,7 @@ export function ViewerInspectionsPage({
   async function loadInspections() {
     if (Array.isArray(inspectionsProp)) {
       const sortedProp = inspectionsProp
-        .map(normalizeInspection)
+        .map((item) => normalizeInspection(item))
         .sort(
           (a, b) =>
             new Date(getInspectionDateValue(b) || 0) -
@@ -2926,15 +3308,68 @@ export function ViewerInspectionsPage({
       setError("");
 
       const token = pickToken();
-      const result = await fetchInspectionsFromApi(baseUrl, token);
 
-      const sorted = [...result.items].sort(
+      const [inspectionResult, devicesResult, gatesResult] =
+        await Promise.allSettled([
+          fetchInspectionsFromApi(baseUrl, token),
+          fetchDevicesCatalog(baseUrl, token),
+          fetchGatesCatalog(baseUrl, token),
+        ]);
+
+      if (inspectionResult.status !== "fulfilled") {
+        throw inspectionResult.reason || new Error("Failed to load inspections.");
+      }
+
+      const loadedInspections = inspectionResult.value.items || [];
+      const devices =
+        devicesResult.status === "fulfilled" ? devicesResult.value : [];
+      const gates =
+        gatesResult.status === "fulfilled" ? gatesResult.value : [];
+
+      if (devicesResult.status === "rejected") {
+        console.warn("Devices catalog could not be loaded:", devicesResult.reason);
+      }
+
+      if (gatesResult.status === "rejected") {
+        console.warn("Gates catalog could not be loaded:", gatesResult.reason);
+      }
+
+      const deviceMap = buildAssetCatalogMap(devices);
+      const gateMap = buildAssetCatalogMap(gates);
+
+      const enriched = loadedInspections.map((inspection) =>
+        enrichInspectionWithCatalog(inspection, deviceMap, gateMap)
+      );
+
+      const sorted = [...enriched].sort(
         (a, b) =>
           new Date(getInspectionDateValue(b) || 0) -
           new Date(getInspectionDateValue(a) || 0)
       );
 
+      console.log("Viewer inspections loaded:", {
+        inspections: sorted.length,
+        devicesCatalog: devices.length,
+        gatesCatalog: gates.length,
+        withMinistry: sorted.filter(
+          (item) =>
+            item.device?.location?.ministry ||
+            item.device?.location?.building
+        ).length,
+        withIP: sorted.filter((item) => item.device?.ipAddress).length,
+        withSerial: sorted.filter((item) => item.device?.serialNumber).length,
+      });
+
       setInspections(sorted);
+
+      if (
+        devicesResult.status === "rejected" &&
+        gatesResult.status === "rejected"
+      ) {
+        setError(
+          "Inspections loaded, but Devices/Gates master data could not be loaded, so some ministry/location fields may remain empty."
+        );
+      }
     } catch (err) {
       console.error("Failed to load inspections:", err);
       setError(err?.message || "Failed to load inspections from backend.");
@@ -3012,7 +3447,7 @@ export function ViewerInspectionsPage({
     inspections.forEach((ins) => {
       const loc = ins.device?.location || {};
       clusters.push(loc.cluster);
-      buildings.push(loc.building);
+      buildings.push(loc.ministry || loc.building);
       zones.push(loc.zone);
       directions.push(loc.direction);
     });
@@ -3045,7 +3480,10 @@ export function ViewerInspectionsPage({
         return false;
       }
 
-      if (filters.building !== "ALL" && loc.building !== filters.building) {
+      if (
+        filters.building !== "ALL" &&
+        (loc.ministry || loc.building) !== filters.building
+      ) {
         return false;
       }
 
@@ -3164,8 +3602,10 @@ export function ViewerInspectionsPage({
           "Time",
           "Day",
           "Cluster",
+          "Ministry / Building",
           "Building",
           "Zone",
+          "Lane",
           "Direction",
           "Location Text",
           "Notes",
@@ -3302,8 +3742,11 @@ export function ViewerInspectionsPage({
                 <div class="muted">${htmlEscape(row.Time)} · ${htmlEscape(row.Day)}</div>
               </td>
               <td>${htmlEscape(row.Cluster)}</td>
-              <td>${htmlEscape(row.Building)}</td>
-              <td>${htmlEscape(row.Zone)}</td>
+              <td>${htmlEscape(row["Ministry / Building"] || row.Building)}</td>
+              <td>
+                ${htmlEscape(row.Zone)}
+                <div class="muted">Lane: ${htmlEscape(row.Lane)}</div>
+              </td>
               <td class="center">${htmlEscape(row.Direction)}</td>
               <td class="problem-text">${htmlEscape(row["Problem Reason"])}</td>
             </tr>
@@ -3851,9 +4294,17 @@ export function ViewerInspectionsPage({
 
   const locationParts = (ins) => ({
     cluster: ins.device?.location?.cluster || "",
-    building: ins.device?.location?.building || "",
+    ministry:
+      ins.device?.location?.ministry ||
+      ins.device?.location?.building ||
+      "",
+    building:
+      ins.device?.location?.building ||
+      ins.device?.location?.ministry ||
+      "",
     zone: ins.device?.location?.zone || "",
     direction: ins.device?.location?.direction || "",
+    lane: ins.device?.location?.lane || "",
   });
 
   function getHistoryRecords(mode) {
@@ -4024,7 +4475,7 @@ export function ViewerInspectionsPage({
             </div>
 
             <div className="insp-filter-field">
-              <label>Building</label>
+              <label>Ministry / Building</label>
 
               <select
                 className="insp-filter-select"
@@ -4349,13 +4800,18 @@ export function ViewerInspectionsPage({
                         </div>
 
                         <div className="insp-box-mini">
+                          <span>Asset Type</span>
+                          <strong>{ins.device?.deviceType || ins.assetType || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
                           <span>Cluster</span>
                           <strong>{loc.cluster || "—"}</strong>
                         </div>
 
                         <div className="insp-box-mini">
-                          <span>Building</span>
-                          <strong>{loc.building || "—"}</strong>
+                          <span>Ministry / Building</span>
+                          <strong>{loc.ministry || loc.building || "—"}</strong>
                         </div>
 
                         <div className="insp-box-mini">
@@ -4364,8 +4820,18 @@ export function ViewerInspectionsPage({
                         </div>
 
                         <div className="insp-box-mini">
+                          <span>Lane</span>
+                          <strong>{loc.lane || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
                           <span>Direction</span>
                           <strong>{loc.direction || "—"}</strong>
+                        </div>
+
+                        <div className="insp-box-mini">
+                          <span>{ins.assetType === "GATE" ? "Gate ID" : "Device ID"}</span>
+                          <strong>{ins.assetType === "GATE" ? (ins.gateId || "—") : (ins.deviceId || "—")}</strong>
                         </div>
 
                         <div className="insp-box-mini">
@@ -4399,9 +4865,11 @@ export function ViewerInspectionsPage({
                     <th>Result</th>
                     <th>Problem Reason</th>
                     <th>Cluster</th>
-                    <th>Building</th>
+                    <th>Ministry / Building</th>
                     <th>Zone</th>
+                    <th>Lane</th>
                     <th>Direction</th>
+                    <th>Asset ID</th>
                     <th>Date</th>
                   </tr>
                 </thead>
@@ -4452,9 +4920,9 @@ export function ViewerInspectionsPage({
                           </div>
                         </td>
 
-                        <td data-label="Building">
+                        <td data-label="Ministry / Building">
                           <div className="insp-locline">
-                            {loc.building || "—"}
+                            {loc.ministry || loc.building || "—"}
                           </div>
                         </td>
 
@@ -4464,9 +4932,23 @@ export function ViewerInspectionsPage({
                           </div>
                         </td>
 
+                        <td data-label="Lane">
+                          <div className="insp-locline">
+                            {loc.lane || "—"}
+                          </div>
+                        </td>
+
                         <td data-label="Direction">
                           <div className="insp-locline">
                             {loc.direction || "—"}
+                          </div>
+                        </td>
+
+                        <td data-label="Asset ID">
+                          <div className="insp-locline">
+                            {ins.assetType === "GATE"
+                              ? `Gate ${ins.gateId || "—"}`
+                              : `Device ${ins.deviceId || "—"}`}
                           </div>
                         </td>
 

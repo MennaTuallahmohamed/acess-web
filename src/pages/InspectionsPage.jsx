@@ -1,6 +1,5 @@
-{}import {
+import {
   useCallback,
-  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -30,6 +29,67 @@ const DEFAULT_API_BASE = "https://acess-backend-production-8856.up.railway.app";
 const CACHE_KEY = "smartit_exact_backend_inspections_cache_v3";
 const SERVER_PAGE_SIZE = 250;
 const PAGE_FETCH_CONCURRENCY = 4;
+
+// All inspection timestamps are displayed and filtered in Cairo time.
+// The backend should send ISO timestamps (preferably with Z / UTC offset).
+const APP_TIME_ZONE = "Africa/Cairo";
+
+const DATE_PARTS_FORMATTER = new Intl.DateTimeFormat("en-CA", {
+  timeZone: APP_TIME_ZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const TIME_PARTS_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+const DISPLAY_DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const DISPLAY_DAY_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  weekday: "long",
+});
+
+const DISPLAY_TIME_WITH_SECONDS_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+const DISPLAY_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  timeZone: APP_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+const WEEKDAY_INDEX_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  weekday: "long",
+});
+
+const WEEKDAY_INDEX = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
 
 // JavaScript Date.getDay(): Sunday = 0 ... Saturday = 6.
 // Values are strings because the shared MultiSelectFilter compares exact values.
@@ -163,6 +223,12 @@ const CSS = `
 .si-input:focus, .si-select:focus { border-color: var(--blue); background: #fff; box-shadow: 0 0 0 3px rgba(21,155,211,.10); }
 .si-filter-actions { display: flex; gap: 8px; margin-top: 11px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 .si-filter-note { color: var(--muted); font-size: 11px; font-weight: 750; }
+.si-apply-bar { margin-top: 12px; padding: 10px 12px; border: 1px solid #cfe4ef; border-radius: 12px; background: #f5fbfe; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.si-apply-status { color: #496274; font-size: 10px; font-weight: 800; }
+.si-apply-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.si-btn.apply { color: #fff; background: #0d7fa7; border-color: #0d7fa7; min-width: 125px; }
+.si-load-more { margin-top: 14px; display: flex; justify-content: center; }
+.si-load-more .si-btn { min-width: 180px; }
 .si-table-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .si-view-toggle { display: inline-flex; gap: 3px; background: #eef2f6; padding: 3px; border-radius: 10px; }
 .si-view-toggle button { min-height: 31px; border: 0; border-radius: 8px; padding: 0 10px; background: transparent; color: var(--muted); font-size: 11px; font-weight: 900; cursor: pointer; }
@@ -1241,34 +1307,41 @@ function normalizeText(value) {
 
 function toDate(value) {
   if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function partsObject(formatter, date) {
+  return Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
 }
 
 function formatDate(value) {
   const date = toDate(value);
   if (!date) return "—";
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return DISPLAY_DATE_FORMATTER.format(date);
 }
 
 function formatDay(value) {
   const date = toDate(value);
   if (!date) return "—";
-  return date.toLocaleDateString("en-GB", { weekday: "long" });
+  return DISPLAY_DAY_FORMATTER.format(date);
 }
 
 function formatTime(value, seconds = true) {
   const date = toDate(value);
   if (!date) return "—";
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    ...(seconds ? { second: "2-digit" } : {}),
-  });
+  return seconds
+    ? DISPLAY_TIME_WITH_SECONDS_FORMATTER.format(date)
+    : DISPLAY_TIME_FORMATTER.format(date);
 }
 
 function formatDateTime(value) {
@@ -1277,19 +1350,36 @@ function formatDateTime(value) {
   return `${formatDate(date)} ${formatTime(date, true)}`;
 }
 
+// Kept under the old names so the rest of the page stays untouched.
+// These keys now always use Africa/Cairo instead of the browser machine timezone.
 function localDateKey(value) {
   const date = toDate(value);
   if (!date) return "";
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+
+  const parts = partsObject(DATE_PARTS_FORMATTER, date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
-function localTimeKey(value) {
+function localTimeKey(value, includeSeconds = false) {
   const date = toDate(value);
   if (!date) return "";
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+
+  const parts = partsObject(TIME_PARTS_FORMATTER, date);
+  const base = `${parts.hour}:${parts.minute}`;
+  return includeSeconds ? `${base}:${parts.second}` : base;
+}
+
+function localDateTimeKey(value) {
+  const date = toDate(value);
+  if (!date) return "";
+  return `${localDateKey(date)}T${localTimeKey(date, true)}`;
+}
+
+function localWeekdayIndex(value) {
+  const date = toDate(value);
+  if (!date) return null;
+  const label = WEEKDAY_INDEX_FORMATTER.format(date);
+  return WEEKDAY_INDEX[label] ?? null;
 }
 
 function normalizeStatus(value) {
@@ -2133,58 +2223,81 @@ function MultiSelectFilter({
   const rootRef = useRef(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const normalizedQuery = normalizeText(query);
-  const allSelected = selected.length === 0;
 
   useEffect(() => {
     if (!open) return undefined;
 
     const closeOnOutside = (event) => {
-      if (!rootRef.current?.contains(event.target)) setOpen(false);
+      if (!rootRef.current?.contains(event.target)) {
+        setOpen(false);
+      }
     };
+
     const closeOnEscape = (event) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
     };
 
     document.addEventListener("mousedown", closeOnOutside);
     document.addEventListener("keydown", closeOnEscape);
+
     return () => {
       document.removeEventListener("mousedown", closeOnOutside);
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
 
-  const visibleOptions = options.filter((value) => {
-    if (!normalizedQuery) return true;
-    return normalizeText(formatOption(value)).includes(normalizedQuery);
-  });
+  const normalizedQuery = normalizeText(query);
 
-  const isChecked = (value) => allSelected || selected.includes(value);
+  const visibleOptions = useMemo(
+    () =>
+      options.filter((value) => {
+        if (!normalizedQuery) return true;
+        return normalizeText(formatOption(value)).includes(normalizedQuery);
+      }),
+    [options, normalizedQuery, formatOption]
+  );
+
+  // Empty array means ALL for the parent filter state.
+  // Checkboxes only reflect explicit pending selections.
+  const allSelected = selected.length === 0;
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const isChecked = (value) => selectedSet.has(value);
 
   const toggleValue = (value) => {
-    if (allSelected) {
-      const next = options.filter((option) => option !== value);
-      onChange(next.length === options.length ? [] : next);
+    // From ALL, clicking one item means "this item only".
+    if (selected.length === 0) {
+      onChange([value]);
       return;
     }
 
-    const next = selected.includes(value)
-      ? selected.filter((item) => item !== value)
-      : [...selected, value];
+    const nextSet = new Set(selected);
 
-    if (!next.length || next.length === options.length) onChange([]);
-    else onChange(next);
+    if (nextSet.has(value)) nextSet.delete(value);
+    else nextSet.add(value);
+
+    const next = options.filter((option) => nextSet.has(option));
+
+    // Empty or every option selected both mean ALL.
+    if (next.length === 0 || next.length === options.length) {
+      onChange([]);
+    } else {
+      onChange(next);
+    }
   };
 
-  const buttonText = allSelected
-    ? allLabel
-    : selected.length === 1
-      ? formatOption(selected[0])
-      : `${selected.length} selected`;
+  const buttonText =
+    selected.length === 0
+      ? allLabel
+      : selected.length === 1
+        ? formatOption(selected[0])
+        : `${selected.length} selected`;
 
   return (
     <div className="si-field si-multi" ref={rootRef}>
       <label>{label}</label>
+
       <button
         type="button"
         className={`si-multi-button ${open ? "open" : ""}`}
@@ -2192,7 +2305,9 @@ function MultiSelectFilter({
         aria-expanded={open}
       >
         <span className="si-multi-button-text">{buttonText}</span>
-        <span className="si-multi-count">{allSelected ? "ALL" : selected.length}</span>
+        <span className="si-multi-count">
+          {selected.length === 0 ? "ALL" : selected.length}
+        </span>
       </button>
 
       {open ? (
@@ -2205,38 +2320,62 @@ function MultiSelectFilter({
               placeholder={`Search ${label.toLowerCase()}...`}
               autoFocus
             />
+
             <div className="si-multi-actions">
-              <button type="button" className="si-multi-action primary" onClick={() => onChange([])}>
+              <button
+                type="button"
+                className="si-multi-action primary"
+                onClick={() => onChange([])}
+              >
                 Select all
               </button>
-              <button type="button" className="si-multi-action" onClick={() => setQuery("")}>
+
+              <button
+                type="button"
+                className="si-multi-action"
+                onClick={() => setQuery("")}
+              >
                 Clear search
               </button>
-              <button type="button" className="si-multi-action" onClick={() => setOpen(false)}>
+
+              <button
+                type="button"
+                className="si-multi-action"
+                onClick={() => setOpen(false)}
+              >
                 Done
               </button>
             </div>
           </div>
 
           <div className="si-multi-options">
-            {visibleOptions.length ? visibleOptions.map((value) => {
-              const checked = isChecked(value);
-              return (
-                <button
-                  type="button"
-                  className={`si-multi-option ${checked ? "selected" : ""}`}
-                  key={value}
-                  onClick={() => toggleValue(value)}
-                >
-                  <span className="si-multi-check">{checked ? "✓" : ""}</span>
-                  <span>{formatOption(value)}</span>
-                </button>
-              );
-            }) : <div className="si-multi-empty">No matching options.</div>}
+            {visibleOptions.length ? (
+              visibleOptions.map((value) => {
+                const checked = isChecked(value);
+
+                return (
+                  <button
+                    type="button"
+                    className={`si-multi-option ${checked ? "selected" : ""}`}
+                    key={value}
+                    onClick={() => toggleValue(value)}
+                  >
+                    <span className="si-multi-check">
+                      {checked ? "✓" : ""}
+                    </span>
+                    <span>{formatOption(value)}</span>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="si-multi-empty">No matching options.</div>
+            )}
           </div>
 
           <div className="si-multi-foot">
-            {allSelected ? `All ${options.length} option(s) are included.` : `${selected.length} of ${options.length} selected.`}
+            {allSelected
+              ? `All ${options.length} option(s) are included. Choose one or more to filter.`
+              : `${selected.length} of ${options.length} selected (pending Apply Filters).`}
           </div>
         </div>
       ) : null}
@@ -2644,7 +2783,8 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
   });
 
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(120);
   // Empty array means ALL. Any number of values can be selected together.
   const [technicianFilters, setTechnicianFilters] = useState([]);
   const [typeFilters, setTypeFilters] = useState([]);
@@ -2660,6 +2800,22 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
   const [timeFrom, setTimeFrom] = useState("");
   const [timeTo, setTimeTo] = useState("");
   const [sortOrder, setSortOrder] = useState("DESC");
+
+  const [appliedFilters, setAppliedFilters] = useState({
+    technicians: [],
+    types: [],
+    statuses: [],
+    results: [],
+    clusters: [],
+    buildings: [],
+    zones: [],
+    weekdays: [],
+    dateFrom: "",
+    dateTo: "",
+    timeFrom: "",
+    timeTo: "",
+    sortOrder: "DESC",
+  });
 
   const [viewMode, setViewMode] = useState("LIST");
 
@@ -2728,6 +2884,11 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
 
 
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
   const options = useMemo(() => {
     const unique = (values) => [...new Set(values.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "en"));
     return {
@@ -2740,14 +2901,67 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
     };
   }, [records]);
 
+  const filterRows = useMemo(() => records.map((record) => {
+    const inspectedDate = toDate(record.inspectedAt);
+    let dateTimeKey = "";
+    let dateKey = "";
+    let weekday = null;
+    let timeMinutes = null;
+
+    if (inspectedDate) {
+      dateKey = localDateKey(inspectedDate);
+      dateTimeKey = localDateTimeKey(inspectedDate);
+      weekday = localWeekdayIndex(inspectedDate);
+      const timeKey = localTimeKey(inspectedDate);
+      const [hours, minutes] = timeKey.split(":").map(Number);
+      if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+        timeMinutes = hours * 60 + minutes;
+      }
+    }
+
+    return {
+      record,
+      timestamp: inspectedDate?.getTime() || 0,
+      dateKey,
+      dateTimeKey,
+      weekday,
+      timeMinutes,
+    };
+  }), [records]);
+
   const filtered = useMemo(() => {
-    const queryTokens = normalizeText(deferredSearch).split(" ").filter(Boolean);
-    const startBoundary = dateFrom
-      ? toDate(`${dateFrom}T${timeFrom || "00:00:00"}`)
-      : null;
-    const endBoundary = dateTo
-      ? toDate(`${dateTo}T${timeTo || "23:59:59.999"}`)
-      : null;
+    const queryTokens = normalizeText(debouncedSearch).split(" ").filter(Boolean);
+    const {
+      technicians,
+      types,
+      statuses,
+      results,
+      clusters,
+      buildings,
+      zones,
+      weekdays,
+      dateFrom: appliedDateFrom,
+      dateTo: appliedDateTo,
+      timeFrom: appliedTimeFrom,
+      timeTo: appliedTimeTo,
+      sortOrder: appliedSortOrder,
+    } = appliedFilters;
+
+    const technicianSet = new Set(technicians);
+    const typeSet = new Set(types);
+    const statusSet = new Set(statuses);
+    const resultSet = new Set(results);
+    const clusterSet = new Set(clusters);
+    const buildingSet = new Set(buildings);
+    const zoneSet = new Set(zones);
+    const weekdaySet = new Set(weekdays);
+
+    const startBoundaryKey = appliedDateFrom
+      ? `${appliedDateFrom}T${appliedTimeFrom || "00:00"}:00`
+      : "";
+    const endBoundaryKey = appliedDateTo
+      ? `${appliedDateTo}T${appliedTimeTo || "23:59"}:59`
+      : "";
 
     const timeToMinutes = (value) => {
       if (!value) return null;
@@ -2756,78 +2970,125 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
       return hours * 60 + minutes;
     };
 
-    const fromMinutes = !dateFrom ? timeToMinutes(timeFrom) : null;
-    const toMinutes = !dateTo ? timeToMinutes(timeTo) : null;
+    const fromMinutes = !appliedDateFrom ? timeToMinutes(appliedTimeFrom) : null;
+    const toMinutes = !appliedDateTo ? timeToMinutes(appliedTimeTo) : null;
 
-    const result = records.filter((record) => {
-      if (queryTokens.length && !queryTokens.every((token) => record.searchText.includes(token))) return false;
-      if (technicianFilters.length && !technicianFilters.includes(record.technician.name)) return false;
-      if (typeFilters.length && !typeFilters.includes(record.device.typeName)) return false;
-      if (statusFilters.length && !statusFilters.includes(record.status)) return false;
-      if (resultFilters.length && !resultFilters.includes(record.result)) return false;
-      if (clusterFilters.length && !clusterFilters.includes(record.location.cluster)) return false;
-      if (buildingFilters.length && !buildingFilters.includes(record.location.building)) return false;
-      if (zoneFilters.length && !zoneFilters.includes(record.location.zone)) return false;
+    const resultRows = [];
 
-      const inspectedDate = toDate(record.inspectedAt);
-      if (!inspectedDate) {
-        return !weekdayFilters.length && !dateFrom && !dateTo && !timeFrom && !timeTo;
+    for (const row of filterRows) {
+      const record = row.record;
+
+      if (queryTokens.length && !queryTokens.every((token) => record.searchText.includes(token))) continue;
+      if (technicianSet.size && !technicianSet.has(record.technician.name)) continue;
+      if (typeSet.size && !typeSet.has(record.device.typeName)) continue;
+      if (statusSet.size && !statusSet.has(record.status)) continue;
+      if (resultSet.size && !resultSet.has(record.result)) continue;
+      if (clusterSet.size && !clusterSet.has(record.location.cluster)) continue;
+      if (buildingSet.size && !buildingSet.has(record.location.building)) continue;
+      if (zoneSet.size && !zoneSet.has(record.location.zone)) continue;
+
+      if (!row.dateTimeKey) {
+        if (weekdaySet.size || appliedDateFrom || appliedDateTo || appliedTimeFrom || appliedTimeTo) continue;
+      } else {
+        if (weekdaySet.size && !weekdaySet.has(String(row.weekday))) continue;
+        if (startBoundaryKey && row.dateTimeKey < startBoundaryKey) continue;
+        if (endBoundaryKey && row.dateTimeKey > endBoundaryKey) continue;
+        if (fromMinutes !== null && row.timeMinutes !== null && row.timeMinutes < fromMinutes) continue;
+        if (toMinutes !== null && row.timeMinutes !== null && row.timeMinutes > toMinutes) continue;
       }
 
-      // Filter using the same local weekday that is shown by formatDay().
-      // This keeps Sunday/Monday/etc. aligned with the displayed inspection date.
-      if (weekdayFilters.length && !weekdayFilters.includes(String(inspectedDate.getDay()))) return false;
+      resultRows.push(row);
+    }
 
-      if (startBoundary && inspectedDate.getTime() < startBoundary.getTime()) return false;
-      if (endBoundary && inspectedDate.getTime() > endBoundary.getTime()) return false;
-
-      const recordMinutes = inspectedDate.getHours() * 60 + inspectedDate.getMinutes();
-      if (fromMinutes !== null && recordMinutes < fromMinutes) return false;
-      if (toMinutes !== null && recordMinutes > toMinutes) return false;
-
-      return true;
+    resultRows.sort((a, b) => {
+      const difference = a.timestamp - b.timestamp;
+      if (difference !== 0) return appliedSortOrder === "ASC" ? difference : -difference;
+      return String(a.record.id).localeCompare(String(b.record.id), "en", { numeric: true });
     });
 
-    return result.sort((a, b) => {
-      const difference = inspectionTimestamp(a) - inspectionTimestamp(b);
-      if (difference !== 0) return sortOrder === "ASC" ? difference : -difference;
-      return String(a.id).localeCompare(String(b.id), "en", { numeric: true });
-    });
-  }, [
-    records,
-    deferredSearch,
-    technicianFilters,
-    typeFilters,
-    statusFilters,
-    resultFilters,
-    clusterFilters,
-    buildingFilters,
-    zoneFilters,
-    weekdayFilters,
-    dateFrom,
-    dateTo,
-    timeFrom,
-    timeTo,
-    sortOrder,
-  ]);
-
+    return resultRows.map((row) => row.record);
+  }, [filterRows, debouncedSearch, appliedFilters]);
 
   const stats = useMemo(() => {
     const today = localDateKey(new Date());
+    let todayCount = 0;
+    let ok = 0;
+    let partial = 0;
+    let notOk = 0;
+    const technicians = new Set();
+
+    for (const record of filtered) {
+      if (localDateKey(record.inspectedAt) === today) todayCount += 1;
+      if (record.result === "OK") ok += 1;
+      else if (record.result === "PARTIAL") partial += 1;
+      else if (record.result === "NOT_OK") notOk += 1;
+      if (record.technician.name && record.technician.name !== "—") technicians.add(record.technician.name);
+    }
+
     return {
       total: filtered.length,
-      today: filtered.filter((record) => localDateKey(record.inspectedAt) === today).length,
-      ok: filtered.filter((record) => record.result === "OK").length,
-      partial: filtered.filter((record) => record.result === "PARTIAL").length,
-      notOk: filtered.filter((record) => record.result === "NOT_OK").length,
-      technicians: new Set(filtered.map((record) => record.technician.name).filter((value) => value !== "—")).size,
+      today: todayCount,
+      ok,
+      partial,
+      notOk,
+      technicians: technicians.size,
     };
   }, [filtered]);
 
-  const visibleRecords = filtered;
+  useEffect(() => {
+    setVisibleCount(120);
+  }, [filtered, viewMode]);
+
+  const visibleRecords = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount]
+  );
+
+  const applyFilters = () => {
+    setAppliedFilters({
+      technicians: [...technicianFilters],
+      types: [...typeFilters],
+      statuses: [...statusFilters],
+      results: [...resultFilters],
+      clusters: [...clusterFilters],
+      buildings: [...buildingFilters],
+      zones: [...zoneFilters],
+      weekdays: [...weekdayFilters],
+      dateFrom,
+      dateTo,
+      timeFrom,
+      timeTo,
+      sortOrder,
+    });
+    setVisibleCount(120);
+  };
+
+  const hasPendingFilterChanges = useMemo(() => {
+    const sameArray = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
+    return !(
+      sameArray(technicianFilters, appliedFilters.technicians) &&
+      sameArray(typeFilters, appliedFilters.types) &&
+      sameArray(statusFilters, appliedFilters.statuses) &&
+      sameArray(resultFilters, appliedFilters.results) &&
+      sameArray(clusterFilters, appliedFilters.clusters) &&
+      sameArray(buildingFilters, appliedFilters.buildings) &&
+      sameArray(zoneFilters, appliedFilters.zones) &&
+      sameArray(weekdayFilters, appliedFilters.weekdays) &&
+      dateFrom === appliedFilters.dateFrom &&
+      dateTo === appliedFilters.dateTo &&
+      timeFrom === appliedFilters.timeFrom &&
+      timeTo === appliedFilters.timeTo &&
+      sortOrder === appliedFilters.sortOrder
+    );
+  }, [
+    technicianFilters, typeFilters, statusFilters, resultFilters,
+    clusterFilters, buildingFilters, zoneFilters, weekdayFilters,
+    dateFrom, dateTo, timeFrom, timeTo, sortOrder, appliedFilters,
+  ]);
 
   const resetFilters = () => {
     setSearch("");
+    setDebouncedSearch("");
     setTechnicianFilters([]);
     setTypeFilters([]);
     setStatusFilters([]);
@@ -2841,6 +3102,12 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
     setTimeFrom("");
     setTimeTo("");
     setSortOrder("DESC");
+    setAppliedFilters({
+      technicians: [], types: [], statuses: [], results: [], clusters: [],
+      buildings: [], zones: [], weekdays: [], dateFrom: "", dateTo: "",
+      timeFrom: "", timeTo: "", sortOrder: "DESC",
+    });
+    setVisibleCount(120);
   };
 
   const fetchDetail = useCallback(async (record) => {
@@ -3207,7 +3474,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
           <div>
             <div className="si-kicker">Smart IT · Lightweight Inspection Operations</div>
             <h1 className="si-title">Inspections</h1>
-            
+            <div className="si-subtitle">Times are shown in Cairo time ({APP_TIME_ZONE}). Use the filters below to find inspections quickly.</div>
           </div>
 
           <div className="si-top-actions">
@@ -3243,7 +3510,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
 
         <section className="si-panel">
           <div className="si-panel-head">
-            <div className="si-panel-title">Advanced Multi-Selection Filters</div>
+            <div className="si-panel-title">Filters</div>
             <div className="si-count">{filtered.length} matching inspection(s)</div>
           </div>
 
@@ -3254,7 +3521,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
                 className="si-input"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="All typed words must match: technician, device, serial, location..."
+                placeholder="Search technician, device, serial, location..."
               />
             </div>
 
@@ -3355,27 +3622,40 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
           <div className="si-filter-summary">
             <span className="si-filter-summary-label">Applied:</span>
             <span className="si-filter-chip strong">
-              Technicians: {technicianFilters.length ? technicianFilters.join(" · ") : `All (${options.technicians.length})`}
+              Technicians: {appliedFilters.technicians.length ? appliedFilters.technicians.join(" · ") : `All (${options.technicians.length})`}
             </span>
             <span className="si-filter-chip">
-              Types: {typeFilters.length ? typeFilters.length : `All ${options.types.length}`}
+              Types: {appliedFilters.types.length ? appliedFilters.types.length : `All ${options.types.length}`}
             </span>
             <span className="si-filter-chip">
-              Results: {resultFilters.length ? resultFilters.join(" · ") : "All"}
+              Results: {appliedFilters.results.length ? appliedFilters.results.join(" · ") : "All"}
             </span>
             <span className="si-filter-chip strong">
-              Days: {weekdayFilters.length ? weekdayFilters.map(weekdayLabel).join(" · ") : "All weekdays / كل الأيام"}
+              Days: {appliedFilters.weekdays.length ? appliedFilters.weekdays.map(weekdayLabel).join(" · ") : "All weekdays / كل الأيام"}
             </span>
             <span className="si-filter-chip">
-              Window: {dateFrom || "Beginning"} {timeFrom || "00:00:00"} → {dateTo || "Latest"} {timeTo || "23:59:59"}
+              Window: {appliedFilters.dateFrom || "Beginning"} {appliedFilters.timeFrom || "00:00:00"} → {appliedFilters.dateTo || "Latest"} {appliedFilters.timeTo || "23:59:59"}
             </span>
+          </div>
+
+          <div className="si-apply-bar">
+            <div className="si-apply-status">
+              {hasPendingFilterChanges
+                ? "You have filter changes waiting to be applied."
+                : "Filters are applied. Search updates automatically after a short delay."}
+            </div>
+            <div className="si-apply-actions">
+              <button type="button" className="si-btn" onClick={resetFilters}>Clear All Filters</button>
+              <button type="button" className="si-btn apply" onClick={applyFilters} disabled={!hasPendingFilterChanges}>
+                Apply Filters
+              </button>
+            </div>
           </div>
 
           <div className="si-filter-actions">
             <div className="si-filter-note">
-              Choose one weekday or several weekdays together, such as Sunday, Monday and Tuesday. Date and time boundaries are inclusive and compared against the exact backend inspection timestamp.
+              Multi-select choices update the pending filter immediately. Press Apply Filters once to refresh the records. Precise Search stays live with a 300ms debounce.
             </div>
-            <button type="button" className="si-btn" onClick={resetFilters}>Clear All Filters</button>
           </div>
         </section>
 
@@ -3384,7 +3664,7 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
             <div>
               <div className="si-panel-title">Inspection Records</div>
               <div className="si-sub-text">
-                Showing all {visibleRecords.length} matching inspection(s)
+                Showing {visibleRecords.length} of {filtered.length} matching inspection(s)
               </div>
             </div>
 
@@ -3436,6 +3716,17 @@ export function InspectionsPage({ apiBaseUrl = "" }) {
             </div>
           )}
 
+          {visibleRecords.length < filtered.length ? (
+            <div className="si-load-more">
+              <button
+                type="button"
+                className="si-btn primary"
+                onClick={() => setVisibleCount((count) => Math.min(count + 120, filtered.length))}
+              >
+                Load 120 more ({filtered.length - visibleRecords.length} remaining)
+              </button>
+            </div>
+          ) : null}
 
         </section>
       </div>

@@ -1131,21 +1131,83 @@ function normalizeId(value) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizeStatusValue(rawStatus) {
+  return String(rawStatus ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function isOkInspectionStatus(rawStatus) {
+  const s = normalizeStatusValue(rawStatus);
+
+  return [
+    "OK",
+    "GOOD",
+    "ACTIVE",
+    "COMPLETED",
+    "DONE",
+    "OPERATIONAL",
+    "SUCCESS",
+    "PASSED",
+    "PASS",
+  ].includes(s);
+}
+
 function mapStatus(rawStatus, inspectionsCount = 0) {
-  const s = String(rawStatus || "").toUpperCase();
+  const s = normalizeStatusValue(rawStatus);
 
-  if (s === "OK" || s === "ACTIVE" || s === "COMPLETED" || s === "DONE") return "OK";
-  if (s === "NEEDS_MAINTENANCE") return "NEEDS_MAINTENANCE";
-  if (s === "UNDER_MAINTENANCE" || s === "IN_PROGRESS") return "UNDER_MAINTENANCE";
-  if (s === "OUT_OF_SERVICE") return "OUT_OF_SERVICE";
-  if (s === "INACTIVE") return "INACTIVE";
+  if (
+    [
+      "OK",
+      "GOOD",
+      "ACTIVE",
+      "COMPLETED",
+      "DONE",
+      "OPERATIONAL",
+      "SUCCESS",
+      "PASSED",
+      "PASS",
+    ].includes(s)
+  ) {
+    return "OK";
+  }
 
-  if (["NOT_OK", "PARTIAL", "NOT_REACHABLE", "ISSUE_FOUND", "FAILED"].includes(s)) {
+  if (
+    [
+      "NOT_OK",
+      "NOTOK",
+      "FAULTY",
+      "FAULT",
+      "FAILED",
+      "FAIL",
+      "ATTENTION",
+      "PARTIAL",
+      "NOT_REACHABLE",
+      "ISSUE_FOUND",
+      "NOK",
+      "BAD",
+    ].includes(s)
+  ) {
     return "ATTENTION";
   }
 
-  if (s === "OPEN" || s === "PENDING") return "NEEDS_MAINTENANCE";
-  if (!s && inspectionsCount > 0) return "ATTENTION";
+  if (s === "NEEDS_MAINTENANCE") return "NEEDS_MAINTENANCE";
+
+  if (["UNDER_MAINTENANCE", "IN_PROGRESS"].includes(s)) {
+    return "UNDER_MAINTENANCE";
+  }
+
+  if (s === "OUT_OF_SERVICE") return "OUT_OF_SERVICE";
+  if (s === "INACTIVE") return "INACTIVE";
+
+  if (["OPEN", "PENDING"].includes(s)) {
+    return "NEEDS_MAINTENANCE";
+  }
+
+  if (!s && inspectionsCount > 0) {
+    return "ATTENTION";
+  }
 
   return "OK";
 }
@@ -1199,15 +1261,44 @@ function getInspectionDate(inspection) {
   );
 }
 
-function getInspectionGateId(inspection) {
-  return normalizeId(
-    inspection?.gateId ||
-      inspection?.gate?.id ||
-      inspection?.gate_id ||
-      inspection?.assetId ||
-      inspection?.asset?.id ||
+function resolveInspectionGateId(inspection = {}) {
+  const directGateId =
+    inspection?.gateId ??
+    inspection?.gate?.id ??
+    inspection?.gate_id ??
+    inspection?.taskItem?.gateId ??
+    inspection?.taskItem?.gate?.id ??
+    inspection?.task?.gateId ??
+    inspection?.task?.gate?.id ??
+    inspection?.targetGateId ??
+    null;
+
+  if (directGateId !== null && directGateId !== undefined && String(directGateId).trim() !== "") {
+    return directGateId;
+  }
+
+  const assetType = normalizeStatusValue(
+    inspection?.assetType ??
+      inspection?.asset?.type ??
+      inspection?.inspectionType ??
+      inspection?.targetType ??
       ""
   );
+
+  if (assetType === "GATE") {
+    return (
+      inspection?.assetId ??
+      inspection?.asset?.id ??
+      inspection?.targetId ??
+      null
+    );
+  }
+
+  return null;
+}
+
+function getInspectionGateId(inspection) {
+  return normalizeId(resolveInspectionGateId(inspection));
 }
 
 function getGateId(gate) {
@@ -1215,18 +1306,44 @@ function getGateId(gate) {
 }
 
 function normalizeInspection(item = {}) {
-  const status = String(item.inspectionStatus || item.status || item.result || "NOT_REACHABLE").toUpperCase();
-  const afterStatus = item.afterGateStatus || item.afterStatus || item.afterDeviceStatus || item.finalGateStatus || "";
-  const beforeStatus = item.beforeGateStatus || item.beforeStatus || item.beforeDeviceStatus || "";
+  const rawInspectionStatus =
+    item.inspectionStatus ??
+    item.result ??
+    item.condition ??
+    item.finalResult ??
+    item.finalStatus ??
+    item.status ??
+    "NOT_REACHABLE";
+
+  const inspectionStatus = normalizeStatusValue(rawInspectionStatus);
+
+  const afterStatusRaw =
+    item.afterGateStatus ??
+    item.afterStatus ??
+    item.afterDeviceStatus ??
+    item.finalGateStatus ??
+    item.finalStatus ??
+    item.result ??
+    item.inspectionStatus ??
+    "";
+
+  const beforeStatusRaw =
+    item.beforeGateStatus ??
+    item.beforeStatus ??
+    item.beforeDeviceStatus ??
+    item.previousStatus ??
+    "";
+
+  const gateId = resolveInspectionGateId(item);
 
   return {
     ...item,
-    id: item.id,
-    gateId: item.gateId || item.gate?.id || null,
-    inspectionStatus: status,
+    id: item.id ?? item.inspectionId ?? null,
+    gateId,
+    inspectionStatus,
     inspectedAt: getInspectionDate(item),
-    beforeStatus: mapStatus(beforeStatus || status),
-    afterStatus: mapStatus(afterStatus || status),
+    beforeStatus: mapStatus(beforeStatusRaw || inspectionStatus),
+    afterStatus: mapStatus(afterStatusRaw || inspectionStatus),
   };
 }
 
@@ -1291,31 +1408,71 @@ function normalizeGate(item = {}) {
 }
 
 function attachInspectionData(gates, inspections) {
-  const map = new Map();
+  const inspectionsByGateId = new Map();
 
   inspections.forEach((inspection) => {
     const gateId = getInspectionGateId(inspection);
     if (!gateId) return;
 
-    if (!map.has(gateId)) map.set(gateId, []);
-    map.get(gateId).push(inspection);
+    if (!inspectionsByGateId.has(gateId)) {
+      inspectionsByGateId.set(gateId, []);
+    }
+
+    inspectionsByGateId.get(gateId).push(inspection);
   });
 
-  map.forEach((list) => {
-    list.sort((a, b) => new Date(getInspectionDate(b) || 0) - new Date(getInspectionDate(a) || 0));
+  inspectionsByGateId.forEach((list) => {
+    list.sort(
+      (a, b) =>
+        new Date(getInspectionDate(b) || 0).getTime() -
+        new Date(getInspectionDate(a) || 0).getTime()
+    );
   });
 
   return gates.map((gate) => {
     const gateId = getGateId(gate);
-    const related = map.get(gateId) || gate.relatedInspections || [];
-    const latest = related[0] || null;
+
+    const apiRelated = gateId ? inspectionsByGateId.get(gateId) || [] : [];
+    const embeddedRelated = Array.isArray(gate.relatedInspections)
+      ? gate.relatedInspections
+      : [];
+
+    /*
+      لو /inspections رجّع تاريخ للبوابة نستخدمه.
+      لو لم يرجع شيئًا نحتفظ بتاريخ inspections المضمّن داخل gate.
+    */
+    const related = apiRelated.length > 0 ? apiRelated : embeddedRelated;
+
+    const sortedRelated = [...related].sort(
+      (a, b) =>
+        new Date(getInspectionDate(b) || 0).getTime() -
+        new Date(getInspectionDate(a) || 0).getTime()
+    );
+
+    const latest = sortedRelated[0] || null;
+
+    /*
+      مهم جدًا:
+      normalizeInspection() سبق وحوّل afterStatus إلى:
+      OK / ATTENTION / NEEDS_MAINTENANCE / ...
+      لذلك لا نعمل mapStatus() على afterStatus مرة ثانية.
+      هذا هو الجزء الذي كان يجعل NOT_OK يتحول إلى OK.
+    */
+    const latestStatus = latest
+      ? latest.afterStatus || mapStatus(latest.inspectionStatus)
+      : gate.currentStatus;
 
     return {
       ...gate,
-      inspectionsCount: Math.max(Number(gate.inspectionsCount) || 0, related.length),
-      lastInspectionAt: latest ? getInspectionDate(latest) : gate.lastInspectionAt,
-      currentStatus: latest ? mapStatus(latest.afterStatus || latest.inspectionStatus) : gate.currentStatus,
-      relatedInspections: related,
+      inspectionsCount: Math.max(
+        Number(gate.inspectionsCount) || 0,
+        sortedRelated.length
+      ),
+      lastInspectionAt: latest
+        ? getInspectionDate(latest)
+        : gate.lastInspectionAt,
+      currentStatus: latestStatus,
+      relatedInspections: sortedRelated,
     };
   });
 }
@@ -1405,9 +1562,21 @@ async function fetchInspectionsFromApi(baseUrl, token) {
   const result = await fetchJsonCandidates(candidates, token);
   const rawList = extractArray(result.data, ["inspections"]);
 
+  const items = rawList
+    .map(normalizeInspection)
+    .filter((item) => resolveInspectionGateId(item));
+
+  console.log("[GatesPage] inspections source:", result.sourceUrl);
+  console.log("[GatesPage] raw inspections:", rawList.length);
+  console.log("[GatesPage] gate-linked inspections:", items.length);
+  console.log(
+    "[GatesPage] NOT OK-like inspections:",
+    items.filter((item) => !isOkInspectionStatus(item.inspectionStatus)).length
+  );
+
   return {
     sourceUrl: result.sourceUrl,
-    items: rawList.map(normalizeInspection).filter((item) => item.gateId || item.gate?.id),
+    items,
   };
 }
 
@@ -1477,7 +1646,7 @@ function buildPeriodAnalysis(list, mode = "month") {
 
     const row = map.get(key);
     row.total += 1;
-    if (String(item.inspectionStatus || "").toUpperCase() === "OK") row.ok += 1;
+    if (isOkInspectionStatus(item.inspectionStatus)) row.ok += 1;
     else row.notOk += 1;
   });
 
@@ -1510,7 +1679,7 @@ function GateDetailsModal({ gate, lang, onClose }) {
   const monthlyAnalysis = buildPeriodAnalysis(related, "month").slice(0, 12);
   const maxMonth = Math.max(...monthlyAnalysis.map((x) => x.total), 1);
 
-  const okCount = rangedHistory.filter((x) => String(x.inspectionStatus || "").toUpperCase() === "OK").length;
+  const okCount = rangedHistory.filter((x) => isOkInspectionStatus(x.inspectionStatus)).length;
   const notOkCount = Math.max(rangedHistory.length - okCount, 0);
   const latest = rangedHistory[0] || related[0] || null;
 
@@ -1643,8 +1812,8 @@ function GateDetailsModal({ gate, lang, onClose }) {
                 </div>
               ) : (
                 rangedHistory.map((inspection, index) => {
-                  const inspectionResult = String(inspection.inspectionStatus || "").toUpperCase() === "OK" ? "OK" : "NOT_OK";
-                  const finalStatus = mapStatus(inspection.afterStatus || inspection.inspectionStatus);
+                  const inspectionResult = isOkInspectionStatus(inspection.inspectionStatus) ? "OK" : "NOT_OK";
+                  const finalStatus = inspection.afterStatus || mapStatus(inspection.inspectionStatus);
                   const logColor = inspectionResult === "OK" ? "#10b981" : "#f59e0b";
 
                   return (
@@ -1708,7 +1877,7 @@ export function GatesPage({
   const [gates, setGates] = useState(Array.isArray(gatesProp) ? gatesProp.map(normalizeGate) : []);
   const [inspections, setInspections] = useState(
     Array.isArray(inspectionsProp)
-      ? inspectionsProp.map(normalizeInspection).filter((item) => item.gateId)
+      ? inspectionsProp.map(normalizeInspection).filter((item) => resolveInspectionGateId(item))
       : []
   );
   const [loading, setLoading] = useState(!Array.isArray(gatesProp));
@@ -1733,7 +1902,7 @@ export function GatesPage({
           : fetchGatesFromApi(baseUrl, token),
         Array.isArray(inspectionsProp)
           ? Promise.resolve({
-              items: inspectionsProp.map(normalizeInspection).filter((item) => item.gateId),
+              items: inspectionsProp.map(normalizeInspection).filter((item) => resolveInspectionGateId(item)),
               sourceUrl: "",
             })
           : fetchInspectionsFromApi(baseUrl, token),
@@ -1912,8 +2081,8 @@ export function GatesPage({
           g.gateNo,
           g.secretCode,
           fmtDateTime(getInspectionDate(inspection), lang),
-          String(inspection.inspectionStatus || "").toUpperCase() === "OK" ? "OK" : "NOT OK",
-          mapStatus(inspection.afterStatus || inspection.inspectionStatus),
+          isOkInspectionStatus(inspection.inspectionStatus) ? "OK" : "NOT OK",
+          inspection.afterStatus || mapStatus(inspection.inspectionStatus),
           getMonthKey(getInspectionDate(inspection)),
           getYearKey(getInspectionDate(inspection)),
         ])

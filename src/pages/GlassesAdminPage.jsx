@@ -10,236 +10,292 @@ import {
   useLang,
 } from "../context/LanguageContext";
 
+/* =========================================================
+   API
+========================================================= */
+
 const API_URL = (
   import.meta.env.VITE_API_URL ||
   "https://acess-backend-production-8856.up.railway.app"
 ).replace(/\/+$/, "");
 
+/* =========================================================
+   TEXT
+========================================================= */
+
 const TEXT = {
   en: {
     title: "Gate Glass",
     subtitle:
-      "Import, add, edit, and manage every gate-glass record from the backend.",
+      "Manage glass assets and monitor inspection activity.",
 
+    refresh: "Refresh",
     importExcel: "Import Excel",
     importing: "Importing...",
-    downloadTemplate: "Excel Template",
-    addGlass: "Add Gate Glass",
-    refresh: "Refresh",
+    template: "Excel Template",
+    addGlass: "Add Glass",
 
-    total: "Total Glass",
+    totalGlass: "Total Glass",
+    inspections: "Recent Inspections",
     ok: "OK",
     notOk: "Not OK",
     followUp: "Needs Follow-up",
     notInspected: "Not Inspected",
-    buildings: "Buildings",
-    zones: "Zones",
 
-    filterTitle: "Advanced Gate Glass Filter",
-    filterHint:
-      "Search by cluster, building, Zone, direction, lane, or status",
+    inspectionActivity:
+      "Inspection Activity",
+
+    inspectionActivityHint:
+      "Latest glass inspections including technician, location, comment and photos.",
+
+    technician: "Technician",
+    inspectionDate: "Inspection Date",
+    comment: "Comment",
+    images: "Images",
+    status: "Status",
+
+    glassByMinistry:
+      "Glass by Ministry",
+
+    glassByMinistryHint:
+      "Each ministry is displayed as a separate context.",
+
+    glassCount: "Glass",
+    inspectionCount:
+      "Inspections",
+
+    filterTitle: "Filters",
     search: "Search",
-    searchPlaceholder:
-      "Cluster, building, Zone, direction, lane...",
-    allStatuses: "All statuses",
-    allClusters: "All clusters",
-    allBuildings: "All buildings",
-    allZones: "All zones",
-    allDirections: "All directions",
-    reset: "Reset",
 
-    records: "records",
-    recordsTitle: "Gate Glass Records",
-    recordsHint:
-      "All changes are saved directly to the backend.",
-    loading: "Loading...",
-    noRecords: "No gate-glass records found.",
-    noRecordsHint:
-      "Import Excel or add a gate-glass record manually.",
+    searchPlaceholder:
+      "Cluster, ministry, zone, direction...",
+
+    allStatuses: "All Statuses",
+    allClusters: "All Clusters",
+    allBuildings: "All Ministries",
+    allZones: "All Zones",
+    allDirections: "All Directions",
 
     cluster: "Cluster",
-    building: "Building",
+    building: "Ministry / Building",
     zone: "Zone",
     direction: "Direction",
     lane: "Lane",
+
     glassType: "Glass Type",
     thickness: "Thickness",
+
     assetStatus: "Asset Status",
     currentStatus: "Current Status",
+
     installDate: "Install Date",
-    notes: "Notes",
     lastInspection: "Last Inspection",
+    notes: "Notes",
+
+    reset: "Reset",
+
     details: "Details",
     edit: "Edit",
     delete: "Delete",
-    save: "Save",
-    saving: "Saving...",
-    cancel: "Cancel",
-    close: "Close",
-
-    createTitle: "Add Gate Glass",
-    editTitle: "Edit Gate Glass",
-    detailsTitle: "Gate Glass Details",
-
-    active: "Active",
-    inactive: "Inactive",
-    maintenance: "Maintenance",
-
-    statusOk: "OK",
-    statusNotOk: "Not OK",
-    statusFollowUp: "Needs Follow-up",
-    statusNotInspected: "Not Inspected",
-
-    inDirection: "IN",
-    outDirection: "OUT",
 
     previous: "Previous",
     next: "Next",
     page: "Page",
     of: "of",
 
-    importSuccess: "Excel imported successfully.",
-    sourceRows: "Source rows",
-    created: "Created",
-    updated: "Updated",
-    rejected: "Rejected",
+    save: "Save",
+    saving: "Saving...",
+    cancel: "Cancel",
+    close: "Close",
 
-    saveSuccess: "Gate-glass record saved successfully.",
-    deleteSuccess: "Gate-glass record deleted successfully.",
-    confirmDelete:
-      "Delete this gate-glass record?",
-    chooseExcel:
-      "Choose an Excel file in xlsx or xls format.",
+    addTitle: "Add Glass",
+    editTitle: "Edit Glass",
+    detailsTitle: "Glass Details",
+    inspectionDetails:
+      "Inspection Details",
+
+    active: "Active",
+    inactive: "Inactive",
+    maintenance: "Maintenance",
+
+    noRecords:
+      "No glass records found.",
+
+    noInspections:
+      "No inspections found.",
+
+    loading: "Loading...",
+
     sessionExpired:
-      "Your session has expired. Sign in again.",
-    endpointMissing:
-      "Gate Glass backend routes are not deployed on Railway yet.",
+      "Session expired. Sign in again.",
+
     failedLoad:
-      "Failed to load Gate Glass data.",
+      "Failed to load glass data.",
+
     failedSave:
-      "Failed to save the Gate Glass record.",
+      "Failed to save glass.",
+
     failedDelete:
-      "Failed to delete the Gate Glass record.",
+      "Failed to delete glass.",
+
     failedImport:
-      "Failed to import the Excel file.",
-    failedTemplate:
-      "Failed to download the Excel template.",
-    requiredFields:
-      "Cluster, Building, Zone, and Direction are required.",
+      "Failed to import Excel.",
+
+    required:
+      "Cluster, Ministry, Zone and Direction are required.",
+
+    saved:
+      "Glass saved successfully.",
+
+    deleted:
+      "Glass deleted successfully.",
+
+    imported:
+      "Excel imported successfully.",
+
+    confirmDelete:
+      "Delete this glass record?",
   },
 
   ar: {
     title: "زجاج البوابات",
-    subtitle:
-      "استيراد وإضافة وتعديل وإدارة جميع سجلات زجاج البوابات من الباك إند.",
 
+    subtitle:
+      "إدارة الزجاج ومتابعة جميع عمليات التفتيش.",
+
+    refresh: "تحديث",
     importExcel: "استيراد Excel",
     importing: "جاري الاستيراد...",
-    downloadTemplate: "نموذج Excel",
-    addGlass: "إضافة زجاج بوابة",
-    refresh: "تحديث",
+    template: "نموذج Excel",
+    addGlass: "إضافة زجاج",
 
-    total: "إجمالي الزجاج",
+    totalGlass: "إجمالي الزجاج",
+    inspections: "أحدث التفتيشات",
     ok: "سليم",
     notOk: "غير سليم",
     followUp: "يحتاج متابعة",
-    notInspected: "لم يُفحص",
-    buildings: "المباني",
-    zones: "الزونات",
+    notInspected: "لم يتم التفتيش",
 
-    filterTitle: "فلتر زجاج البوابات المتقدم",
-    filterHint:
-      "بحث بالكلاستر أو المبنى أو الزون أو الاتجاه أو المسار أو الحالة",
+    inspectionActivity:
+      "سجل التفتيشات",
+
+    inspectionActivityHint:
+      "أحدث تفتيشات الزجاج مع الفني والمكان والتعليق والصور.",
+
+    technician: "الفني",
+    inspectionDate: "تاريخ التفتيش",
+    comment: "التعليق",
+    images: "الصور",
+    status: "الحالة",
+
+    glassByMinistry:
+      "الزجاج حسب الوزارة",
+
+    glassByMinistryHint:
+      "كل وزارة تظهر كقسم مستقل وبداخلها الزجاج الخاص بها.",
+
+    glassCount: "عدد الزجاج",
+    inspectionCount:
+      "عدد التفتيشات",
+
+    filterTitle: "الفلاتر",
     search: "بحث",
+
     searchPlaceholder:
-      "الكلاستر أو المبنى أو الزون أو الاتجاه أو المسار...",
+      "الكلاستر أو الوزارة أو الزون أو الاتجاه...",
+
     allStatuses: "كل الحالات",
     allClusters: "كل الكلاسترات",
-    allBuildings: "كل المباني",
+    allBuildings: "كل الوزارات",
     allZones: "كل الزونات",
     allDirections: "كل الاتجاهات",
-    reset: "إعادة ضبط",
-
-    records: "سجل",
-    recordsTitle: "سجلات زجاج البوابات",
-    recordsHint:
-      "كل الإضافات والتعديلات تُحفظ مباشرة في الباك إند.",
-    loading: "جارٍ التحميل...",
-    noRecords: "لا توجد سجلات زجاج بوابات.",
-    noRecordsHint:
-      "ارفعي Excel أو أضيفي سجل زجاج بوابة يدويًا.",
 
     cluster: "الكلاستر",
-    building: "المبنى",
+    building: "الوزارة / المبنى",
     zone: "الزون",
     direction: "الاتجاه",
     lane: "المسار",
+
     glassType: "نوع الزجاج",
     thickness: "السُمك",
+
     assetStatus: "حالة الأصل",
     currentStatus: "الحالة الحالية",
+
     installDate: "تاريخ التركيب",
+    lastInspection: "آخر تفتيش",
     notes: "الملاحظات",
-    lastInspection: "آخر فحص",
+
+    reset: "إعادة ضبط",
+
     details: "التفاصيل",
     edit: "تعديل",
     delete: "حذف",
-    save: "حفظ",
-    saving: "جاري الحفظ...",
-    cancel: "إلغاء",
-    close: "إغلاق",
-
-    createTitle: "إضافة زجاج بوابة",
-    editTitle: "تعديل زجاج بوابة",
-    detailsTitle: "تفاصيل زجاج البوابة",
-
-    active: "نشط",
-    inactive: "غير نشط",
-    maintenance: "صيانة",
-
-    statusOk: "سليم",
-    statusNotOk: "غير سليم",
-    statusFollowUp: "يحتاج متابعة",
-    statusNotInspected: "لم يُفحص",
-
-    inDirection: "دخول IN",
-    outDirection: "خروج OUT",
 
     previous: "السابق",
     next: "التالي",
     page: "صفحة",
     of: "من",
 
-    importSuccess: "تم استيراد ملف Excel بنجاح.",
-    sourceRows: "صفوف المصدر",
-    created: "تم إنشاؤه",
-    updated: "تم تحديثه",
-    rejected: "مرفوض",
+    save: "حفظ",
+    saving: "جاري الحفظ...",
+    cancel: "إلغاء",
+    close: "إغلاق",
 
-    saveSuccess: "تم حفظ سجل زجاج البوابة بنجاح.",
-    deleteSuccess: "تم حذف سجل زجاج البوابة بنجاح.",
-    confirmDelete:
-      "هل تريدين حذف سجل زجاج البوابة؟",
-    chooseExcel:
-      "اختاري ملف Excel بصيغة xlsx أو xls.",
+    addTitle: "إضافة زجاج",
+    editTitle: "تعديل الزجاج",
+    detailsTitle: "تفاصيل الزجاج",
+
+    inspectionDetails:
+      "تفاصيل التفتيش",
+
+    active: "نشط",
+    inactive: "غير نشط",
+    maintenance: "صيانة",
+
+    noRecords:
+      "لا توجد سجلات زجاج.",
+
+    noInspections:
+      "لا توجد تفتيشات حتى الآن.",
+
+    loading: "جاري التحميل...",
+
     sessionExpired:
-      "انتهت الجلسة. سجّلي الدخول مرة أخرى.",
-    endpointMissing:
-      "مسارات زجاج البوابات لم تُنشر على Railway حتى الآن.",
+      "انتهت الجلسة. سجل الدخول مرة أخرى.",
+
     failedLoad:
-      "تعذر تحميل بيانات زجاج البوابات.",
+      "تعذر تحميل بيانات الزجاج.",
+
     failedSave:
-      "تعذر حفظ سجل زجاج البوابة.",
+      "تعذر حفظ الزجاج.",
+
     failedDelete:
-      "تعذر حذف سجل زجاج البوابة.",
+      "تعذر حذف الزجاج.",
+
     failedImport:
-      "تعذر استيراد ملف Excel.",
-    failedTemplate:
-      "تعذر تحميل نموذج Excel.",
-    requiredFields:
-      "الكلاستر والمبنى والزون والاتجاه حقول مطلوبة.",
+      "تعذر استيراد Excel.",
+
+    required:
+      "الكلاستر والوزارة والزون والاتجاه مطلوبين.",
+
+    saved:
+      "تم حفظ الزجاج بنجاح.",
+
+    deleted:
+      "تم حذف الزجاج بنجاح.",
+
+    imported:
+      "تم استيراد Excel بنجاح.",
+
+    confirmDelete:
+      "هل تريد حذف سجل الزجاج؟",
   },
 };
+
+/* =========================================================
+   CONSTANTS
+========================================================= */
 
 const EMPTY_FORM = {
   cluster: "",
@@ -255,28 +311,68 @@ const EMPTY_FORM = {
   notes: "",
 };
 
+const EMPTY_SUMMARY = {
+  total: 0,
+  ok: 0,
+  notOk: 0,
+  needsFollowUp: 0,
+  notInspected: 0,
+  buildings: 0,
+  zones: 0,
+};
+
+const EMPTY_PAGINATION = {
+  page: 1,
+  limit: 20,
+  total: 0,
+  totalPages: 0,
+};
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function getStoredToken() {
   return (
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("token") ||
-    sessionStorage.getItem("accessToken") ||
-    sessionStorage.getItem("access_token") ||
-    sessionStorage.getItem("token") ||
+    localStorage.getItem(
+      "accessToken",
+    ) ||
+    localStorage.getItem(
+      "access_token",
+    ) ||
+    localStorage.getItem(
+      "token",
+    ) ||
+    sessionStorage.getItem(
+      "accessToken",
+    ) ||
+    sessionStorage.getItem(
+      "access_token",
+    ) ||
+    sessionStorage.getItem(
+      "token",
+    ) ||
     ""
   );
 }
 
-async function apiFetch(path, options = {}) {
+async function apiFetch(
+  path,
+  options = {},
+) {
   const headers =
-    new Headers(options.headers || {});
+    new Headers(
+      options.headers || {},
+    );
 
   const token =
     getStoredToken();
 
   if (
     token &&
-    !headers.has("Authorization")
+    !headers.has(
+      "Authorization",
+    )
   ) {
     headers.set(
       "Authorization",
@@ -289,21 +385,52 @@ async function apiFetch(path, options = {}) {
     {
       ...options,
       headers,
-      credentials: "include",
+      credentials:
+        "include",
     },
   );
 }
 
-function buildQueryString(filters) {
+async function readResponse(
+  response,
+) {
+  const type =
+    response.headers.get(
+      "content-type",
+    ) || "";
+
+  if (
+    type.includes(
+      "application/json",
+    )
+  ) {
+    return response.json();
+  }
+
+  const value =
+    await response.text();
+
+  return {
+    message:
+      value ||
+      response.statusText,
+  };
+}
+
+function buildQuery(
+  values,
+) {
   const params =
     new URLSearchParams();
 
-  Object.entries(filters).forEach(
+  Object.entries(
+    values,
+  ).forEach(
     ([key, value]) => {
       if (
-        value !== undefined &&
+        value !== "" &&
         value !== null &&
-        value !== ""
+        value !== undefined
       ) {
         params.set(
           key,
@@ -316,42 +443,10 @@ function buildQueryString(filters) {
   return params.toString();
 }
 
-function getStatusInfo(status, text) {
-  const map = {
-    OK: {
-      label: text.statusOk,
-      className: "status-ok",
-    },
-
-    NOT_OK: {
-      label: text.statusNotOk,
-      className: "status-not-ok",
-    },
-
-    NEEDS_FOLLOW_UP: {
-      label: text.statusFollowUp,
-      className: "status-follow-up",
-    },
-
-    NOT_INSPECTED: {
-      label:
-        text.statusNotInspected,
-      className:
-        "status-not-inspected",
-    },
-  };
-
-  return (
-    map[status] || {
-      label:
-        status || "—",
-      className:
-        "status-not-inspected",
-    }
-  );
-}
-
-function formatDate(value, lang) {
+function formatDate(
+  value,
+  lang,
+) {
   if (!value) {
     return "—";
   }
@@ -372,12 +467,48 @@ function formatDate(value, lang) {
       ? "ar-EG"
       : "en-GB",
     {
-      dateStyle: "medium",
+      dateStyle:
+        "medium",
     },
   ).format(date);
 }
 
-function toDateInput(value) {
+function formatDateTime(
+  value,
+  lang,
+) {
+  if (!value) {
+    return "—";
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return String(value);
+  }
+
+  return new Intl.DateTimeFormat(
+    lang === "ar"
+      ? "ar-EG"
+      : "en-GB",
+    {
+      dateStyle:
+        "medium",
+
+      timeStyle:
+        "short",
+    },
+  ).format(date);
+}
+
+function toDateInput(
+  value,
+) {
   if (!value) {
     return "";
   }
@@ -398,51 +529,152 @@ function toDateInput(value) {
     .slice(0, 10);
 }
 
-async function readJsonResponse(
-  response,
+function getImageUrl(
+  value,
 ) {
-  const contentType =
-    response.headers.get(
-      "content-type",
-    ) || "";
-
-  if (
-    contentType.includes(
-      "application/json",
-    )
-  ) {
-    return response.json();
+  if (!value) {
+    return "";
   }
 
-  const text =
-    await response.text();
+  const url =
+    String(value);
 
-  return {
-    message:
-      text || response.statusText,
-  };
+  if (
+    /^https?:\/\//i.test(
+      url,
+    )
+  ) {
+    return url;
+  }
+
+  return `${API_URL}${
+    url.startsWith("/")
+      ? ""
+      : "/"
+  }${url}`;
 }
 
-const INITIAL_SUMMARY = {
-  total: 0,
-  ok: 0,
-  notOk: 0,
-  needsFollowUp: 0,
-  notInspected: 0,
-  clusters: 0,
-  buildings: 0,
-  zones: 0,
-};
+function technicianName(
+  inspection,
+) {
+  const technician =
+    inspection?.technician;
 
-const INITIAL_PAGINATION = {
-  page: 1,
-  limit: 20,
-  total: 0,
-  totalPages: 0,
-};
+  if (!technician) {
+    return "—";
+  }
+
+  return (
+    technician.fullName ||
+    [
+      technician.firstName,
+      technician.lastName,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    technician.username ||
+    "—"
+  );
+}
+
+function glassStatus(
+  status,
+  text,
+) {
+  const map = {
+    OK: {
+      label:
+        text.ok,
+      className:
+        "status-ok",
+    },
+
+    NOT_OK: {
+      label:
+        text.notOk,
+      className:
+        "status-not-ok",
+    },
+
+    NEEDS_FOLLOW_UP: {
+      label:
+        text.followUp,
+      className:
+        "status-follow",
+    },
+
+    NOT_INSPECTED: {
+      label:
+        text.notInspected,
+      className:
+        "status-none",
+    },
+  };
+
+  return (
+    map[status] || {
+      label:
+        status || "—",
+
+      className:
+        "status-none",
+    }
+  );
+}
+
+function inspectionStatus(
+  status,
+  text,
+) {
+  const map = {
+    OK: {
+      label:
+        text.ok,
+      className:
+        "status-ok",
+    },
+
+    NOT_OK: {
+      label:
+        text.notOk,
+      className:
+        "status-not-ok",
+    },
+
+    PARTIAL: {
+      label:
+        text.followUp,
+      className:
+        "status-follow",
+    },
+
+    NOT_REACHABLE: {
+      label:
+        "Not Reachable",
+      className:
+        "status-follow",
+    },
+  };
+
+  return (
+    map[status] || {
+      label:
+        status || "—",
+
+      className:
+        "status-none",
+    }
+  );
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
 
 export default function GlassesAdminPage() {
-  const { lang } = useLang();
+  const {
+    lang,
+  } = useLang();
 
   const text =
     TEXT[
@@ -454,17 +686,27 @@ export default function GlassesAdminPage() {
   const fileInputRef =
     useRef(null);
 
-  const [rows, setRows] =
-    useState([]);
+  /* ==========================
+     MAIN DATA
+  ========================== */
 
-  const [summary, setSummary] =
-    useState(INITIAL_SUMMARY);
+  const [
+    rows,
+    setRows,
+  ] = useState([]);
+
+  const [
+    summary,
+    setSummary,
+  ] = useState(
+    EMPTY_SUMMARY,
+  );
 
   const [
     pagination,
     setPagination,
   ] = useState(
-    INITIAL_PAGINATION,
+    EMPTY_PAGINATION,
   );
 
   const [
@@ -478,17 +720,42 @@ export default function GlassesAdminPage() {
     lanes: [],
   });
 
-  const [filters, setFilters] =
-    useState({
-      search: "",
-      cluster: "",
-      building: "",
-      zone: "",
-      direction: "",
-      currentStatus: "",
-      page: 1,
-      limit: 20,
-    });
+  const [
+    filters,
+    setFilters,
+  ] = useState({
+    search: "",
+    cluster: "",
+    building: "",
+    zone: "",
+    direction: "",
+    currentStatus: "",
+    page: 1,
+    limit: 20,
+  });
+
+  /* ==========================
+     INSPECTIONS
+  ========================== */
+
+  const [
+    inspections,
+    setInspections,
+  ] = useState([]);
+
+  const [
+    inspectionsLoading,
+    setInspectionsLoading,
+  ] = useState(false);
+
+  const [
+    selectedInspection,
+    setSelectedInspection,
+  ] = useState(null);
+
+  /* ==========================
+     GLASS MODALS
+  ========================== */
 
   const [
     selectedGlass,
@@ -505,212 +772,370 @@ export default function GlassesAdminPage() {
     setFormOpen,
   ] = useState(false);
 
-  const [form, setForm] =
-    useState(EMPTY_FORM);
+  const [
+    form,
+    setForm,
+  ] = useState(
+    EMPTY_FORM,
+  );
 
-  const [loading, setLoading] =
-    useState(true);
+  /* ==========================
+     UI STATE
+  ========================== */
 
-  const [saving, setSaving] =
-    useState(false);
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
 
   const [
     importing,
     setImporting,
   ] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [
+    error,
+    setError,
+  ] = useState("");
 
   const [
     success,
     setSuccess,
   ] = useState("");
 
-  const [
-    importResult,
-    setImportResult,
-  ] = useState(null);
+  /* =========================================================
+     RESPONSE CHECK
+  ========================================================= */
 
-  const checkResponse = useCallback(
-    async (
-      response,
-      fallbackMessage,
-    ) => {
-      if (
-        response.status === 401
-      ) {
-        throw new Error(
-          text.sessionExpired,
-        );
-      }
-
-      if (
-        response.status === 404
-      ) {
-        throw new Error(
-          text.endpointMissing,
-        );
-      }
-
-      const data =
-        await readJsonResponse(
-          response,
-        );
-
-      if (!response.ok) {
-        throw new Error(
-          Array.isArray(
-            data?.message,
-          )
-            ? data.message.join(
-                " - ",
-              )
-            : data?.message ||
-              fallbackMessage,
-        );
-      }
-
-      return data;
-    },
-    [text],
-  );
-
-  const loadFilters =
-    useCallback(async () => {
-      try {
-        const response =
-          await apiFetch(
-            "/glasses/filters",
-            {
-              cache:
-                "no-store",
-            },
+  const checkResponse =
+    useCallback(
+      async (
+        response,
+        fallback,
+      ) => {
+        if (
+          response.status ===
+          401
+        ) {
+          throw new Error(
+            text.sessionExpired,
           );
-
-        if (!response.ok) {
-          return;
         }
 
         const data =
-          await response.json();
+          await readResponse(
+            response,
+          );
 
-        setFilterOptions({
-          clusters:
-            data.clusters || [],
-          buildings:
-            data.buildings || [],
-          zones:
-            data.zones || [],
-          directions:
-            data.directions || [],
-          lanes:
-            data.lanes || [],
-        });
-      } catch {
-        // The list can still load.
-      }
-    }, []);
+        if (
+          !response.ok
+        ) {
+          throw new Error(
+            Array.isArray(
+              data?.message,
+            )
+              ? data.message.join(
+                  " - ",
+                )
+              : data?.message ||
+                  fallback,
+          );
+        }
+
+        return data;
+      },
+      [
+        text.sessionExpired,
+      ],
+    );
+
+  /* =========================================================
+     LOAD FILTER OPTIONS
+  ========================================================= */
+
+  const loadFilters =
+    useCallback(
+      async () => {
+        try {
+          const response =
+            await apiFetch(
+              "/glasses/filters",
+              {
+                cache:
+                  "no-store",
+              },
+            );
+
+          if (
+            !response.ok
+          ) {
+            return;
+          }
+
+          const data =
+            await response.json();
+
+          setFilterOptions({
+            clusters:
+              data?.clusters ||
+              [],
+
+            buildings:
+              data?.buildings ||
+              [],
+
+            zones:
+              data?.zones ||
+              [],
+
+            directions:
+              data?.directions ||
+              [],
+
+            lanes:
+              data?.lanes ||
+              [],
+          });
+        } catch (
+          requestError
+        ) {
+          console.error(
+            "Glass filters:",
+            requestError,
+          );
+        }
+      },
+      [],
+    );
+
+  /* =========================================================
+     LOAD GLASS DATA
+
+     IMPORTANT:
+     Inspection failure cannot block glass list.
+  ========================================================= */
 
   const loadData =
-    useCallback(async () => {
-      setLoading(true);
-      setError("");
+    useCallback(
+      async () => {
+        setLoading(true);
+        setError("");
 
-      try {
-        const listQuery =
-          buildQueryString(
-            filters,
-          );
+        try {
+          const query =
+            buildQuery(
+              filters,
+            );
 
-        const summaryQuery =
-          buildQueryString({
-            search:
-              filters.search,
-            cluster:
-              filters.cluster,
-            building:
-              filters.building,
-            zone:
-              filters.zone,
-            direction:
-              filters.direction,
-          });
+          const summaryQuery =
+            buildQuery({
+              search:
+                filters.search,
 
-        const [
-          listResponse,
-          summaryResponse,
-        ] = await Promise.all([
-          apiFetch(
-            `/glasses?${listQuery}`,
-            {
-              cache:
-                "no-store",
-            },
-          ),
+              cluster:
+                filters.cluster,
 
-          apiFetch(
-            `/glasses/summary?${summaryQuery}`,
-            {
-              cache:
-                "no-store",
-            },
-          ),
-        ]);
+              building:
+                filters.building,
 
-        const listData =
-          await checkResponse(
+              zone:
+                filters.zone,
+
+              direction:
+                filters.direction,
+            });
+
+          const [
             listResponse,
-            text.failedLoad,
-          );
-
-        const summaryData =
-          await checkResponse(
             summaryResponse,
-            text.failedLoad,
+          ] =
+            await Promise.all([
+              apiFetch(
+                `/glasses?${query}`,
+                {
+                  cache:
+                    "no-store",
+                },
+              ),
+
+              apiFetch(
+                `/glasses/summary?${summaryQuery}`,
+                {
+                  cache:
+                    "no-store",
+                },
+              ),
+            ]);
+
+          const listData =
+            await checkResponse(
+              listResponse,
+              text.failedLoad,
+            );
+
+          const summaryData =
+            await checkResponse(
+              summaryResponse,
+              text.failedLoad,
+            );
+
+          setRows(
+            Array.isArray(
+              listData?.data,
+            )
+              ? listData.data
+              : [],
           );
 
-        setRows(
-          listData.data || [],
+          setPagination(
+            listData?.pagination ||
+              EMPTY_PAGINATION,
+          );
+
+          setSummary({
+            ...EMPTY_SUMMARY,
+            ...(summaryData ||
+              {}),
+          });
+        } catch (
+          requestError
+        ) {
+          console.error(
+            requestError,
+          );
+
+          setRows([]);
+
+          setSummary(
+            EMPTY_SUMMARY,
+          );
+
+          setError(
+            requestError instanceof
+              Error
+              ? requestError.message
+              : text.failedLoad,
+          );
+        } finally {
+          setLoading(false);
+        }
+      },
+      [
+        filters,
+        checkResponse,
+        text.failedLoad,
+      ],
+    );
+
+  /* =========================================================
+     LOAD INSPECTIONS
+
+     ONE REQUEST ONLY.
+
+     If this fails, the admin page still works.
+  ========================================================= */
+
+  const loadInspections =
+    useCallback(
+      async () => {
+        setInspectionsLoading(
+          true,
         );
 
-        setPagination(
-          listData.pagination ||
-            INITIAL_PAGINATION,
-        );
+        try {
+          const response =
+            await apiFetch(
+              "/glasses/inspection-history",
+              {
+                cache:
+                  "no-store",
+              },
+            );
 
-        setSummary({
-          ...INITIAL_SUMMARY,
-          ...summaryData,
-        });
-      } catch (requestError) {
-        setRows([]);
-        setSummary(
-          INITIAL_SUMMARY,
-        );
+          if (
+            !response.ok
+          ) {
+            console.warn(
+              "Inspection history endpoint returned:",
+              response.status,
+            );
 
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : text.failedLoad,
-        );
-      } finally {
-        setLoading(false);
-      }
-    }, [
-      filters,
-      checkResponse,
-      text.failedLoad,
-    ]);
+            setInspections(
+              [],
+            );
+
+            return;
+          }
+
+          const data =
+            await readResponse(
+              response,
+            );
+
+          const items =
+            Array.isArray(
+              data?.data,
+            )
+              ? data.data
+              : Array.isArray(
+                    data,
+                  )
+                ? data
+                : [];
+
+          setInspections(
+            items,
+          );
+        } catch (
+          requestError
+        ) {
+          console.error(
+            "Inspection History Error:",
+            requestError,
+          );
+
+          /*
+           * مهم:
+           * لا نضع setError هنا حتى لا يظهر أن
+           * الصفحة كلها فشلت بسبب History.
+           */
+          setInspections([]);
+        } finally {
+          setInspectionsLoading(
+            false,
+          );
+        }
+      },
+      [],
+    );
+
+  /* =========================================================
+     EFFECTS
+  ========================================================= */
 
   useEffect(() => {
     loadFilters();
-  }, [loadFilters]);
+  }, [
+    loadFilters,
+  ]);
+
+  useEffect(() => {
+    loadInspections();
+  }, [
+    loadInspections,
+  ]);
 
   useEffect(() => {
     const timer =
       window.setTimeout(
-        loadData,
+        () => {
+          loadData();
+        },
         filters.search
           ? 300
           : 0,
@@ -726,53 +1151,176 @@ export default function GlassesAdminPage() {
     filters.search,
   ]);
 
-  const stats = useMemo(
-    () => [
-      {
-        label:
-          text.total,
-        value:
-          summary.total,
-        color: "blue",
-      },
-      {
-        label:
-          text.ok,
-        value:
-          summary.ok,
-        color: "green",
-      },
-      {
-        label:
-          text.notOk,
-        value:
-          summary.notOk,
-        color: "red",
-      },
-      {
-        label:
-          text.followUp,
-        value:
-          summary.needsFollowUp,
-        color: "orange",
-      },
-      {
-        label:
-          text.notInspected,
-        value:
-          summary.notInspected,
-        color: "purple",
-      },
-      {
-        label:
-          text.zones,
-        value:
-          summary.zones,
-        color: "cyan",
-      },
-    ],
-    [summary, text],
-  );
+  /* =========================================================
+     GROUP GLASS BY MINISTRY / BUILDING
+  ========================================================= */
+
+  const groupedGlass =
+    useMemo(() => {
+      const groups =
+        new Map();
+
+      rows.forEach(
+        (glass) => {
+          const ministry =
+            glass.building ||
+            "—";
+
+          if (
+            !groups.has(
+              ministry,
+            )
+          ) {
+            groups.set(
+              ministry,
+              [],
+            );
+          }
+
+          groups
+            .get(ministry)
+            .push(glass);
+        },
+      );
+
+      return Array.from(
+        groups.entries(),
+      ).sort(
+        ([a], [b]) =>
+          String(a).localeCompare(
+            String(b),
+            lang === "ar"
+              ? "ar"
+              : "en",
+          ),
+      );
+    }, [
+      rows,
+      lang,
+    ]);
+
+  /* =========================================================
+     INSPECTION COUNTS
+  ========================================================= */
+
+  const inspectionCounts =
+    useMemo(() => {
+      const counts =
+        new Map();
+
+      inspections.forEach(
+        (inspection) => {
+          const id =
+            Number(
+              inspection
+                ?.glassId ||
+                inspection
+                  ?.glass?.id,
+            );
+
+          if (!id) {
+            return;
+          }
+
+          counts.set(
+            id,
+            (
+              counts.get(
+                id,
+              ) || 0
+            ) + 1,
+          );
+        },
+      );
+
+      return counts;
+    }, [
+      inspections,
+    ]);
+
+  /* =========================================================
+     STATS
+  ========================================================= */
+
+  const stats =
+    useMemo(
+      () => [
+        {
+          label:
+            text.totalGlass,
+
+          value:
+            summary.total,
+
+          className:
+            "blue",
+        },
+
+        {
+          label:
+            text.inspections,
+
+          value:
+            inspections.length,
+
+          className:
+            "cyan",
+        },
+
+        {
+          label:
+            text.ok,
+
+          value:
+            summary.ok,
+
+          className:
+            "green",
+        },
+
+        {
+          label:
+            text.notOk,
+
+          value:
+            summary.notOk,
+
+          className:
+            "red",
+        },
+
+        {
+          label:
+            text.followUp,
+
+          value:
+            summary.needsFollowUp,
+
+          className:
+            "orange",
+        },
+
+        {
+          label:
+            text.notInspected,
+
+          value:
+            summary.notInspected,
+
+          className:
+            "purple",
+        },
+      ],
+      [
+        text,
+        summary,
+        inspections.length,
+      ],
+    );
+
+  /* =========================================================
+     FILTERS
+  ========================================================= */
 
   function updateFilter(
     name,
@@ -781,10 +1329,12 @@ export default function GlassesAdminPage() {
     setFilters(
       (current) => ({
         ...current,
+
         [name]:
           name === "page"
             ? Number(value)
             : value,
+
         page:
           name === "page"
             ? Number(value)
@@ -806,53 +1356,90 @@ export default function GlassesAdminPage() {
     });
   }
 
+  /* =========================================================
+     CREATE / EDIT GLASS
+  ========================================================= */
+
   function openCreate() {
-    setEditingGlass(null);
+    setEditingGlass(
+      null,
+    );
+
     setForm({
       ...EMPTY_FORM,
     });
+
     setFormOpen(true);
+
     setError("");
   }
 
-  function openEdit(glass) {
-    setEditingGlass(glass);
+  function openEdit(
+    glass,
+  ) {
+    setEditingGlass(
+      glass,
+    );
 
     setForm({
       cluster:
-        glass.cluster || "",
+        glass.cluster ||
+        "",
+
       building:
-        glass.building || "",
+        glass.building ||
+        "",
+
       zone:
-        glass.zone || "",
+        glass.zone ||
+        "",
+
       direction:
-        glass.direction || "IN",
+        glass.direction ||
+        "IN",
+
       lane:
-        glass.lane || "",
+        glass.lane ||
+        "",
+
       glassType:
-        glass.glassType || "",
+        glass.glassType ||
+        "",
+
       thickness:
-        glass.thickness || "",
+        glass.thickness ||
+        "",
+
       status:
-        glass.status || "ACTIVE",
+        glass.status ||
+        "ACTIVE",
+
       currentStatus:
         glass.currentStatus ||
         "NOT_INSPECTED",
+
       installDate:
         toDateInput(
           glass.installDate,
         ),
+
       notes:
-        glass.notes || "",
+        glass.notes ||
+        "",
     });
 
     setFormOpen(true);
+
     setError("");
   }
 
   function closeForm() {
     setFormOpen(false);
-    setEditingGlass(null);
+
+    setEditingGlass(
+      null,
+    );
+
     setForm({
       ...EMPTY_FORM,
     });
@@ -865,7 +1452,9 @@ export default function GlassesAdminPage() {
     setForm(
       (current) => ({
         ...current,
-        [name]: value,
+
+        [name]:
+          value,
       }),
     );
   }
@@ -882,59 +1471,73 @@ export default function GlassesAdminPage() {
       !form.direction
     ) {
       setError(
-        text.requiredFields,
+        text.required,
       );
+
       return;
     }
 
     setSaving(true);
+
     setError("");
+
     setSuccess("");
 
     try {
       const payload = {
         cluster:
           form.cluster.trim(),
+
         building:
           form.building.trim(),
+
         zone:
           form.zone.trim(),
+
         direction:
           form.direction,
+
         lane:
           form.lane.trim() ||
           undefined,
+
         glassType:
           form.glassType.trim() ||
           undefined,
+
         thickness:
           form.thickness.trim() ||
           undefined,
+
         status:
           form.status,
+
         currentStatus:
           form.currentStatus,
+
         installDate:
           form.installDate ||
           undefined,
+
         notes:
           form.notes.trim() ||
           undefined,
       };
 
-      const isEditing =
+      const editing =
         Boolean(
           editingGlass?.id,
         );
 
       const response =
         await apiFetch(
-          isEditing
+          editing
             ? `/glasses/${editingGlass.id}`
             : "/glasses",
+
           {
             method:
-              isEditing
+              editing
                 ? "PATCH"
                 : "POST",
 
@@ -958,16 +1561,20 @@ export default function GlassesAdminPage() {
       closeForm();
 
       setSuccess(
-        text.saveSuccess,
+        text.saved,
       );
 
       await Promise.all([
         loadData(),
         loadFilters(),
+        loadInspections(),
       ]);
-    } catch (requestError) {
+    } catch (
+      requestError
+    ) {
       setError(
-        requestError instanceof Error
+        requestError instanceof
+          Error
           ? requestError.message
           : text.failedSave,
       );
@@ -975,6 +1582,10 @@ export default function GlassesAdminPage() {
       setSaving(false);
     }
   }
+
+  /* =========================================================
+     DELETE
+  ========================================================= */
 
   async function deleteGlass(
     glass,
@@ -988,6 +1599,7 @@ export default function GlassesAdminPage() {
     }
 
     setError("");
+
     setSuccess("");
 
     try {
@@ -995,7 +1607,8 @@ export default function GlassesAdminPage() {
         await apiFetch(
           `/glasses/${glass.id}`,
           {
-            method: "DELETE",
+            method:
+              "DELETE",
           },
         );
 
@@ -1005,49 +1618,49 @@ export default function GlassesAdminPage() {
       );
 
       setSuccess(
-        text.deleteSuccess,
+        text.deleted,
       );
 
       await Promise.all([
         loadData(),
         loadFilters(),
+        loadInspections(),
       ]);
-    } catch (requestError) {
+    } catch (
+      requestError
+    ) {
       setError(
-        requestError instanceof Error
+        requestError instanceof
+          Error
           ? requestError.message
           : text.failedDelete,
       );
     }
   }
 
+  /* =========================================================
+     IMPORT EXCEL
+  ========================================================= */
+
   async function importExcel(
     event,
   ) {
     const file =
-      event.target.files?.[0];
+      event.target
+        .files?.[0];
 
-    event.target.value = "";
+    event.target.value =
+      "";
 
     if (!file) {
       return;
     }
 
-    if (
-      !/\.(xlsx|xls)$/i.test(
-        file.name,
-      )
-    ) {
-      setError(
-        text.chooseExcel,
-      );
-      return;
-    }
-
     setImporting(true);
+
     setError("");
+
     setSuccess("");
-    setImportResult(null);
 
     try {
       const formData =
@@ -1062,36 +1675,33 @@ export default function GlassesAdminPage() {
         await apiFetch(
           "/glasses/import-excel",
           {
-            method: "POST",
-            body: formData,
+            method:
+              "POST",
+
+            body:
+              formData,
           },
         );
 
-      const data =
-        await checkResponse(
-          response,
-          text.failedImport,
-        );
-
-      setImportResult(data);
-      setSuccess(
-        text.importSuccess,
+      await checkResponse(
+        response,
+        text.failedImport,
       );
 
-      setFilters(
-        (current) => ({
-          ...current,
-          page: 1,
-        }),
+      setSuccess(
+        text.imported,
       );
 
       await Promise.all([
         loadData(),
         loadFilters(),
       ]);
-    } catch (requestError) {
+    } catch (
+      requestError
+    ) {
       setError(
-        requestError instanceof Error
+        requestError instanceof
+          Error
           ? requestError.message
           : text.failedImport,
       );
@@ -1100,9 +1710,11 @@ export default function GlassesAdminPage() {
     }
   }
 
-  async function downloadTemplate() {
-    setError("");
+  /* =========================================================
+     TEMPLATE
+  ========================================================= */
 
+  async function downloadTemplate() {
     try {
       const response =
         await apiFetch(
@@ -1110,25 +1722,9 @@ export default function GlassesAdminPage() {
         );
 
       if (
-        response.status === 401
+        !response.ok
       ) {
-        throw new Error(
-          text.sessionExpired,
-        );
-      }
-
-      if (
-        response.status === 404
-      ) {
-        throw new Error(
-          text.endpointMissing,
-        );
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          text.failedTemplate,
-        );
+        return;
       }
 
       const blob =
@@ -1144,7 +1740,9 @@ export default function GlassesAdminPage() {
           "a",
         );
 
-      link.href = url;
+      link.href =
+        url;
+
       link.download =
         "gate-glass-import-template.xlsx";
 
@@ -1153,46 +1751,56 @@ export default function GlassesAdminPage() {
       );
 
       link.click();
+
       link.remove();
 
       URL.revokeObjectURL(
         url,
       );
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : text.failedTemplate,
+    } catch (
+      requestError
+    ) {
+      console.error(
+        requestError,
       );
     }
   }
 
+  /* =========================================================
+     RENDER
+  ========================================================= */
+
   return (
     <main
-      className="gate-glass-page"
+      className="glass-admin"
       dir={
         lang === "ar"
           ? "rtl"
           : "ltr"
       }
-      lang={lang}
     >
       <style>{`
         * {
           box-sizing: border-box;
         }
 
-        .gate-glass-page {
-          min-height: 100%;
-          padding: 29px 25px;
-          color: #122238;
+        .glass-admin {
+          min-height: 100vh;
+          padding: 25px;
           background: #eef3f8;
+          color: #17263c;
           font-family:
             Inter,
             Cairo,
             Tajawal,
             Arial,
             sans-serif;
+        }
+
+        .page {
+          width: 100%;
+          max-width: 1500px;
+          margin: 0 auto;
         }
 
         button,
@@ -1202,339 +1810,376 @@ export default function GlassesAdminPage() {
           font: inherit;
         }
 
-        .page-inner {
-          width: 100%;
-          max-width: 1500px;
-          margin: 0 auto;
-        }
+        /* =====================
+           HEADER
+        ===================== */
 
-        .page-header {
+        .header {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 18px;
-          margin-bottom: 18px;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 20px;
         }
 
-        .page-title h1 {
+        .header h1 {
           margin: 0 0 5px;
-          font-size: 25px;
+          font-size: 26px;
           font-weight: 900;
         }
 
-        .page-title p {
+        .header p {
           margin: 0;
-          color: #7b8ca3;
-          font-size: 13px;
+          color: #7a8ba1;
+          font-size: 12px;
         }
 
-        .header-actions {
+        .actions {
           display: flex;
-          align-items: center;
-          gap: 9px;
           flex-wrap: wrap;
+          gap: 8px;
         }
 
-        .action-button {
-          height: 41px;
-          padding: 0 15px;
+        .btn {
+          min-height: 40px;
+          padding: 0 14px;
           border-radius: 9px;
           cursor: pointer;
           font-size: 11px;
           font-weight: 900;
         }
 
-        .action-button:disabled {
-          opacity: 0.55;
-          cursor: not-allowed;
-        }
-
-        .button-dark {
+        .btn-dark {
           border: 0;
-          color: #ffffff;
-          background: #17253a;
+          color: white;
+          background: #17263c;
         }
 
-        .button-blue {
-          border: 1px solid #0ea5e9;
+        .btn-blue {
+          border: 1px solid #22aee5;
           color: #087da8;
-          background: #ffffff;
+          background: white;
         }
 
-        .button-green {
+        .btn-green {
           border: 1px solid #22c55e;
           color: #15803d;
-          background: #ffffff;
+          background: white;
         }
 
-        .button-purple {
-          border: 1px solid #7c3aed;
+        .btn-purple {
+          border: 1px solid #8b5cf6;
           color: #6d28d9;
-          background: #ffffff;
+          background: white;
         }
 
-        .hidden-input {
+        .hidden {
           display: none;
         }
 
+        /* =====================
+           MESSAGES
+        ===================== */
+
         .message {
-          padding: 13px 15px;
           margin-bottom: 15px;
+          padding: 13px;
           border-radius: 10px;
           font-size: 12px;
           font-weight: 800;
-          line-height: 1.8;
         }
 
-        .message.error {
+        .error {
           border: 1px solid #fecaca;
           color: #b91c1c;
           background: #fff1f2;
         }
 
-        .message.success {
+        .success {
           border: 1px solid #bbf7d0;
           color: #15803d;
           background: #f0fdf4;
         }
 
-        .import-summary {
-          display: flex;
-          gap: 18px;
-          flex-wrap: wrap;
-          margin-top: 5px;
-          font-weight: 700;
-        }
+        /* =====================
+           STATS
+        ===================== */
 
-        .stats-grid {
+        .stats {
           display: grid;
           grid-template-columns:
-            repeat(3, minmax(0, 1fr));
-          gap: 15px;
+            repeat(3, 1fr);
+          gap: 14px;
           margin-bottom: 20px;
         }
 
-        .stat-card {
+        .stat {
           position: relative;
           overflow: hidden;
-          min-height: 103px;
-          padding: 17px 19px;
+          padding: 17px;
+          min-height: 100px;
           border: 1px solid #dbe4ee;
           border-radius: 13px;
-          background: #ffffff;
-          box-shadow:
-            0 3px 10px
-            rgba(20, 44, 71, 0.04);
+          background: white;
         }
 
-        .stat-card::before {
-          position: absolute;
-          inset-inline: 0;
-          top: 0;
-          height: 3px;
+        .stat::before {
           content: "";
-          background: #13a8e6;
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: #0ea5e9;
         }
 
-        .stat-card.green::before {
-          background: #12b981;
+        .stat.green::before {
+          background: #22c55e;
         }
 
-        .stat-card.red::before {
+        .stat.red::before {
           background: #ef4444;
         }
 
-        .stat-card.orange::before {
+        .stat.orange::before {
           background: #f59e0b;
         }
 
-        .stat-card.purple::before {
-          background: #6558ef;
+        .stat.purple::before {
+          background: #8b5cf6;
         }
 
-        .stat-card.cyan::before {
-          background: #08b7c9;
+        .stat.cyan::before {
+          background: #06b6d4;
         }
 
         .stat-label {
-          margin-bottom: 7px;
+          margin-bottom: 8px;
           color: #7487a0;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 900;
-          text-transform: uppercase;
         }
 
         .stat-value {
-          font-size: 29px;
+          font-size: 30px;
           font-weight: 900;
-          line-height: 1;
         }
 
-        .filter-panel,
-        .content-panel {
+        /* =====================
+           PANELS
+        ===================== */
+
+        .panel {
           padding: 18px;
+          margin-bottom: 20px;
           border: 1px solid #dbe4ee;
           border-radius: 14px;
-          background: #ffffff;
-          box-shadow:
-            0 3px 12px
-            rgba(20, 44, 71, 0.04);
+          background: white;
         }
 
-        .filter-panel {
-          margin-bottom: 20px;
-        }
-
-        .filter-heading {
+        .panel-title {
           display: flex;
-          align-items: baseline;
-          gap: 10px;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
           margin-bottom: 15px;
         }
 
-        .filter-heading h2 {
-          margin: 0;
-          font-size: 15px;
-          font-weight: 900;
+        .panel-title h2 {
+          margin: 0 0 4px;
+          font-size: 16px;
         }
 
-        .filter-heading span {
+        .panel-title p {
+          margin: 0;
           color: #8191a6;
           font-size: 11px;
         }
 
-        .filter-grid {
+        .count-badge {
+          padding: 6px 10px;
+          border-radius: 999px;
+          color: #087da8;
+          background: #e9f8fe;
+          font-size: 10px;
+          font-weight: 900;
+        }
+
+        /* =====================
+           INSPECTIONS
+        ===================== */
+
+        .inspection-grid {
           display: grid;
           grid-template-columns:
-            minmax(230px, 1.35fr)
-            repeat(5, minmax(135px, 0.75fr));
+            repeat(3, 1fr);
+          gap: 12px;
+        }
+
+        .inspection {
+          padding: 14px;
+          border: 1px solid #dbe4ee;
+          border-radius: 12px;
+          background: #fbfcfe;
+        }
+
+        .inspection-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+
+        .inspection-title {
+          font-size: 13px;
+          font-weight: 900;
+        }
+
+        .muted {
+          margin-top: 3px;
+          color: #8191a6;
+          font-size: 10px;
+          line-height: 1.6;
+        }
+
+        .inspection-comment {
+          margin-top: 10px;
+          padding: 10px;
+          border-radius: 8px;
+          background: #eef3f8;
+          font-size: 11px;
+          line-height: 1.6;
+        }
+
+        .thumbs {
+          display: flex;
+          gap: 7px;
+          overflow-x: auto;
+          margin-top: 10px;
+        }
+
+        .thumb {
+          width: 70px;
+          height: 70px;
+          flex: 0 0 70px;
+          overflow: hidden;
+          border-radius: 8px;
+          background: #e2e8f0;
+        }
+
+        .thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        /* =====================
+           FILTERS
+        ===================== */
+
+        .filters {
+          display: grid;
+          grid-template-columns:
+            1.4fr repeat(
+              5,
+              1fr
+            );
           gap: 10px;
         }
 
         .field label {
           display: block;
-          margin-bottom: 6px;
+          margin-bottom: 5px;
           color: #637690;
           font-size: 9px;
           font-weight: 900;
-          text-transform: uppercase;
         }
 
         .control {
           width: 100%;
-          height: 41px;
-          padding: 0 11px;
-          outline: none;
+          min-height: 41px;
+          padding: 0 10px;
           border: 1px solid #ccd8e5;
           border-radius: 9px;
-          color: #17263c;
+          outline: none;
           background: #fbfcfe;
-          font-size: 12px;
         }
 
         textarea.control {
+          padding: 10px;
           min-height: 90px;
-          padding: 11px;
           resize: vertical;
         }
 
-        .control:focus {
-          border-color: #20a8df;
-          background: #ffffff;
-          box-shadow:
-            0 0 0 3px
-            rgba(32, 168, 223, 0.1);
-        }
-
-        .reset-button {
-          height: 36px;
-          padding: 0 14px;
+        .reset {
           margin-top: 12px;
-          border: 1px solid #d5dfea;
-          border-radius: 8px;
-          color: #17263c;
-          background: #ffffff;
-          cursor: pointer;
-          font-size: 11px;
-          font-weight: 900;
         }
 
-        .content-heading {
+        /* =====================
+           MINISTRY
+        ===================== */
+
+        .ministry {
+          padding: 15px;
+          margin-bottom: 20px;
+          border: 1px solid #dbe4ee;
+          border-radius: 14px;
+          background: #f8fbfd;
+        }
+
+        .ministry-head {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 15px;
-          margin-bottom: 15px;
+          gap: 12px;
+          padding-bottom: 11px;
+          margin-bottom: 13px;
+          border-bottom: 1px solid #dfe7ef;
         }
 
-        .content-heading h2 {
-          margin: 0 0 4px;
+        .ministry-head h3 {
+          margin: 0 0 5px;
           font-size: 16px;
-          font-weight: 900;
         }
 
-        .content-heading p {
-          margin: 0;
-          color: #8191a7;
-          font-size: 11px;
-        }
-
-        .record-badge {
-          padding: 7px 11px;
-          border-radius: 999px;
-          color: #087da8;
-          background: #e9f8fe;
-          font-size: 11px;
-          font-weight: 900;
+        .ministry-meta {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+          color: #7487a0;
+          font-size: 10px;
+          font-weight: 800;
         }
 
         .glass-grid {
           display: grid;
           grid-template-columns:
-            repeat(3, minmax(0, 1fr));
-          gap: 14px;
+            repeat(3, 1fr);
+          gap: 13px;
         }
 
         .glass-card {
           overflow: hidden;
           border: 1px solid #dbe4ee;
           border-radius: 12px;
-          background: #ffffff;
-          transition: 0.2s ease;
+          background: white;
         }
 
-        .glass-card:hover {
-          transform: translateY(-2px);
-          border-color: #77ccef;
-          box-shadow:
-            0 10px 24px
-            rgba(20, 44, 71, 0.08);
-        }
-
-        .card-top {
+        .glass-card-head {
           display: flex;
-          align-items: flex-start;
           justify-content: space-between;
-          gap: 10px;
-          padding: 15px;
-          border-bottom: 1px solid #e8eef4;
+          padding: 14px;
+          border-bottom: 1px solid #e7eef5;
           background: #f8fbfd;
         }
 
-        .card-top h3 {
+        .glass-card-head h4 {
           margin: 0 0 4px;
-          font-size: 14px;
-          line-height: 1.5;
         }
 
-        .card-subtitle {
-          color: #7e8fa4;
-          font-size: 10px;
-        }
-
-        .direction-badge {
-          flex-shrink: 0;
-          padding: 6px 8px;
+        .direction {
+          height: fit-content;
+          padding: 5px 8px;
           border-radius: 7px;
           color: #087da8;
           background: #e8f7fd;
@@ -1542,16 +2187,16 @@ export default function GlassesAdminPage() {
           font-weight: 900;
         }
 
-        .card-body {
-          padding: 15px;
+        .glass-body {
+          padding: 14px;
         }
 
         .info-grid {
           display: grid;
           grid-template-columns:
-            repeat(2, minmax(0, 1fr));
-          gap: 11px;
-          margin-bottom: 14px;
+            repeat(2, 1fr);
+          gap: 10px;
+          margin-bottom: 12px;
         }
 
         .info-label {
@@ -1559,22 +2204,20 @@ export default function GlassesAdminPage() {
           margin-bottom: 3px;
           color: #8998aa;
           font-size: 9px;
-          text-transform: uppercase;
         }
 
         .info-value {
           display: block;
-          overflow: hidden;
-          color: #26384e;
           font-size: 11px;
           font-weight: 800;
-          text-overflow: ellipsis;
-          white-space: nowrap;
         }
 
-        .status-badge {
+        /* =====================
+           STATUS
+        ===================== */
+
+        .status {
           display: inline-flex;
-          align-items: center;
           padding: 6px 8px;
           border-radius: 7px;
           font-size: 9px;
@@ -1591,24 +2234,29 @@ export default function GlassesAdminPage() {
           background: #fee2e2;
         }
 
-        .status-follow-up {
+        .status-follow {
           color: #a16207;
           background: #fef3c7;
         }
 
-        .status-not-inspected {
+        .status-none {
           color: #475569;
           background: #e2e8f0;
         }
+
+        /* =====================
+           CARD ACTIONS
+        ===================== */
 
         .card-actions {
           display: flex;
           gap: 7px;
           flex-wrap: wrap;
+          margin-top: 12px;
         }
 
-        .small-button {
-          height: 31px;
+        .small-btn {
+          min-height: 31px;
           padding: 0 10px;
           border-radius: 7px;
           cursor: pointer;
@@ -1616,76 +2264,68 @@ export default function GlassesAdminPage() {
           font-weight: 900;
         }
 
-        .details-button {
+        .details-btn {
           border: 0;
-          color: #ffffff;
-          background: #18273c;
+          color: white;
+          background: #17263c;
         }
 
-        .edit-button {
+        .edit-btn {
           border: 1px solid #38bdf8;
           color: #087da8;
-          background: #ffffff;
+          background: white;
         }
 
-        .delete-button {
+        .delete-btn {
           border: 1px solid #fca5a5;
           color: #b91c1c;
-          background: #ffffff;
+          background: white;
         }
 
-        .empty-state {
+        /* =====================
+           EMPTY
+        ===================== */
+
+        .empty {
           grid-column: 1 / -1;
-          padding: 55px 20px;
+          padding: 40px;
           border: 1px dashed #ccd8e5;
           border-radius: 10px;
-          color: #8292a7;
-          background: #fbfcfe;
+          color: #8191a6;
           text-align: center;
         }
 
-        .empty-state strong {
-          display: block;
-          margin-bottom: 6px;
-          color: #26384e;
-        }
+        /* =====================
+           PAGINATION
+        ===================== */
 
         .pagination {
           display: flex;
-          align-items: center;
           justify-content: center;
-          gap: 9px;
-          padding-top: 18px;
+          align-items: center;
+          gap: 10px;
+          margin-top: 18px;
         }
 
-        .pagination button {
-          height: 35px;
-          padding: 0 13px;
-          border: 1px solid #d5dfea;
-          border-radius: 8px;
-          color: #17263c;
-          background: #ffffff;
-          cursor: pointer;
-          font-size: 11px;
-          font-weight: 900;
-        }
+        /* =====================
+           MODALS
+        ===================== */
 
-        .pagination button:disabled {
-          opacity: 0.45;
-          cursor: not-allowed;
-        }
-
-        .modal-overlay {
+        .overlay {
           position: fixed;
-          z-index: 2000;
+          z-index: 5000;
           inset: 0;
           display: flex;
-          align-items: center;
           justify-content: center;
+          align-items: center;
           padding: 20px;
           background:
-            rgba(15, 28, 45, 0.6);
-          backdrop-filter: blur(4px);
+            rgba(
+              15,
+              28,
+              45,
+              0.62
+            );
         }
 
         .modal {
@@ -1694,36 +2334,28 @@ export default function GlassesAdminPage() {
           max-height: 92vh;
           overflow-y: auto;
           border-radius: 14px;
-          background: #ffffff;
-          box-shadow:
-            0 25px 70px
-            rgba(0, 0, 0, 0.25);
+          background: white;
         }
 
-        .modal-header {
+        .modal-head {
           display: flex;
-          align-items: center;
           justify-content: space-between;
-          gap: 12px;
-          padding: 17px 19px;
-          border-bottom:
-            1px solid #e6edf4;
+          align-items: center;
+          padding: 17px;
+          border-bottom: 1px solid #e6edf4;
         }
 
-        .modal-header h2 {
+        .modal-head h2 {
           margin: 0;
           font-size: 17px;
         }
 
-        .close-button {
+        .close {
           width: 35px;
           height: 35px;
           border: 0;
           border-radius: 8px;
-          color: #26384e;
-          background: #eef3f7;
           cursor: pointer;
-          font-size: 18px;
         }
 
         .modal-body {
@@ -1731,129 +2363,160 @@ export default function GlassesAdminPage() {
         }
 
         .form-grid,
-        .detail-grid {
+        .details-grid {
           display: grid;
           grid-template-columns:
-            repeat(2, minmax(0, 1fr));
+            repeat(2, 1fr);
           gap: 12px;
         }
 
-        .full-field {
+        .full {
           grid-column: 1 / -1;
+        }
+
+        .detail-box {
+          padding: 12px;
+          border: 1px solid #dfe7ef;
+          border-radius: 9px;
+          background: #fbfcfe;
+        }
+
+        .detail-label {
+          margin-bottom: 5px;
+          color: #8191a6;
+          font-size: 10px;
+        }
+
+        .detail-value {
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .gallery {
+          display: grid;
+          grid-template-columns:
+            repeat(3, 1fr);
+          gap: 10px;
+          margin-top: 12px;
+        }
+
+        .gallery img {
+          width: 100%;
+          aspect-ratio: 4 / 3;
+          object-fit: cover;
+          border-radius: 10px;
         }
 
         .modal-actions {
           display: flex;
           justify-content: flex-end;
-          gap: 9px;
-          padding-top: 16px;
+          gap: 8px;
+          margin-top: 16px;
         }
 
-        .detail-box {
-          padding: 14px;
-          border: 1px solid #dfe7ef;
-          border-radius: 10px;
-          background: #fbfcfe;
-        }
+        /* =====================
+           RESPONSIVE
+        ===================== */
 
-        .detail-row {
-          display: grid;
-          grid-template-columns:
-            125px 1fr;
-          gap: 10px;
-          padding: 7px 0;
-          border-bottom:
-            1px solid #edf2f6;
-          font-size: 11px;
-        }
-
-        .detail-row:last-child {
-          border-bottom: 0;
-        }
-
-        .detail-row span:first-child {
-          color: #8191a6;
-        }
-
-        .detail-row span:last-child {
-          color: #26384e;
-          font-weight: 800;
-          word-break: break-word;
-        }
-
-        @media (max-width: 1200px) {
-          .filter-grid {
+        @media (
+          max-width: 1200px
+        ) {
+          .filters {
             grid-template-columns:
-              repeat(3, minmax(0, 1fr));
+              repeat(
+                3,
+                1fr
+              );
           }
 
-          .glass-grid {
+          .glass-grid,
+          .inspection-grid {
             grid-template-columns:
-              repeat(2, minmax(0, 1fr));
+              repeat(
+                2,
+                1fr
+              );
           }
         }
 
-        @media (max-width: 720px) {
-          .gate-glass-page {
-            padding: 18px 14px;
+        @media (
+          max-width: 720px
+        ) {
+          .glass-admin {
+            padding: 15px;
           }
 
-          .page-header,
-          .content-heading {
+          .header,
+          .panel-title {
             align-items: stretch;
             flex-direction: column;
           }
 
-          .stats-grid,
-          .filter-grid,
+          .stats,
+          .filters,
           .glass-grid,
+          .inspection-grid,
           .form-grid,
-          .detail-grid {
-            grid-template-columns: 1fr;
+          .details-grid,
+          .gallery {
+            grid-template-columns:
+              1fr;
           }
 
-          .full-field {
+          .full {
             grid-column: auto;
-          }
-
-          .detail-row {
-            grid-template-columns: 1fr;
-            gap: 2px;
           }
         }
       `}</style>
 
-      <div className="page-inner">
-        <header className="page-header">
-          <div className="page-title">
-            <h1>{text.title}</h1>
-            <p>{text.subtitle}</p>
+      <div className="page">
+        {/* =====================================================
+            HEADER
+        ===================================================== */}
+
+        <header className="header">
+          <div>
+            <h1>
+              {text.title}
+            </h1>
+
+            <p>
+              {text.subtitle}
+            </p>
           </div>
 
-          <div className="header-actions">
+          <div className="actions">
             <input
-              ref={fileInputRef}
+              ref={
+                fileInputRef
+              }
+              className="hidden"
               type="file"
               accept=".xlsx,.xls"
-              className="hidden-input"
-              onChange={importExcel}
+              onChange={
+                importExcel
+              }
             />
 
             <button
               type="button"
-              className="action-button button-purple"
-              onClick={downloadTemplate}
+              className="btn btn-purple"
+              onClick={
+                downloadTemplate
+              }
             >
-              {text.downloadTemplate}
+              {text.template}
             </button>
 
             <button
               type="button"
-              className="action-button button-green"
+              className="btn btn-green"
+              disabled={
+                importing
+              }
               onClick={() =>
                 fileInputRef.current?.click()
               }
-              disabled={importing}
             >
               {importing
                 ? text.importing
@@ -1862,22 +2525,34 @@ export default function GlassesAdminPage() {
 
             <button
               type="button"
-              className="action-button button-blue"
-              onClick={openCreate}
+              className="btn btn-blue"
+              onClick={
+                openCreate
+              }
             >
               + {text.addGlass}
             </button>
 
             <button
               type="button"
-              className="action-button button-dark"
-              onClick={loadData}
-              disabled={loading}
+              className="btn btn-dark"
+              disabled={
+                loading
+              }
+              onClick={() => {
+                loadData();
+                loadFilters();
+                loadInspections();
+              }}
             >
               {text.refresh}
             </button>
           </div>
         </header>
+
+        {/* =====================================================
+            MESSAGES
+        ===================================================== */}
 
         {error && (
           <div className="message error">
@@ -1888,133 +2563,379 @@ export default function GlassesAdminPage() {
         {success && (
           <div className="message success">
             {success}
-
-            {importResult && (
-              <div className="import-summary">
-                <span>
-                  {text.sourceRows}:{" "}
-                  {importResult.sourceRows}
-                </span>
-
-                <span>
-                  {text.created}:{" "}
-                  {importResult.created}
-                </span>
-
-                <span>
-                  {text.updated}:{" "}
-                  {importResult.updated}
-                </span>
-
-                <span>
-                  {text.rejected}:{" "}
-                  {importResult.rejectedCount}
-                </span>
-              </div>
-            )}
           </div>
         )}
 
-        <section className="stats-grid">
-          {stats.map((stat) => (
-            <article
-              className={`stat-card ${stat.color}`}
-              key={stat.label}
-            >
-              <div className="stat-label">
-                {stat.label}
-              </div>
+        {/* =====================================================
+            STATS
+        ===================================================== */}
 
-              <div className="stat-value">
-                {stat.value}
-              </div>
-            </article>
-          ))}
+        <section className="stats">
+          {stats.map(
+            (stat) => (
+              <article
+                key={
+                  stat.label
+                }
+                className={`stat ${stat.className}`}
+              >
+                <div className="stat-label">
+                  {
+                    stat.label
+                  }
+                </div>
+
+                <div className="stat-value">
+                  {
+                    stat.value
+                  }
+                </div>
+              </article>
+            ),
+          )}
         </section>
 
-        <section className="filter-panel">
-          <div className="filter-heading">
-            <h2>{text.filterTitle}</h2>
-            <span>{text.filterHint}</span>
+        {/* =====================================================
+            INSPECTION ACTIVITY
+        ===================================================== */}
+
+        <section className="panel">
+          <div className="panel-title">
+            <div>
+              <h2>
+                {
+                  text.inspectionActivity
+                }
+              </h2>
+
+              <p>
+                {
+                  text.inspectionActivityHint
+                }
+              </p>
+            </div>
+
+            <span className="count-badge">
+              {
+                inspections.length
+              }{" "}
+              {
+                text.inspections
+              }
+            </span>
           </div>
 
-          <div className="filter-grid">
+          <div className="inspection-grid">
+            {inspectionsLoading && (
+              <div className="empty">
+                {
+                  text.loading
+                }
+              </div>
+            )}
+
+            {!inspectionsLoading &&
+              inspections
+                .slice(
+                  0,
+                  9,
+                )
+                .map(
+                  (
+                    inspection,
+                  ) => {
+                    const glass =
+                      inspection?.glass ||
+                      {};
+
+                    const status =
+                      inspectionStatus(
+                        inspection
+                          ?.inspectionStatus,
+                        text,
+                      );
+
+                    const images =
+                      Array.isArray(
+                        inspection
+                          ?.images,
+                      )
+                        ? inspection.images.filter(
+                            (
+                              image,
+                            ) =>
+                              image?.imageUrl,
+                          )
+                        : [];
+
+                    return (
+                      <article
+                        key={
+                          inspection.id
+                        }
+                        className="inspection"
+                      >
+                        <div className="inspection-head">
+                          <div>
+                            <div className="inspection-title">
+                              {glass.building ||
+                                "—"}
+                            </div>
+
+                            <div className="muted">
+                              {glass.cluster ||
+                                "—"}{" "}
+                              ·{" "}
+                              {glass.zone ||
+                                "—"}{" "}
+                              ·{" "}
+                              {glass.direction ||
+                                "—"}
+                            </div>
+                          </div>
+
+                          <span
+                            className={`status ${status.className}`}
+                          >
+                            {
+                              status.label
+                            }
+                          </span>
+                        </div>
+
+                        <div className="muted">
+                          <strong>
+                            {
+                              text.technician
+                            }
+                            :
+                          </strong>{" "}
+                          {technicianName(
+                            inspection,
+                          )}
+                        </div>
+
+                        <div className="muted">
+                          <strong>
+                            {
+                              text.inspectionDate
+                            }
+                            :
+                          </strong>{" "}
+                          {formatDateTime(
+                            inspection
+                              .inspectedAt,
+                            lang,
+                          )}
+                        </div>
+
+                        <div className="inspection-comment">
+                          {inspection.notes ||
+                            "—"}
+                        </div>
+
+                        {images.length >
+                          0 && (
+                          <div className="thumbs">
+                            {images
+                              .slice(
+                                0,
+                                4,
+                              )
+                              .map(
+                                (
+                                  image,
+                                ) => (
+                                  <div
+                                    className="thumb"
+                                    key={
+                                      image.id ||
+                                      image.imageUrl
+                                    }
+                                  >
+                                    <img
+                                      src={getImageUrl(
+                                        image.imageUrl,
+                                      )}
+                                      alt=""
+                                    />
+                                  </div>
+                                ),
+                              )}
+                          </div>
+                        )}
+
+                        <div className="card-actions">
+                          <button
+                            type="button"
+                            className="small-btn details-btn"
+                            onClick={() =>
+                              setSelectedInspection(
+                                inspection,
+                              )
+                            }
+                          >
+                            {
+                              text.details
+                            }
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  },
+                )}
+
+            {!inspectionsLoading &&
+              inspections.length ===
+                0 && (
+                <div className="empty">
+                  {
+                    text.noInspections
+                  }
+                </div>
+              )}
+          </div>
+        </section>
+
+        {/* =====================================================
+            FILTERS
+        ===================================================== */}
+
+        <section className="panel">
+          <div className="panel-title">
+            <div>
+              <h2>
+                {
+                  text.filterTitle
+                }
+              </h2>
+            </div>
+          </div>
+
+          <div className="filters">
             <div className="field">
-              <label>{text.search}</label>
+              <label>
+                {
+                  text.search
+                }
+              </label>
 
               <input
-                type="search"
                 className="control"
-                value={filters.search}
-                placeholder={text.searchPlaceholder}
-                onChange={(event) =>
+                type="search"
+                value={
+                  filters.search
+                }
+                placeholder={
+                  text.searchPlaceholder
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateFilter(
                     "search",
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               />
             </div>
 
             <div className="field">
-              <label>{text.currentStatus}</label>
+              <label>
+                {
+                  text.currentStatus
+                }
+              </label>
 
               <select
                 className="control"
-                value={filters.currentStatus}
-                onChange={(event) =>
+                value={
+                  filters.currentStatus
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateFilter(
                     "currentStatus",
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               >
                 <option value="">
-                  {text.allStatuses}
+                  {
+                    text.allStatuses
+                  }
                 </option>
 
                 <option value="OK">
-                  {text.statusOk}
+                  {text.ok}
                 </option>
 
                 <option value="NOT_OK">
-                  {text.statusNotOk}
+                  {
+                    text.notOk
+                  }
                 </option>
 
                 <option value="NEEDS_FOLLOW_UP">
-                  {text.statusFollowUp}
+                  {
+                    text.followUp
+                  }
                 </option>
 
                 <option value="NOT_INSPECTED">
-                  {text.statusNotInspected}
+                  {
+                    text.notInspected
+                  }
                 </option>
               </select>
             </div>
 
             <div className="field">
-              <label>{text.cluster}</label>
+              <label>
+                {
+                  text.cluster
+                }
+              </label>
 
               <select
                 className="control"
-                value={filters.cluster}
-                onChange={(event) =>
+                value={
+                  filters.cluster
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateFilter(
                     "cluster",
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               >
                 <option value="">
-                  {text.allClusters}
+                  {
+                    text.allClusters
+                  }
                 </option>
 
                 {filterOptions.clusters.map(
-                  (cluster) => (
+                  (
+                    cluster,
+                  ) => (
                     <option
-                      value={cluster}
-                      key={cluster}
+                      key={
+                        cluster
+                      }
+                      value={
+                        cluster
+                      }
                     >
-                      {cluster}
+                      {
+                        cluster
+                      }
                     </option>
                   ),
                 )}
@@ -2022,29 +2943,48 @@ export default function GlassesAdminPage() {
             </div>
 
             <div className="field">
-              <label>{text.building}</label>
+              <label>
+                {
+                  text.building
+                }
+              </label>
 
               <select
                 className="control"
-                value={filters.building}
-                onChange={(event) =>
+                value={
+                  filters.building
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateFilter(
                     "building",
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               >
                 <option value="">
-                  {text.allBuildings}
+                  {
+                    text.allBuildings
+                  }
                 </option>
 
                 {filterOptions.buildings.map(
-                  (building) => (
+                  (
+                    building,
+                  ) => (
                     <option
-                      value={building}
-                      key={building}
+                      key={
+                        building
+                      }
+                      value={
+                        building
+                      }
                     >
-                      {building}
+                      {
+                        building
+                      }
                     </option>
                   ),
                 )}
@@ -2052,29 +2992,48 @@ export default function GlassesAdminPage() {
             </div>
 
             <div className="field">
-              <label>{text.zone}</label>
+              <label>
+                {
+                  text.zone
+                }
+              </label>
 
               <select
                 className="control"
-                value={filters.zone}
-                onChange={(event) =>
+                value={
+                  filters.zone
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateFilter(
                     "zone",
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               >
                 <option value="">
-                  {text.allZones}
+                  {
+                    text.allZones
+                  }
                 </option>
 
                 {filterOptions.zones.map(
-                  (zone) => (
+                  (
+                    zone,
+                  ) => (
                     <option
-                      value={zone}
-                      key={zone}
+                      key={
+                        zone
+                      }
+                      value={
+                        zone
+                      }
                     >
-                      {zone}
+                      {
+                        zone
+                      }
                     </option>
                   ),
                 )}
@@ -2082,29 +3041,48 @@ export default function GlassesAdminPage() {
             </div>
 
             <div className="field">
-              <label>{text.direction}</label>
+              <label>
+                {
+                  text.direction
+                }
+              </label>
 
               <select
                 className="control"
-                value={filters.direction}
-                onChange={(event) =>
+                value={
+                  filters.direction
+                }
+                onChange={(
+                  event,
+                ) =>
                   updateFilter(
                     "direction",
-                    event.target.value,
+                    event.target
+                      .value,
                   )
                 }
               >
                 <option value="">
-                  {text.allDirections}
+                  {
+                    text.allDirections
+                  }
                 </option>
 
                 {filterOptions.directions.map(
-                  (direction) => (
+                  (
+                    direction,
+                  ) => (
                     <option
-                      value={direction}
-                      key={direction}
+                      key={
+                        direction
+                      }
+                      value={
+                        direction
+                      }
                     >
-                      {direction}
+                      {
+                        direction
+                      }
                     </option>
                   ),
                 )}
@@ -2114,180 +3092,358 @@ export default function GlassesAdminPage() {
 
           <button
             type="button"
-            className="reset-button"
-            onClick={resetFilters}
+            className="btn btn-blue reset"
+            onClick={
+              resetFilters
+            }
           >
             {text.reset}
           </button>
         </section>
 
-        <section className="content-panel">
-          <div className="content-heading">
+        {/* =====================================================
+            GLASS GROUPED BY MINISTRY
+        ===================================================== */}
+
+        <section className="panel">
+          <div className="panel-title">
             <div>
-              <h2>{text.recordsTitle}</h2>
-              <p>{text.recordsHint}</p>
+              <h2>
+                {
+                  text.glassByMinistry
+                }
+              </h2>
+
+              <p>
+                {
+                  text.glassByMinistryHint
+                }
+              </p>
             </div>
 
-            <span className="record-badge">
-              {pagination.total} {text.records}
+            <span className="count-badge">
+              {
+                pagination.total
+              }{" "}
+              {
+                text.glassCount
+              }
             </span>
           </div>
 
-          <div className="glass-grid">
-            {loading && (
-              <div className="empty-state">
-                <strong>{text.loading}</strong>
-              </div>
-            )}
+          {loading && (
+            <div className="empty">
+              {
+                text.loading
+              }
+            </div>
+          )}
 
-            {!loading &&
-              rows.map((glass) => {
-                const statusInfo =
-                  getStatusInfo(
-                    glass.currentStatus,
-                    text,
+          {!loading &&
+            groupedGlass.map(
+              ([
+                ministry,
+                ministryGlass,
+              ]) => {
+                const ministryInspections =
+                  ministryGlass.reduce(
+                    (
+                      total,
+                      glass,
+                    ) =>
+                      total +
+                      (
+                        inspectionCounts.get(
+                          Number(
+                            glass.id,
+                          ),
+                        ) || 0
+                      ),
+
+                    0,
                   );
 
                 return (
-                  <article
-                    className="glass-card"
-                    key={glass.id}
+                  <section
+                    className="ministry"
+                    key={
+                      ministry
+                    }
                   >
-                    <div className="card-top">
+                    <div className="ministry-head">
                       <div>
-                        <h3>{glass.building}</h3>
-
-                        <div className="card-subtitle">
-                          {glass.cluster} · {glass.zone}
-                        </div>
-                      </div>
-
-                      <span className="direction-badge">
-                        {glass.direction}
-                      </span>
-                    </div>
-
-                    <div className="card-body">
-                      <div className="info-grid">
-                        <div>
-                          <span className="info-label">
-                            {text.zone}
-                          </span>
-
-                          <span className="info-value">
-                            {glass.zone || "—"}
-                          </span>
-                        </div>
-
-                        <div>
-                          <span className="info-label">
-                            {text.lane}
-                          </span>
-
-                          <span className="info-value">
-                            {glass.lane || "—"}
-                          </span>
-                        </div>
-
-                        <div>
-                          <span className="info-label">
-                            {text.glassType}
-                          </span>
-
-                          <span className="info-value">
-                            {glass.glassType || "—"}
-                          </span>
-                        </div>
-
-                        <div>
-                          <span className="info-label">
-                            {text.thickness}
-                          </span>
-
-                          <span className="info-value">
-                            {glass.thickness || "—"}
-                          </span>
-                        </div>
-                      </div>
-
-                      <span
-                        className={`status-badge ${statusInfo.className}`}
-                      >
-                        {statusInfo.label}
-                      </span>
-
-                      <div
-                        className="card-actions"
-                        style={{
-                          marginTop: 13,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          className="small-button details-button"
-                          onClick={() =>
-                            setSelectedGlass(glass)
+                        <h3>
+                          {
+                            ministry
                           }
-                        >
-                          {text.details}
-                        </button>
+                        </h3>
 
-                        <button
-                          type="button"
-                          className="small-button edit-button"
-                          onClick={() =>
-                            openEdit(glass)
-                          }
-                        >
-                          {text.edit}
-                        </button>
+                        <div className="ministry-meta">
+                          <span>
+                            {
+                              text.glassCount
+                            }
+                            :{" "}
+                            {
+                              ministryGlass.length
+                            }
+                          </span>
 
-                        <button
-                          type="button"
-                          className="small-button delete-button"
-                          onClick={() =>
-                            deleteGlass(glass)
-                          }
-                        >
-                          {text.delete}
-                        </button>
+                          <span>
+                            {
+                              text.inspectionCount
+                            }
+                            :{" "}
+                            {
+                              ministryInspections
+                            }
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </article>
+
+                    <div className="glass-grid">
+                      {ministryGlass.map(
+                        (
+                          glass,
+                        ) => {
+                          const state =
+                            glassStatus(
+                              glass.currentStatus,
+                              text,
+                            );
+
+                          const count =
+                            inspectionCounts.get(
+                              Number(
+                                glass.id,
+                              ),
+                            ) ||
+                            0;
+
+                          return (
+                            <article
+                              className="glass-card"
+                              key={
+                                glass.id
+                              }
+                            >
+                              <div className="glass-card-head">
+                                <div>
+                                  <h4>
+                                    {glass.zone ||
+                                      "—"}
+                                  </h4>
+
+                                  <div className="muted">
+                                    {glass.cluster ||
+                                      "—"}{" "}
+                                    ·{" "}
+                                    {
+                                      ministry
+                                    }
+                                  </div>
+                                </div>
+
+                                <span className="direction">
+                                  {glass.direction ||
+                                    "—"}
+                                </span>
+                              </div>
+
+                              <div className="glass-body">
+                                <div className="info-grid">
+                                  <div>
+                                    <span className="info-label">
+                                      {
+                                        text.zone
+                                      }
+                                    </span>
+
+                                    <span className="info-value">
+                                      {glass.zone ||
+                                        "—"}
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <span className="info-label">
+                                      {
+                                        text.lane
+                                      }
+                                    </span>
+
+                                    <span className="info-value">
+                                      {glass.lane ||
+                                        "—"}
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <span className="info-label">
+                                      {
+                                        text.glassType
+                                      }
+                                    </span>
+
+                                    <span className="info-value">
+                                      {glass.glassType ||
+                                        "—"}
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <span className="info-label">
+                                      {
+                                        text.thickness
+                                      }
+                                    </span>
+
+                                    <span className="info-value">
+                                      {glass.thickness ||
+                                        "—"}
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <span className="info-label">
+                                      {
+                                        text.inspectionCount
+                                      }
+                                    </span>
+
+                                    <span className="info-value">
+                                      {
+                                        count
+                                      }
+                                    </span>
+                                  </div>
+
+                                  <div>
+                                    <span className="info-label">
+                                      {
+                                        text.lastInspection
+                                      }
+                                    </span>
+
+                                    <span className="info-value">
+                                      {formatDate(
+                                        glass.lastInspectionAt,
+                                        lang,
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <span
+                                  className={`status ${state.className}`}
+                                >
+                                  {
+                                    state.label
+                                  }
+                                </span>
+
+                                <div className="card-actions">
+                                  <button
+                                    type="button"
+                                    className="small-btn details-btn"
+                                    onClick={() =>
+                                      setSelectedGlass(
+                                        glass,
+                                      )
+                                    }
+                                  >
+                                    {
+                                      text.details
+                                    }
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="small-btn edit-btn"
+                                    onClick={() =>
+                                      openEdit(
+                                        glass,
+                                      )
+                                    }
+                                  >
+                                    {
+                                      text.edit
+                                    }
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="small-btn delete-btn"
+                                    onClick={() =>
+                                      deleteGlass(
+                                        glass,
+                                      )
+                                    }
+                                  >
+                                    {
+                                      text.delete
+                                    }
+                                  </button>
+                                </div>
+                              </div>
+                            </article>
+                          );
+                        },
+                      )}
+                    </div>
+                  </section>
                 );
-              })}
+              },
+            )}
 
-            {!loading &&
-              rows.length === 0 && (
-                <div className="empty-state">
-                  <strong>{text.noRecords}</strong>
-                  <span>{text.noRecordsHint}</span>
-                </div>
-              )}
-          </div>
+          {!loading &&
+            rows.length ===
+              0 && (
+              <div className="empty">
+                {
+                  text.noRecords
+                }
+              </div>
+            )}
 
-          {pagination.totalPages > 1 && (
+          {pagination.totalPages >
+            1 && (
             <div className="pagination">
               <button
                 type="button"
-                disabled={pagination.page <= 1}
+                className="btn btn-blue"
+                disabled={
+                  pagination.page <=
+                  1
+                }
                 onClick={() =>
                   updateFilter(
                     "page",
-                    pagination.page - 1,
+                    pagination.page -
+                      1,
                   )
                 }
               >
-                {text.previous}
+                {
+                  text.previous
+                }
               </button>
 
               <span>
-                {text.page} {pagination.page}{" "}
-                {text.of} {pagination.totalPages}
+                {text.page}{" "}
+                {
+                  pagination.page
+                }{" "}
+                {text.of}{" "}
+                {
+                  pagination.totalPages
+                }
               </span>
 
               <button
                 type="button"
+                className="btn btn-blue"
                 disabled={
                   pagination.page >=
                   pagination.totalPages
@@ -2295,47 +3451,52 @@ export default function GlassesAdminPage() {
                 onClick={() =>
                   updateFilter(
                     "page",
-                    pagination.page + 1,
+                    pagination.page +
+                      1,
                   )
                 }
               >
-                {text.next}
+                {
+                  text.next
+                }
               </button>
             </div>
           )}
         </section>
       </div>
 
+      {/* =====================================================
+          ADD / EDIT GLASS MODAL
+      ===================================================== */}
+
       {formOpen && (
         <div
-          className="modal-overlay"
-          role="presentation"
-          onMouseDown={(event) => {
+          className="overlay"
+          onMouseDown={(
+            event,
+          ) => {
             if (
-              event.target === event.currentTarget
+              event.target ===
+              event.currentTarget
             ) {
               closeForm();
             }
           }}
         >
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-          >
-            <header className="modal-header">
+          <section className="modal">
+            <header className="modal-head">
               <h2>
                 {editingGlass
                   ? text.editTitle
-                  : text.createTitle}
+                  : text.addTitle}
               </h2>
 
               <button
                 type="button"
-                className="close-button"
-                onClick={closeForm}
-                title={text.close}
-                aria-label={text.close}
+                className="close"
+                onClick={
+                  closeForm
+                }
               >
                 ×
               </button>
@@ -2343,210 +3504,323 @@ export default function GlassesAdminPage() {
 
             <form
               className="modal-body"
-              onSubmit={saveGlass}
+              onSubmit={
+                saveGlass
+              }
             >
               <div className="form-grid">
                 <div className="field">
-                  <label>{text.cluster} *</label>
+                  <label>
+                    {text.cluster} *
+                  </label>
 
                   <input
                     className="control"
-                    value={form.cluster}
-                    onChange={(event) =>
+                    required
+                    value={
+                      form.cluster
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "cluster",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
-                    required
                   />
                 </div>
 
                 <div className="field">
-                  <label>{text.building} *</label>
+                  <label>
+                    {
+                      text.building
+                    }{" "}
+                    *
+                  </label>
 
                   <input
                     className="control"
-                    value={form.building}
-                    onChange={(event) =>
+                    required
+                    value={
+                      form.building
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "building",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
-                    required
                   />
                 </div>
 
                 <div className="field">
-                  <label>{text.zone} *</label>
+                  <label>
+                    {text.zone} *
+                  </label>
 
                   <input
                     className="control"
-                    value={form.zone}
-                    onChange={(event) =>
+                    required
+                    value={
+                      form.zone
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "zone",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
-                    required
                   />
                 </div>
 
                 <div className="field">
-                  <label>{text.direction} *</label>
+                  <label>
+                    {
+                      text.direction
+                    }{" "}
+                    *
+                  </label>
 
                   <select
                     className="control"
-                    value={form.direction}
-                    onChange={(event) =>
+                    required
+                    value={
+                      form.direction
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "direction",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
-                    required
                   >
                     <option value="IN">
-                      {text.inDirection}
+                      IN
                     </option>
 
                     <option value="OUT">
-                      {text.outDirection}
+                      OUT
                     </option>
                   </select>
                 </div>
 
                 <div className="field">
-                  <label>{text.lane}</label>
+                  <label>
+                    {
+                      text.lane
+                    }
+                  </label>
 
                   <input
                     className="control"
-                    value={form.lane}
-                    onChange={(event) =>
+                    value={
+                      form.lane
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "lane",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
                 </div>
 
                 <div className="field">
-                  <label>{text.glassType}</label>
+                  <label>
+                    {
+                      text.glassType
+                    }
+                  </label>
 
                   <input
                     className="control"
-                    value={form.glassType}
-                    onChange={(event) =>
+                    value={
+                      form.glassType
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "glassType",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
                 </div>
 
                 <div className="field">
-                  <label>{text.thickness}</label>
+                  <label>
+                    {
+                      text.thickness
+                    }
+                  </label>
 
                   <input
                     className="control"
-                    value={form.thickness}
-                    onChange={(event) =>
+                    value={
+                      form.thickness
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "thickness",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
                 </div>
 
                 <div className="field">
-                  <label>{text.assetStatus}</label>
+                  <label>
+                    {
+                      text.assetStatus
+                    }
+                  </label>
 
                   <select
                     className="control"
-                    value={form.status}
-                    onChange={(event) =>
+                    value={
+                      form.status
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "status",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   >
                     <option value="ACTIVE">
-                      {text.active}
+                      {
+                        text.active
+                      }
                     </option>
 
                     <option value="INACTIVE">
-                      {text.inactive}
+                      {
+                        text.inactive
+                      }
                     </option>
 
                     <option value="MAINTENANCE">
-                      {text.maintenance}
+                      {
+                        text.maintenance
+                      }
                     </option>
                   </select>
                 </div>
 
                 <div className="field">
-                  <label>{text.currentStatus}</label>
+                  <label>
+                    {
+                      text.currentStatus
+                    }
+                  </label>
 
                   <select
                     className="control"
-                    value={form.currentStatus}
-                    onChange={(event) =>
+                    value={
+                      form.currentStatus
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "currentStatus",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   >
                     <option value="NOT_INSPECTED">
-                      {text.statusNotInspected}
+                      {
+                        text.notInspected
+                      }
                     </option>
 
                     <option value="OK">
-                      {text.statusOk}
+                      {
+                        text.ok
+                      }
                     </option>
 
                     <option value="NOT_OK">
-                      {text.statusNotOk}
+                      {
+                        text.notOk
+                      }
                     </option>
 
                     <option value="NEEDS_FOLLOW_UP">
-                      {text.statusFollowUp}
+                      {
+                        text.followUp
+                      }
                     </option>
                   </select>
                 </div>
 
                 <div className="field">
-                  <label>{text.installDate}</label>
+                  <label>
+                    {
+                      text.installDate
+                    }
+                  </label>
 
                   <input
                     type="date"
                     className="control"
-                    value={form.installDate}
-                    onChange={(event) =>
+                    value={
+                      form.installDate
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "installDate",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
                 </div>
 
-                <div className="field full-field">
-                  <label>{text.notes}</label>
+                <div className="field full">
+                  <label>
+                    {
+                      text.notes
+                    }
+                  </label>
 
                   <textarea
                     className="control"
-                    value={form.notes}
-                    onChange={(event) =>
+                    value={
+                      form.notes
+                    }
+                    onChange={(
+                      event,
+                    ) =>
                       updateForm(
                         "notes",
-                        event.target.value,
+                        event.target
+                          .value,
                       )
                     }
                   />
@@ -2556,16 +3830,22 @@ export default function GlassesAdminPage() {
               <div className="modal-actions">
                 <button
                   type="button"
-                  className="action-button button-blue"
-                  onClick={closeForm}
+                  className="btn btn-blue"
+                  onClick={
+                    closeForm
+                  }
                 >
-                  {text.cancel}
+                  {
+                    text.cancel
+                  }
                 </button>
 
                 <button
                   type="submit"
-                  className="action-button button-dark"
-                  disabled={saving}
+                  className="btn btn-dark"
+                  disabled={
+                    saving
+                  }
                 >
                   {saving
                     ? text.saving
@@ -2577,83 +3857,356 @@ export default function GlassesAdminPage() {
         </div>
       )}
 
-      {selectedGlass && (
+      {/* =====================================================
+          INSPECTION DETAILS MODAL
+      ===================================================== */}
+
+      {selectedInspection && (
         <div
-          className="modal-overlay"
-          role="presentation"
-          onMouseDown={(event) => {
+          className="overlay"
+          onMouseDown={(
+            event,
+          ) => {
             if (
-              event.target === event.currentTarget
+              event.target ===
+              event.currentTarget
             ) {
-              setSelectedGlass(null);
+              setSelectedInspection(
+                null,
+              );
             }
           }}
         >
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-          >
-            <header className="modal-header">
-              <h2>{text.detailsTitle}</h2>
+          <section className="modal">
+            <header className="modal-head">
+              <h2>
+                {
+                  text.inspectionDetails
+                }
+              </h2>
 
               <button
                 type="button"
-                className="close-button"
+                className="close"
                 onClick={() =>
-                  setSelectedGlass(null)
+                  setSelectedInspection(
+                    null,
+                  )
                 }
-                title={text.close}
-                aria-label={text.close}
               >
                 ×
               </button>
             </header>
 
             <div className="modal-body">
-              <div className="detail-grid">
+              <div className="details-grid">
                 {[
-                  [text.cluster, selectedGlass.cluster],
-                  [text.building, selectedGlass.building],
-                  [text.zone, selectedGlass.zone],
-                  [text.direction, selectedGlass.direction],
-                  [text.lane, selectedGlass.lane || "—"],
-                  [text.glassType, selectedGlass.glassType || "—"],
-                  [text.thickness, selectedGlass.thickness || "—"],
-                  [text.assetStatus, selectedGlass.status],
+                  [
+                    text.building,
+
+                    selectedInspection
+                      ?.glass
+                      ?.building ||
+                      "—",
+                  ],
+
+                  [
+                    text.cluster,
+
+                    selectedInspection
+                      ?.glass
+                      ?.cluster ||
+                      "—",
+                  ],
+
+                  [
+                    text.zone,
+
+                    selectedInspection
+                      ?.glass
+                      ?.zone ||
+                      "—",
+                  ],
+
+                  [
+                    text.direction,
+
+                    selectedInspection
+                      ?.glass
+                      ?.direction ||
+                      "—",
+                  ],
+
+                  [
+                    text.technician,
+
+                    technicianName(
+                      selectedInspection,
+                    ),
+                  ],
+
+                  [
+                    text.inspectionDate,
+
+                    formatDateTime(
+                      selectedInspection
+                        ?.inspectedAt,
+
+                      lang,
+                    ),
+                  ],
+
+                  [
+                    text.status,
+
+                    inspectionStatus(
+                      selectedInspection
+                        ?.inspectionStatus,
+
+                      text,
+                    ).label,
+                  ],
+
+                  [
+                    text.comment,
+
+                    selectedInspection
+                      ?.notes ||
+                      "—",
+                  ],
+                ].map(
+                  ([
+                    label,
+                    value,
+                  ]) => (
+                    <div
+                      className="detail-box"
+                      key={
+                        label
+                      }
+                    >
+                      <div className="detail-label">
+                        {
+                          label
+                        }
+                      </div>
+
+                      <div className="detail-value">
+                        {
+                          value
+                        }
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+
+              {Array.isArray(
+                selectedInspection.images,
+              ) &&
+                selectedInspection.images.filter(
+                  (
+                    image,
+                  ) =>
+                    image?.imageUrl,
+                ).length >
+                  0 && (
+                  <>
+                    <h3>
+                      {
+                        text.images
+                      }
+                    </h3>
+
+                    <div className="gallery">
+                      {selectedInspection.images
+                        .filter(
+                          (
+                            image,
+                          ) =>
+                            image?.imageUrl,
+                        )
+                        .map(
+                          (
+                            image,
+                          ) => (
+                            <a
+                              key={
+                                image.id ||
+                                image.imageUrl
+                              }
+                              href={getImageUrl(
+                                image.imageUrl,
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <img
+                                src={getImageUrl(
+                                  image.imageUrl,
+                                )}
+                                alt=""
+                              />
+                            </a>
+                          ),
+                        )}
+                    </div>
+                  </>
+                )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* =====================================================
+          GLASS DETAILS MODAL
+      ===================================================== */}
+
+      {selectedGlass && (
+        <div
+          className="overlay"
+          onMouseDown={(
+            event,
+          ) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              setSelectedGlass(
+                null,
+              );
+            }
+          }}
+        >
+          <section className="modal">
+            <header className="modal-head">
+              <h2>
+                {
+                  text.detailsTitle
+                }
+              </h2>
+
+              <button
+                type="button"
+                className="close"
+                onClick={() =>
+                  setSelectedGlass(
+                    null,
+                  )
+                }
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="modal-body">
+              <div className="details-grid">
+                {[
+                  [
+                    text.cluster,
+                    selectedGlass.cluster ||
+                      "—",
+                  ],
+
+                  [
+                    text.building,
+                    selectedGlass.building ||
+                      "—",
+                  ],
+
+                  [
+                    text.zone,
+                    selectedGlass.zone ||
+                      "—",
+                  ],
+
+                  [
+                    text.direction,
+                    selectedGlass.direction ||
+                      "—",
+                  ],
+
+                  [
+                    text.lane,
+                    selectedGlass.lane ||
+                      "—",
+                  ],
+
+                  [
+                    text.glassType,
+                    selectedGlass.glassType ||
+                      "—",
+                  ],
+
+                  [
+                    text.thickness,
+                    selectedGlass.thickness ||
+                      "—",
+                  ],
+
+                  [
+                    text.assetStatus,
+                    selectedGlass.status ||
+                      "—",
+                  ],
+
                   [
                     text.currentStatus,
-                    getStatusInfo(
+
+                    glassStatus(
                       selectedGlass.currentStatus,
                       text,
                     ).label,
                   ],
+
                   [
                     text.installDate,
+
                     formatDate(
                       selectedGlass.installDate,
                       lang,
                     ),
                   ],
+
                   [
                     text.lastInspection,
-                    formatDate(
+
+                    formatDateTime(
                       selectedGlass.lastInspectionAt,
                       lang,
                     ),
                   ],
-                  [text.notes, selectedGlass.notes || "—"],
-                ].map(([label, value]) => (
-                  <div
-                    className="detail-box"
-                    key={label}
-                  >
-                    <div className="detail-row">
-                      <span>{label}</span>
-                      <span>{value}</span>
+
+                  [
+                    text.notes,
+                    selectedGlass.notes ||
+                      "—",
+                  ],
+                ].map(
+                  ([
+                    label,
+                    value,
+                  ]) => (
+                    <div
+                      className="detail-box"
+                      key={
+                        label
+                      }
+                    >
+                      <div className="detail-label">
+                        {
+                          label
+                        }
+                      </div>
+
+                      <div className="detail-value">
+                        {
+                          value
+                        }
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ),
+                )}
               </div>
             </div>
           </section>
